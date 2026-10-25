@@ -188,6 +188,7 @@
       '';
 
       driverRevision = "5b6f46cde692acb77ee74b37b9fd3f1678c45a52";
+      driverSourceRevision = "0a0eb97f67d1dbcb3d08bda66d3b24f465d95475";
       fetchDriverFile = architecture: file: hash: pkgs.fetchurl {
         url = "https://raw.githubusercontent.com/mullvad/mullvadvpn-app-binaries/${driverRevision}/${architecture}-pc-windows-msvc/split-tunnel/${file}";
         inherit hash;
@@ -199,6 +200,10 @@
         install -Dm0444 ${fetchDriverFile "aarch64" "mullvad-split-tunnel.sys" "sha256-avizv+WqCV1Sdhh1WMfH06PgwXSzRAbNbEs/jm/6ZTQ="} $out/arm64/mullvad-split-tunnel.sys
         install -Dm0444 ${fetchDriverFile "aarch64" "mullvad-split-tunnel.inf" "sha256-C/2wROQFNdq76zYgtlXBVjcUs6bzIx00kslyxujepvE="} $out/arm64/mullvad-split-tunnel.inf
         install -Dm0444 ${fetchDriverFile "aarch64" "mullvad-split-tunnel.cat" "sha256-w9J2NnOeuqfd42nREzR96D4+IXO4pRK7iGPRGxSN584="} $out/arm64/mullvad-split-tunnel.cat
+        install -Dm0444 ${pkgs.fetchurl {
+          url = "https://raw.githubusercontent.com/mullvad/win-split-tunnel/${driverSourceRevision}/LICENSE-MPL.txt";
+          hash = "sha256-ZqMQfVrWoFiqt1PqrCBHzLLtDjlGXdD+WETaPjANUXI=";
+        }} $out/licenses/mullvad-LICENSE-MPL.txt
       '';
       wintunArchive = pkgs.fetchurl {
         url = "https://www.wintun.net/builds/wintun-0.14.1.zip";
@@ -208,6 +213,7 @@
         unzip -q ${wintunArchive} -d unpacked
         install -Dm0444 unpacked/wintun/bin/amd64/wintun.dll $out/amd64/wintun.dll
         install -Dm0444 unpacked/wintun/bin/arm64/wintun.dll $out/arm64/wintun.dll
+        install -Dm0444 unpacked/wintun/LICENSE.txt $out/licenses/wintun-LICENSE.txt
       '';
     in {
       packages = {

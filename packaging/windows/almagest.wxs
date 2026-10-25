@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:difx="http://wixtoolset.org/schemas/v4/wxs/difxapp"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="Almagest"
+           Manufacturer="Almagest contributors"
+           Version="$(var.Version)"
+           ProductCode="$(var.ProductCode)"
+           UpgradeCode="49768928-2421-453C-81CA-E962800EE5B8"
+           Language="1033"
+           Scope="perMachine"
+           InstallerVersion="500">
+    <SummaryInformation Description="Almagest network daemon"
+                        Manufacturer="Almagest contributors" />
+    <MediaTemplate EmbedCab="yes" />
+    <MajorUpgrade AllowSameVersionUpgrades="no"
+                  DowngradeErrorMessage="A newer version of Almagest is already installed."
+                  Schedule="afterInstallInitialize" />
+
+    <util:QueryWindowsWellKnownSIDs />
+
+    <Feature Id="AlmagestFeature" Title="Almagest" Level="1">
+      <ComponentRef Id="DaemonServiceComponent" />
+      <ComponentRef Id="CliComponent" />
+      <ComponentRef Id="WintunComponent" />
+      <ComponentRef Id="PackageDocumentationComponent" />
+      <ComponentRef Id="MullvadDriverComponent" />
+      <ComponentRef Id="ProgramDataAclComponent" />
+      <ComponentGroupRef Id="LocalesComponents" />
+      <ComponentGroupRef Id="ExamplesComponents" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Almagest">
+        <Directory Id="LOCALESFOLDER" Name="locales" />
+        <Directory Id="EXAMPLESFOLDER" Name="examples" />
+        <Directory Id="DRIVERSFOLDER" Name="drivers">
+          <Directory Id="MULLVADDRIVERFOLDER" Name="mullvad-split-tunnel" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="PROGRAMDATAFOLDER" Name="Almagest" />
+    </StandardDirectory>
+  </Fragment>
+
+  <Fragment>
+    <Component Id="DaemonServiceComponent" Directory="INSTALLFOLDER"
+               Guid="C05707E1-C3A4-482D-B634-975B99A7F8AB" Bitness="always64">
+      <File Id="DaemonExecutable" Source="$(var.PayloadDir)\almagestd.exe"
+            KeyPath="yes" />
+      <ServiceInstall Id="AlmagestServiceInstall"
+                      Name="almagestd"
+                      DisplayName="Almagest Network Daemon"
+                      Description="Almagest network daemon"
+                      Type="ownProcess"
+                      Start="auto"
+                      ErrorControl="normal"
+                      Account="LocalSystem"
+                      Arguments="--isolation=off"
+                      Vital="yes">
+        <ServiceConfig Id="AlmagestServiceConfig"
+                       DelayedAutoStart="yes"
+                       FailureActionsWhen="failedToStopOrReturnedError"
+                       OnInstall="yes"
+                       OnReinstall="yes" />
+        <ServiceConfigFailureActions Id="AlmagestServiceFailureActions"
+                                     ResetPeriod="86400"
+                                     OnInstall="yes"
+                                     OnReinstall="yes">
+          <Failure Action="restartService" Delay="5000" />
+          <Failure Action="restartService" Delay="15000" />
+          <Failure Action="restartService" Delay="60000" />
+        </ServiceConfigFailureActions>
+      </ServiceInstall>
+      <ServiceControl Id="AlmagestServiceControl"
+                      Name="almagestd"
+                      Start="install"
+                      Stop="both"
+                      Remove="uninstall"
+                      Wait="yes" />
+    </Component>
+
+    <Component Id="CliComponent" Directory="INSTALLFOLDER"
+               Guid="D0351CF1-25F6-423B-ABCE-9C7F57FFD162" Bitness="always64">
+      <File Id="CliExecutable" Source="$(var.PayloadDir)\almagest-cli.exe"
+            KeyPath="yes" />
+    </Component>
+
+    <Component Id="WintunComponent" Directory="INSTALLFOLDER"
+               Guid="E029577A-A19D-4F4D-B5C3-666186CF4BE5" Bitness="always64">
+      <File Id="WintunDll" Source="$(var.WintunDir)\wintun.dll"
+            KeyPath="yes" />
+    </Component>
+
+    <Component Id="PackageDocumentationComponent" Directory="INSTALLFOLDER"
+               Guid="1DA725CA-0E69-41D5-96D3-8803C5BDC55D" Bitness="always64">
+      <File Id="ProjectLicense" Source="$(var.SourceDir)\LICENSE"
+            Name="LICENSE.txt" KeyPath="yes" />
+      <File Id="PackageReadme" Source="$(var.SourceDir)\packaging\windows\README.md"
+            Name="PACKAGE-README.md" />
+      <File Id="WintunLicense"
+            Source="$(var.WintunDir)\..\licenses\wintun-LICENSE.txt"
+            Name="WINTUN-LICENSE.txt" />
+      <File Id="MullvadLicense"
+            Source="$(var.MullvadDir)\..\licenses\mullvad-LICENSE-MPL.txt"
+            Name="MULLVAD-LICENSE-MPL.txt" />
+    </Component>
+
+    <Component Id="MullvadDriverComponent" Directory="MULLVADDRIVERFOLDER"
+               Guid="55D3B355-7A66-430A-9925-652983A9F03A" Bitness="always64">
+      <File Id="MullvadDriverInf"
+            Source="$(var.MullvadDir)\mullvad-split-tunnel.inf"
+            KeyPath="yes" />
+      <File Id="MullvadDriverSys"
+            Source="$(var.MullvadDir)\mullvad-split-tunnel.sys" />
+      <File Id="MullvadDriverCat"
+            Source="$(var.MullvadDir)\mullvad-split-tunnel.cat" />
+      <difx:Driver AddRemovePrograms="no"
+                   DeleteFiles="yes"
+                   ForceInstall="no"
+                   Legacy="no"
+                   PlugAndPlayPrompt="no"
+                   Sequence="1" />
+    </Component>
+
+    <Component Id="ProgramDataAclComponent" Directory="PROGRAMDATAFOLDER"
+               Guid="0FDB9BB0-8D49-41FA-8C2D-C12F11B284B8"
+               Bitness="always64" KeyPath="yes" Permanent="yes">
+      <CreateFolder>
+        <util:PermissionEx User="[WIX_ACCOUNT_LOCALSYSTEM]" GenericAll="yes" />
+        <util:PermissionEx User="[WIX_ACCOUNT_ADMINISTRATORS]" GenericAll="yes" />
+      </CreateFolder>
+    </Component>
+  </Fragment>
+</Wix>

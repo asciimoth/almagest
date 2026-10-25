@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "target": {
     "operatingSystem": "Windows Server 2022",
     "build": 20348,
@@ -136,10 +136,10 @@
       "declaredInfStart": "demand",
       "distribution": "Keep the matching SYS, INF, and CAT files unchanged. Install them with Windows driver-package facilities. Do not create or replace the catalog.",
       "daemonHardDependency": false,
-      "phase4Decisions": [
-        "Driver start behavior after installation and reboot.",
-        "Driver package removal or retention during uninstall."
-      ]
+      "installMechanism": "WiX v4 DifxApp driver-package installation",
+      "startPolicy": "Keep the signed INF demand-start policy. The MSI does not explicitly start the driver during install, and Windows does not start it at boot.",
+      "uninstallPolicy": "Remove the driver package and its copied driver files during normal MSI uninstall after the daemon service stops. Roll back driver installation if the MSI install fails. Keep ProgramData state.",
+      "stagedFilesRemovedOnUninstall": true
     }
   }
 }

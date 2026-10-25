@@ -4,13 +4,20 @@ import base64
 import hashlib
 import json
 import re
+import subprocess
 import unittest
 import uuid
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "packaging" / "windows" / "contract.json"
 FLAKE_PATH = ROOT / "flake.nix"
+WIX_PATH = ROOT / "packaging" / "windows" / "almagest.wxs"
+PAYLOAD_WIX_PATH = ROOT / "packaging" / "windows" / "payload.wxs"
+FIXTURE_BUILD_PATH = ROOT / "packaging" / "windows" / "build-fixture.ps1"
+WIX = "{http://wixtoolset.org/schemas/v4/wxs}"
+DIFX = "{http://wixtoolset.org/schemas/v4/wxs/difxapp}"
 
 
 def sri_to_hex(value):
@@ -25,6 +32,8 @@ class WindowsPackageContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.contract = json.loads(CONTRACT_PATH.read_text())
         cls.flake = FLAKE_PATH.read_text()
+        cls.wix = ET.parse(WIX_PATH).getroot()
+        cls.payload_wix = ET.parse(PAYLOAD_WIX_PATH).getroot()
 
     def test_identity_and_component_guids_are_stable_and_unique(self):
         identity = self.contract["identity"]
@@ -139,6 +148,179 @@ class WindowsPackageContractTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertTrue(path.is_file())
                 self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest)
+
+    def test_wix_product_and_upgrade_policy_match_contract(self):
+        package = self.wix.find(f"{WIX}Package")
+        self.assertIsNotNone(package)
+        self.assertEqual(package.attrib["Name"], "Almagest")
+        self.assertEqual(package.attrib["Manufacturer"],
+                         self.contract["identity"]["manufacturer"])
+        self.assertEqual(package.attrib["ProductCode"], "$(var.ProductCode)")
+        self.assertEqual(package.attrib["UpgradeCode"],
+                         self.contract["identity"]["upgradeCode"])
+        self.assertEqual(package.attrib["Scope"], "perMachine")
+        upgrade = package.find(f"{WIX}MajorUpgrade")
+        self.assertEqual(upgrade.attrib["AllowSameVersionUpgrades"], "no")
+        self.assertIn("newer version", upgrade.attrib["DowngradeErrorMessage"])
+
+    def test_wix_service_matches_contract(self):
+        component = self._component(self.wix, "DaemonServiceComponent")
+        service = component.find(f"{WIX}ServiceInstall")
+        contract = self.contract["service"]
+        self.assertEqual(service.attrib["Name"], contract["name"])
+        self.assertEqual(service.attrib["DisplayName"], contract["displayName"])
+        self.assertEqual(service.attrib["Account"], contract["account"])
+        self.assertEqual(service.attrib["Type"], contract["type"])
+        self.assertEqual(service.attrib["Start"], "auto")
+        self.assertEqual(service.attrib["ErrorControl"], contract["errorControl"])
+        self.assertEqual(service.attrib["Arguments"], "--isolation=off")
+
+        config = service.find(f"{WIX}ServiceConfig")
+        self.assertEqual(config.attrib["DelayedAutoStart"], "yes")
+        self.assertEqual(config.attrib["FailureActionsWhen"],
+                         "failedToStopOrReturnedError")
+        failures = service.find(f"{WIX}ServiceConfigFailureActions")
+        self.assertEqual(failures.attrib["ResetPeriod"], "86400")
+        actual = [(item.attrib["Action"], int(item.attrib["Delay"]))
+                  for item in failures.findall(f"{WIX}Failure")]
+        self.assertEqual(actual, [
+            ("restartService", 5000),
+            ("restartService", 15000),
+            ("restartService", 60000),
+        ])
+        control = component.find(f"{WIX}ServiceControl")
+        self.assertEqual(control.attrib, {
+            "Id": "AlmagestServiceControl",
+            "Name": "almagestd",
+            "Start": "install",
+            "Stop": "both",
+            "Remove": "uninstall",
+            "Wait": "yes",
+        })
+        self.assertEqual(service.findall(f"{WIX}ServiceDependency"), [])
+
+    def test_wix_driver_policy_is_explicit(self):
+        component = self._component(self.wix, "MullvadDriverComponent")
+        files = {item.attrib["Source"].rsplit("\\", 1)[-1]
+                 for item in component.findall(f"{WIX}File")}
+        self.assertEqual(files, {
+            "mullvad-split-tunnel.inf",
+            "mullvad-split-tunnel.sys",
+            "mullvad-split-tunnel.cat",
+        })
+        driver = component.find(f"{DIFX}Driver")
+        self.assertEqual(driver.attrib, {
+            "AddRemovePrograms": "no",
+            "DeleteFiles": "yes",
+            "ForceInstall": "no",
+            "Legacy": "no",
+            "PlugAndPlayPrompt": "no",
+            "Sequence": "1",
+        })
+        policy = self.contract["drivers"]["mullvadSplitTunnel"]
+        self.assertEqual(policy["declaredInfStart"], "demand")
+        self.assertFalse(policy["daemonHardDependency"])
+        self.assertTrue(policy["stagedFilesRemovedOnUninstall"])
+        self.assertNotIn("phase4Decisions", policy)
+
+    def test_wix_installs_only_the_wintun_distribution_dll(self):
+        component = self._component(self.wix, "WintunComponent")
+        files = component.findall(f"{WIX}File")
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0].attrib["Source"],
+                         r"$(var.WintunDir)\wintun.dll")
+        source = WIX_PATH.read_text().lower()
+        self.assertNotIn("wintun.sys", source)
+        self.assertNotIn("wintun.inf", source)
+        self.assertNotIn("wintun.cat", source)
+
+    def test_wix_installs_documentation_and_dependency_licenses(self):
+        component = self._component(self.wix, "PackageDocumentationComponent")
+        files = {item.attrib["Id"]: item.attrib["Source"]
+                 for item in component.findall(f"{WIX}File")}
+        self.assertEqual(files, {
+            "ProjectLicense": r"$(var.SourceDir)\LICENSE",
+            "PackageReadme":
+                r"$(var.SourceDir)\packaging\windows\README.md",
+            "WintunLicense":
+                r"$(var.WintunDir)\..\licenses\wintun-LICENSE.txt",
+            "MullvadLicense":
+                r"$(var.MullvadDir)\..\licenses\mullvad-LICENSE-MPL.txt",
+        })
+        self.assertIn("unpacked/wintun/LICENSE.txt", self.flake)
+        mullvad = self.contract["drivers"]["mullvadSplitTunnel"]
+        self.assertIn(mullvad["sourceRevision"], self.flake)
+        self.assertIn("sha256-ZqMQfVrWoFiqt1PqrCBHzLLtDjlGXdD+WETaPjANUXI=",
+                      self.flake)
+
+    def test_generated_payload_is_current_complete_and_stable(self):
+        subprocess.run(
+            ["python3", "packaging/windows/generate-payload-wxs.py", "--check"],
+            cwd=ROOT,
+            check=True,
+        )
+        components = self.payload_wix.findall(f".//{WIX}Component")
+        actual_sources = {
+            component.find(f"{WIX}File").attrib["Source"]
+            for component in components
+        }
+        tracked = subprocess.run(
+            ["git", "ls-files", "locales", "examples"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        expected_sources = {
+            "$(var.SourceDir)\\" + path.replace("/", "\\")
+            for path in tracked
+        }
+        self.assertEqual(actual_sources, expected_sources)
+        self.assertEqual(len(components), len(tracked))
+
+        by_source = {
+            component.find(f"{WIX}File").attrib["Source"]: component
+            for component in components
+        }
+        for path in tracked:
+            with self.subTest(path=path):
+                tree = path.split("/", 1)[0]
+                expected = str(uuid.uuid5(
+                    uuid.UUID(self.contract["components"][
+                        f"{tree}GuidNamespace"]),
+                    path,
+                )).upper()
+                source = "$(var.SourceDir)\\" + path.replace("/", "\\")
+                self.assertEqual(by_source[source].attrib["Guid"], expected)
+
+    def test_program_data_component_is_permanent(self):
+        component = self._component(self.wix, "ProgramDataAclComponent")
+        self.assertEqual(component.attrib["Permanent"], "yes")
+        self.assertEqual(component.attrib["Guid"],
+                         self.contract["components"]["programDataAcl"])
+        users = {permission.attrib["User"] for permission in component.findall(
+            f"{WIX}CreateFolder/{{http://wixtoolset.org/schemas/v4/wxs/util}}PermissionEx"
+        )}
+        self.assertEqual(users, {
+            "[WIX_ACCOUNT_LOCALSYSTEM]",
+            "[WIX_ACCOUNT_ADMINISTRATORS]",
+        })
+
+    def test_fixture_build_is_x64_and_uses_required_extensions(self):
+        source = FIXTURE_BUILD_PATH.read_text()
+        self.assertIn("'-arch', 'x64'", source)
+        self.assertIn("'WixToolset.Util.wixext'", source)
+        self.assertIn("'WixToolset.DifxApp.wixext'", source)
+        self.assertNotIn("arm64", source.lower())
+        self.assertIn("almagest.wxs", source)
+        self.assertIn("payload.wxs", source)
+
+    @staticmethod
+    def _component(root, component_id):
+        component = root.find(f".//{WIX}Component[@Id='{component_id}']")
+        if component is None:
+            raise AssertionError(f"component not found: {component_id}")
+        return component
 
 
 if __name__ == "__main__":

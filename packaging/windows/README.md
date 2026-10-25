@@ -1,8 +1,9 @@
 # Windows MSI package
 
-This directory defines the contract for the planned unsigned Almagest MSI. The
-MSI is not implemented yet. `contract.json` freezes its identities, paths,
-service properties, logging, retention behavior, and dependency inputs.
+This directory defines the unsigned Almagest MSI. `almagest.wxs` defines the
+product, service, dependencies, and retention behavior. `payload.wxs` contains
+the generated components for tracked locales and examples. `contract.json`
+freezes the identities and package policy.
 
 The first package is for Windows Server 2022 build 20348 on amd64. It does not
 support Windows client editions, Windows 11, arm64, or 386. Package availability
@@ -11,7 +12,7 @@ in `contracts/windows/` controls support status.
 
 ## Installed files and retained data
 
-The MSI will install immutable files below `%ProgramFiles%\Almagest`. These
+The MSI installs immutable files below `%ProgramFiles%\Almagest`. These
 files include `almagestd.exe`, `almagest-cli.exe`, the official amd64
 `wintun.dll`, locales, examples, package documentation, and a staging directory
 for the complete Mullvad split-tunnel driver package.
@@ -31,7 +32,7 @@ uninstall removes the service and immutable files but keeps all files under
 
 ## Service
 
-The package will register the own-process `almagestd` service as
+The package registers the own-process `almagestd` service as
 `Almagest Network Daemon`. It runs as LocalSystem, starts automatically with a
 delay, and invokes `almagestd.exe --isolation=off`. The service name cannot
 change because the executable uses it in its SCM dispatcher contract.
@@ -42,9 +43,9 @@ hours. Recovery also applies to daemon error exits and never reboots Windows.
 The machine administration endpoint is `pipe://machine` and requires an elevated
 CLI or LocalSystem.
 
-The installer must stop the service before it replaces files. It must start the
-service after a successful install, repair, or upgrade. Uninstall must stop and
-remove the service before it removes immutable files.
+The installer stops the service before it replaces files. It starts the service
+after a successful install, repair, or upgrade. Uninstall stops and removes the
+service before it removes immutable files.
 
 During startup and shutdown, the daemon reports a new SCM checkpoint every two
 seconds and a 30-second wait hint. Stop and system-shutdown controls cancel the
@@ -90,9 +91,48 @@ the dependency verifier on Windows before a package build:
 ```
 
 The verifier requires amd64 PE files, exact hashes, a matching INF, and valid
-Authenticode signatures. Phase 4 must test and record the driver start and
-uninstall policies. It must not remove the daemon's ability to run without
-executable-tree exclusions when the driver is unavailable.
+Authenticode signatures. The MSI uses the WiX v4 DifxApp extension to install
+the unchanged signed driver package. It keeps the INF demand-start setting and
+does not explicitly start the driver during installation. Windows does not
+start it at boot. The daemon has no hard dependency on the driver and can run
+without executable-tree exclusions.
+
+Normal uninstall removes the driver package and its copied driver files after
+the daemon stops. Windows Installer rollback removes a driver package that was
+added by a failed installation. The staged INF, SYS, and CAT files under
+Program Files are also removed. ProgramData remains in place.
+
+WiX v4 marks DifxApp as deprecated, but it is the open-source WiX v4 facility
+that supplies transactional driver-package install, uninstall, and rollback.
+The package gate tests this fixed choice on Windows Server 2022 before release.
+
+## WiX source maintenance
+
+Run this command after a tracked locale or example is added, removed, or moved:
+
+```sh
+python3 packaging/windows/generate-payload-wxs.py
+```
+
+The generator uses the UUIDv5 namespaces in `contract.json`. A file keeps its
+component GUID while its content changes. A path change gets a new component
+GUID. The contract test fails if `payload.wxs` is not current.
+
+`almagest.wxs` requires WiX preprocessor values for `Version`, `ProductCode`,
+`SourceDir`, `PayloadDir`, `WintunDir`, and `MullvadDir`. `ProductCode` must be
+stable for all builds of one product version and must change for a new product
+version. Phase 5 supplies these values from the package build manifest.
+
+On a Windows host with WiX v4 and the pinned Util and DifxApp extensions, use
+the fixed fixture to validate the source and build a test MSI:
+
+```powershell
+./packaging/windows/build-fixture.ps1 `
+  -WixExecutable C:\tools\wix\wix.exe `
+  -Output C:\temp\almagest-fixture.msi
+```
+
+The fixture is for compiler validation only. Do not install it.
 
 ## Redistribution record
 
@@ -118,12 +158,10 @@ Relevant upstream records:
 - <https://github.com/mullvad/mullvadvpn-app-binaries/tree/5b6f46cde692acb77ee74b37b9fd3f1678c45a52>
 - <https://github.com/mullvad/win-split-tunnel/tree/0a0eb97f67d1dbcb3d08bda66d3b24f465d95475>
 
-## Planned command line
+## Operator command line
 
-The package will be unsigned. Windows can show an unknown-publisher or
-SmartScreen warning. Interactive commands are shown now so later phases cannot
-change the operator contract without review. They will work after the MSI is
-built:
+The package is unsigned. Windows can show an unknown-publisher or SmartScreen
+warning. Use these commands with one explicit MSI path:
 
 ```powershell
 # Install and write a verbose Windows Installer log.
