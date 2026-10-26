@@ -200,9 +200,10 @@ clean: certcat-clean
 build-web:
   cd panel && npm ci && npm run build
 
-# Build and run the desktop client with debug settings and hot reload.
-app-debug:
-  cd app && cargo tauri dev
+# Build and run the desktop client with debug settings and hot reload. Pass
+# daemon or daemon-sudo to also run a development daemon for the app.
+app-debug daemon='':
+  ./scripts/run-app-debug.sh {{quote(daemon)}}
 
 app-test:
   cargo test --manifest-path app/src-tauri/Cargo.toml --locked
