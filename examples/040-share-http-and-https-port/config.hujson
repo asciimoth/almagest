@@ -1,0 +1,54 @@
+// Share one port between HTTP and HTTPS sends two protocols for the same
+// address through one Sniffer. Plain HTTP goes directly to the server. TLS
+// goes through TlsTerminator and reaches the same server as plaintext.
+// Send both client requests and compare their status and response.
+{
+	"nodes": {
+		"HTTP Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":39,\"y\":166}",
+			"Links":     ["Network -> [Protocol Sniffer] Network"],
+			"url":       "http://shared-service.test:8443/",
+		},
+		"HTTPS Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":38,\"y\":331}",
+			"Links":     ["Network -> [Protocol Sniffer] Network"],
+			"url":       "https://shared-service.test:8443/",
+		},
+		"Protocol Sniffer": {
+			"Class": "almagest/Sniffer",
+			"Pos":   "{\"x\":292,\"y\":247}",
+			"Links": [
+				"slot 1 -> [Service Network] Network",
+				"slot 2 -> [TLS Terminator] Network",
+			],
+			"rules": "DIAL\nTCP\nAND\nINTERCEPT\n\n# Send plain HTTP directly to the server.\nSNIFF HTTP\nROUTE 1 DST:127.0.0.1:8080\n\n# Remove TLS before the same server receives the request.\nSNIFF TLS\nROUTE 2 DST:127.0.0.1:8080\n\n# Reject all other traffic.\nSNIFF_NONE\nDROP\n\nTRUE\nDROP",
+		},
+		"TLS Terminator": {
+			"Class":             "almagest/TlsTerminator",
+			"Pos":               "{\"x\":551,\"y\":348}",
+			"Links":             ["Network -> [Service Network] Network"],
+			"destinationRemaps": "[]",
+			"leafTTLSeconds":    300,
+			"serverAlpn":        "http/1.1",
+			"sniffBufferSize":   8192,
+		},
+		"Service Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":798,\"y\":246}",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":549,\"y\":93}",
+			"Links":    ["Network -> [Service Network] Network"],
+			"response": "The same HTTP server handled this request",
+		},
+		"Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":205,\"y\":93}",
+			"Links": ["output -> [HTTP Server] Response"],
+			"value": "The same HTTP server handled this request",
+		},
+	},
+}

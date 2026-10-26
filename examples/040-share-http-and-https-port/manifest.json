@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Share one port between HTTP and HTTPS",
+  "comment": "Route HTTP directly and terminate TLS before both requests reach one HTTP server."
+}

@@ -1,0 +1,68 @@
+// Route protocols to separate services sends HTTP and HTTPS for the same
+// address through one Sniffer. Sniffer sends HTTP to port 8080 and TLS to a
+// terminated TLS path that sends plaintext HTTP to port 8081.
+// Send both client requests and compare their responses.
+{
+	"nodes": {
+		"HTTP Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":39,\"y\":179}",
+			"Links":     ["Network -> [Protocol Sniffer] Network"],
+			"url":       "http://multi-service.test:8443/",
+		},
+		"HTTPS Client": {
+			"Class":     "almagest/HttpClient",
+			"Pos":       "{\"x\":38,\"y\":344}",
+			"Links":     ["Network -> [Protocol Sniffer] Network"],
+			"url":       "https://multi-service.test:8443/",
+		},
+		"Protocol Sniffer": {
+			"Class": "almagest/Sniffer",
+			"Pos":   "{\"x\":292,\"y\":260}",
+			"Links": [
+				"slot 1 -> [Service Network] Network",
+				"slot 2 -> [TLS Terminator] Network",
+			],
+			"rules": "DIAL\nTCP\nAND\nINTERCEPT\n\n# Send plain HTTP to the first service.\nSNIFF HTTP\nROUTE 1 DST:127.0.0.1:8080\n\n# Send TLS through the terminator to the second service.\nSNIFF TLS\nROUTE 2 DST:127.0.0.1:8081\n\n# Reject all other traffic.\nSNIFF_NONE\nDROP\n\nTRUE\nDROP",
+		},
+		"TLS Terminator": {
+			"Class":             "almagest/TlsTerminator",
+			"Pos":               "{\"x\":551,\"y\":362}",
+			"Links":             ["Network -> [Service Network] Network"],
+			"destinationRemaps": "[]",
+			"leafTTLSeconds":    300,
+			"serverAlpn":        "http/1.1",
+			"sniffBufferSize":   8192,
+		},
+		"Service Network": {
+			"Class":        "almagest/MockNetwork",
+			"Pos":          "{\"x\":801,\"y\":261}",
+		},
+		"HTTP Service": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":548,\"y\":48}",
+			"Links":    ["Network -> [Service Network] Network"],
+			"port":     8080,
+			"response": "Sniffer sent HTTP to port 8080",
+		},
+		"HTTP Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":208,\"y\":48}",
+			"Links": ["output -> [HTTP Service] Response"],
+			"value": "Sniffer sent HTTP to port 8080",
+		},
+		"TLS Service": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":550,\"y\":159}",
+			"Links":    ["Network -> [Service Network] Network"],
+			"port":     8081,
+			"response": "Sniffer sent TLS to port 8081 and terminated it",
+		},
+		"TLS Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":208,\"y\":159}",
+			"Links": ["output -> [TLS Service] Response"],
+			"value": "Sniffer sent TLS to port 8081 and terminated it",
+		},
+	},
+}
