@@ -14,6 +14,16 @@ for arch in "${architectures[@]}"; do
 	fi
 	archives[$arch]="$(find dist -maxdepth 1 -type f -name "almagest_*_linux_$arch.tar.gz" -print)"
 done
+app_archive_count="$(find dist -maxdepth 1 -type f -name "almagest-app_*_linux_amd64.tar.gz" | wc -l)"
+if [[ "$app_archive_count" != "1" ]]; then
+	printf 'expected one Linux amd64 app archive, found %s\n' "$app_archive_count" >&2
+	exit 1
+fi
+app_archive="$(find dist -maxdepth 1 -type f -name "almagest-app_*_linux_amd64.tar.gz" -print)"
+if find dist -maxdepth 1 -type f -name 'almagest-app_*_linux_arm64*' -print -quit | grep -q .; then
+	printf 'found an unsupported Linux arm64 app artifact\n' >&2
+	exit 1
+fi
 test -f dist/PACKAGE_CONTENTS.md
 test -f dist/ascii-moth.asc
 
@@ -34,6 +44,7 @@ if [[ -f "${archives[amd64]}.sig" ]]; then
 	for archive in "${archives[@]}"; do
 		verify_artifact "$archive"
 	done
+	verify_artifact "$app_archive"
 	verify_artifact dist/checksums.txt
 	for package in dist/*.deb dist/*.rpm dist/*.pkg.tar.zst; do
 		verify_artifact "$package"
@@ -52,6 +63,10 @@ for arch in "${architectures[@]}"; do
 	grep -E '(^|/)share/almagest/locales/en/docs/index.json$' <<<"$listing" >/dev/null
 	grep -E '(^|/)share/almagest/examples/001-hello-network/manifest.json$' <<<"$listing" >/dev/null
 	grep -E '(^|/)PACKAGE_CONTENTS\.md$' <<<"$listing" >/dev/null
+	if grep -E '(^|/)almagest-app$' <<<"$listing" >/dev/null; then
+		printf '%s daemon archive contains the desktop app\n' "$arch" >&2
+		exit 1
+	fi
 	if grep -E '(^|/)share/doc/almagest/DAEMON_ISOLATION\.md$' <<<"$listing" >/dev/null; then
 		printf '%s archive contains developer documentation\n' "$arch" >&2
 		exit 1
@@ -67,6 +82,17 @@ for arch in "${architectures[@]}"; do
 		fi
 	done
 done
+
+app_listing="$(tar -tzf "$app_archive")"
+grep -E '(^|/)almagest-app$' <<<"$app_listing" >/dev/null
+grep -E '(^|/)share/applications/almagest-app.desktop$' <<<"$app_listing" >/dev/null
+grep -E '(^|/)share/icons/hicolor/128x128/apps/almagest.png$' <<<"$app_listing" >/dev/null
+grep -E '(^|/)share/licenses/almagest-app/LICENSE$' <<<"$app_listing" >/dev/null
+grep -E '(^|/)PACKAGE_CONTENTS\.md$' <<<"$app_listing" >/dev/null
+if grep -E '(^|/)(almagest-cli|almagestd)$' <<<"$app_listing" >/dev/null; then
+	printf 'desktop app archive contains daemon package binaries\n' >&2
+	exit 1
+fi
 
 (
 	cd dist
@@ -84,7 +110,8 @@ for arch in "${test_architectures[@]}"; do
 	for format in "${formats[@]}"; do
 		case "$format/$arch" in
 			deb/*) base=debian:bookworm-slim ;;
-			rpm/*) base=rockylinux:9 ;;
+			rpm/amd64) base=fedora:43 ;;
+			rpm/arm64) base=rockylinux:9 ;;
 			archlinux/amd64) base=archlinux:base ;;
 			archlinux/arm64) base=menci/archlinuxarm:base ;;
 			*) printf 'unsupported package-test format: %s\n' "$format" >&2; exit 2 ;;

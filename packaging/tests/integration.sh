@@ -23,6 +23,8 @@ source /e2e/lib/common.sh
 proxy_target_pid=""
 local_target_pid=""
 public_target_pid=""
+app_pid=""
+xvfb_pid=""
 
 cleanup() {
 	local status="$?"
@@ -30,6 +32,11 @@ cleanup() {
 	stop_static_http_target "$proxy_target_pid"
 	stop_static_http_target "$local_target_pid"
 	stop_static_http_target "$public_target_pid"
+	if [[ -n "$app_pid" ]]; then
+		pkill --parent "$app_pid" 2>/dev/null || true
+		kill "$app_pid" 2>/dev/null || true
+	fi
+	if [[ -n "$xvfb_pid" ]]; then kill "$xvfb_pid" 2>/dev/null || true; fi
 	stop_daemon
 	if [[ -x "$E2E_RUNTIME/cleanup-netns.sh" ]]; then
 		"$E2E_RUNTIME/cleanup-netns.sh"
@@ -81,7 +88,32 @@ curl_target_fails() {
 		2>"$E2E_RUNTIME/default-tun-expected-failure.log"
 }
 
+desktop_app_is_connected() {
+	kill -0 "$app_pid" 2>/dev/null \
+		&& grep -F 'panel admin IPC: register listener (native connected=true)' \
+			"$E2E_RUNTIME/app.log" >/dev/null
+}
+
 start_daemon
+
+if [[ "$arch" == amd64 ]]; then
+	install -d -m 0700 "$E2E_RUNTIME/app-runtime"
+	Xvfb :99 -screen 0 1024x768x24 >"$E2E_RUNTIME/xvfb.log" 2>&1 &
+	xvfb_pid="$!"
+	retry "$ALMAGEST_E2E_TIMEOUT" "virtual app display" \
+		test -S /tmp/.X11-unix/X99 || fail "virtual app display did not start"
+	DISPLAY=:99 XDG_RUNTIME_DIR="$E2E_RUNTIME/app-runtime" \
+		WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
+		dbus-run-session -- /usr/bin/almagest-app \
+		>"$E2E_RUNTIME/app.log" 2>&1 &
+	app_pid="$!"
+	if ! retry "$ALMAGEST_E2E_TIMEOUT" "desktop app admin connection" \
+		desktop_app_is_connected; then
+		log "desktop app log follows"
+		tail -200 "$E2E_RUNTIME/app.log" >&2 || true
+		fail "desktop app did not connect to the packaged daemon"
+	fi
+fi
 
 # The packaged systemd unit sends both process streams to the journal. Verify
 # that the daemon writes its normal startup messages to the captured stream.

@@ -4,14 +4,14 @@ FROM ${BASE_IMAGE}
 RUN if command -v apt-get >/dev/null; then \
 		apt-get update \
 		&& DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-			ca-certificates curl gpg iproute2 jq procps python3 \
+			ca-certificates curl dbus gpg iproute2 jq procps python3 xvfb \
 		&& rm -rf /var/lib/apt/lists/*; \
 	elif command -v dnf >/dev/null; then \
-		dnf install -y ca-certificates gnupg2 iproute jq procps-ng python3 \
+		dnf install -y ca-certificates dbus-daemon gnupg2 iproute jq procps-ng python3 xorg-x11-server-Xvfb \
 		&& dnf clean all; \
 	elif command -v pacman >/dev/null; then \
 		pacman -Sy --noconfirm --disable-sandbox \
-			ca-certificates curl gnupg iproute2 jq procps-ng python; \
+			ca-certificates curl dbus gnupg iproute2 jq procps-ng python xorg-server-xvfb; \
 	else \
 		echo "unsupported package-test base image" >&2; \
 		exit 1; \

@@ -10,6 +10,8 @@ const MAIN_WINDOW_LABEL: &str = "main";
 const SHOW_MENU_ID: &str = "show";
 const QUIT_MENU_ID: &str = "quit";
 
+struct TrayAvailability(bool);
+
 pub(crate) fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let status_item = MenuItem::with_id(
         app,
@@ -46,18 +48,27 @@ pub(crate) fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }
-    let tray = builder.build(app)?;
+    let tray = match builder.build(app) {
+        Ok(tray) => Some(tray),
+        Err(error) => {
+            eprintln!("system tray is unavailable: {error}");
+            None
+        }
+    };
+    app.manage(TrayAvailability(tray.is_some()));
 
-    app.state::<AdminConnection>()
-        .set_status_handler(move |connected| {
-            if let Err(error) = status_item.set_text(status_text(connected)) {
-                eprintln!("update tray connection status: {error}");
-            }
-            if let Err(error) = tray.set_tooltip(Some(tooltip_text(connected))) {
-                eprintln!("update tray tooltip: {error}");
-            }
-        })
-        .map_err(std::io::Error::other)?;
+    if let Some(tray) = tray {
+        app.state::<AdminConnection>()
+            .set_status_handler(move |connected| {
+                if let Err(error) = status_item.set_text(status_text(connected)) {
+                    eprintln!("update tray connection status: {error}");
+                }
+                if let Err(error) = tray.set_tooltip(Some(tooltip_text(connected))) {
+                    eprintln!("update tray tooltip: {error}");
+                }
+            })
+            .map_err(std::io::Error::other)?;
+    }
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         update_webview_retry_priority(&window);
     }
@@ -69,7 +80,7 @@ pub(crate) fn handle_window_event(window: &Window, event: &WindowEvent) {
         return;
     }
     match event {
-        WindowEvent::CloseRequested { api, .. } => {
+        WindowEvent::CloseRequested { api, .. } if window.state::<TrayAvailability>().0 => {
             api.prevent_close();
             hide_window(window);
         }

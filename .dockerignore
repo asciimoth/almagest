@@ -1,6 +1,10 @@
 e2e/coverage/
 coverage/
 artifacts/
+app/src-tauri/target/
+build/
+.git/
+panel/node_modules/
 .env
 .secretsignore
 local/

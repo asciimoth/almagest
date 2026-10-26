@@ -247,6 +247,7 @@ build-windows:
 # to skip hardware-backed signing for local checks.
 package sign='true': build-web
   ./packaging/build-native.sh
+  ./packaging/build-app.sh
   @case {{quote(sign)}} in \
     true) goreleaser release --snapshot --clean ;; \
     false) goreleaser release --snapshot --clean --skip=sign ;; \

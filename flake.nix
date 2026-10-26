@@ -44,6 +44,18 @@
         dontDisableStatic = true;
       });
       linuxIsolationSupported = system == "x86_64-linux";
+      cleanProjectSource = pkgs.lib.cleanSourceWith {
+        src = ./.;
+        filter = path: type:
+          !(type == "directory" && builtins.elem (baseNameOf (toString path)) [
+            ".direnv"
+            ".git"
+            "build"
+            "dist"
+            "node_modules"
+            "target"
+          ]);
+      };
 
       linuxIsolationLaunchers = pkgs.stdenv.mkDerivation {
         pname = "almagest-linux-isolation-launchers";
@@ -93,11 +105,11 @@
       panelStatic = pkgs.buildNpmPackage {
         pname = "almagest-panel-static";
         version = self.shortRev or self.dirtyShortRev or "dev";
-        src = ./.;
+        src = cleanProjectSource;
         npmRoot = "panel";
         npmDeps = pkgs.fetchNpmDeps {
           src = ./panel;
-          hash = "sha256-2m9qhyiD1DmGroRy2N4Sa0bmuUWzfSGIqF+LL/tHuAE=";
+          hash = "sha256-ZQ3GcxZScI6N6bT0KdBP+8soMtneXjbp9h4s+Hvagjo=";
         };
         buildPhase = ''
           runHook preBuild
@@ -106,8 +118,9 @@
         '';
         installPhase = ''
           runHook preInstall
-          mkdir -p "$out"
-          cp -r bin/almagestd/static/. "$out/"
+          mkdir -p "$out/daemon" "$out/app"
+          cp -r bin/almagestd/static/. "$out/daemon/"
+          cp -r app/frontend/. "$out/app/"
           runHook postInstall
         '';
       };
@@ -131,7 +144,7 @@
         nativeBuildInputs = [ pkgs.makeWrapper ];
         nativeInstallCheckInputs = [ pkgs.diffutils ];
         preBuild = ''
-          cp -r ${panelStatic} ./almagestd/static
+          cp -r ${panelStatic}/daemon/. ./almagestd/static
         '';
         postInstall = ''
           mkdir -p "$out/share/almagest"
@@ -182,6 +195,54 @@
           license = licenses.gpl3Plus;
           mainProgram = "almagestd";
           platforms = platforms.linux;
+        };
+      };
+
+      almagestApp = pkgs.rustPlatform.buildRustPackage {
+        pname = "almagest-app";
+        version = self.shortRev or self.dirtyShortRev or "dev";
+        src = cleanProjectSource;
+        cargoRoot = "app/src-tauri";
+        buildAndTestSubdir = "app/src-tauri";
+        cargoHash = "sha256-gRhf45GfhEtSJ2H6HcNo4ECosXjKy52swox5cILurkI=";
+        nativeBuildInputs = [
+          pkgs.pkg-config
+          pkgs.wrapGAppsHook3
+        ];
+        buildInputs = [
+          pkgs.gtk3
+          pkgs.libsoup_3
+          pkgs.webkitgtk_4_1
+        ];
+        preBuild = ''
+          rm -rf app/frontend
+          mkdir -p app/frontend
+          cp -r ${panelStatic}/app/. app/frontend/
+        '';
+        postInstall = ''
+          install -Dm0644 ${./packaging/linux/almagest-app.desktop} \
+            "$out/share/applications/almagest-app.desktop"
+          install -Dm0644 app/src-tauri/icons/128x128.png \
+            "$out/share/icons/hicolor/128x128/apps/almagest.png"
+          install -Dm0644 ${./packaging/linux/app-README.md} \
+            "$out/share/doc/almagest-app/README.md"
+          install -Dm0644 ${./LICENSE} \
+            "$out/share/licenses/almagest-app/LICENSE"
+        '';
+        doInstallCheck = true;
+        installCheckPhase = ''
+          runHook preInstallCheck
+          test -x "$out/bin/almagest-app"
+          test -f "$out/share/applications/almagest-app.desktop"
+          "$out/bin/almagest-app" --help >/dev/null
+          runHook postInstallCheck
+        '';
+        meta = with pkgs.lib; {
+          description = "Desktop client for the Almagest administration API";
+          homepage = "https://github.com/asciimoth/almagest";
+          license = licenses.gpl3Plus;
+          mainProgram = "almagest-app";
+          platforms = ["x86_64-linux"];
         };
       };
 
@@ -390,6 +451,8 @@
         # Keep the old test-oriented output names for existing commands.
         windows-test-drivers = windowsSplitTunnelDrivers;
         windows-test-wintun = windowsWintun;
+      } // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+        almagest-app = almagestApp;
       };
       devShells.default = pkgs.mkShell {
         inherit (checks.pre-commit-check) shellHook;

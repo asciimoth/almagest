@@ -49,14 +49,53 @@ package_lists_path() {
 }
 
 case "$format" in
-	deb) package="$(find_package "*_linux_$arch.deb")" ;;
-	rpm) package="$(find_package "*_linux_$arch.rpm")" ;;
-	archlinux) package="$(find_package "*_linux_$arch.pkg.tar.zst")" ;;
+	deb) package="$(find_package "almagest_*_linux_$arch.deb")" ;;
+	rpm) package="$(find_package "almagest_*_linux_$arch.rpm")" ;;
+	archlinux) package="$(find_package "almagest_*_linux_$arch.pkg.tar.zst")" ;;
 	*) printf 'unknown package format: %s\n' "$format" >&2; exit 2 ;;
 esac
 
+app_package=""
+if [[ "$arch" == amd64 ]]; then
+	case "$format" in
+		deb) app_package="$(find_package "almagest-app_*_linux_amd64.deb")" ;;
+		rpm) app_package="$(find_package "almagest-app_*_linux_amd64.rpm")" ;;
+		archlinux) app_package="$(find_package "almagest-app_*_linux_amd64.pkg.tar.zst")" ;;
+	esac
+elif find /packages -maxdepth 1 -type f -name 'almagest-app_*_linux_arm64*' -print -quit | grep -q .; then
+	printf 'arm64 artifacts include the unsupported desktop app\n' >&2
+	exit 1
+fi
+
 verify_package "$package"
 install_package "$package"
+if [[ -e /usr/bin/almagest-app ]]; then
+	printf 'daemon package contains the desktop app\n' >&2
+	exit 1
+fi
+
+if [[ -n "$app_package" ]]; then
+	verify_package "$app_package"
+	case "$format" in
+		deb) apt-get update && apt-get install --yes "$app_package" ;;
+		rpm) dnf install --assumeyes "$app_package" ;;
+		archlinux) install_package "$app_package" ;;
+	esac
+	test -x /usr/bin/almagest-app
+	test -f /usr/share/applications/almagest-app.desktop
+	test -f /usr/share/icons/hicolor/128x128/apps/almagest.png
+	app_package_lists_path() {
+		local path="$1"
+		case "$format" in
+			deb) dpkg-query --listfiles almagest-app | grep -Fx -- "$path" >/dev/null ;;
+			rpm) rpm --query --list almagest-app | grep -Fx -- "$path" >/dev/null ;;
+			archlinux) pacman --query --list almagest-app | awk '{print $2}' | grep -Fx -- "$path" >/dev/null ;;
+		esac
+	}
+	app_package_lists_path /usr/bin/almagest-app
+	app_package_lists_path /usr/share/licenses/almagest-app/LICENSE
+	/usr/bin/almagest-app --help | grep -F -- 'almagest-app [--url ENDPOINT]' >/dev/null
+fi
 
 test -x /usr/bin/almagest-cli
 test -x /usr/libexec/almagest/almagestd

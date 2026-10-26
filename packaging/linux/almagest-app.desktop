@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Almagest
+Comment=Manage the Almagest network graph
+Exec=almagest-app
+Icon=almagest
+Terminal=false
+Categories=Network;Utility;
