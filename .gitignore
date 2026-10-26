@@ -50,6 +50,7 @@ go.work.sum
 /app/src-tauri/target
 /app/frontend/logo-light.svg
 /app/src-tauri/icons/*.png
+/app/src-tauri/icons/icon.ico
 
 /almagestd
 /cli

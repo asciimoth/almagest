@@ -1,9 +1,11 @@
 use std::{
     error::Error,
     fs, io,
+    io::Cursor,
     path::{Path, PathBuf},
 };
 
+use ico::{IconDir, IconDirEntry, IconImage, ResourceType};
 use resvg::{
     tiny_skia::{Pixmap, Transform},
     usvg::{Options, Tree},
@@ -26,10 +28,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     write_if_changed(&manifest_dir.join("../frontend/logo-light.svg"), &logo)?;
 
     let tree = Tree::from_data(&logo, &Options::default())?;
+    let mut windows_icon = IconDir::new(ResourceType::Icon);
     for &(name, size) in ICONS {
         let png = render_png(&tree, size)?;
         write_if_changed(&manifest_dir.join("icons").join(name), &png)?;
+        if size <= 256 {
+            let image = IconImage::read_png(Cursor::new(&png))?;
+            windows_icon.add_entry(IconDirEntry::encode(&image)?);
+        }
     }
+    let mut ico = Vec::new();
+    windows_icon.write(&mut ico)?;
+    write_if_changed(&manifest_dir.join("icons/icon.ico"), &ico)?;
 
     tauri_build::build();
     Ok(())

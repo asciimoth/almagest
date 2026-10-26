@@ -9,10 +9,12 @@ license = "GPL-3.0-or-later"
 publish = false
 
 [build-dependencies]
+ico = "0.6.0"
 resvg = { version = "0.45.1", default-features = false }
 tauri-build = { version = "2.7.4", features = ["isolation"] }
 
 [dependencies]
+percent-encoding = "2.3.2"
 tauri = { version = "2.12.5", default-features = false, features = [
   "common-controls-v6",
   "compression",
@@ -21,6 +23,11 @@ tauri = { version = "2.12.5", default-features = false, features = [
   "wry",
   "x11",
 ] }
+tungstenite = { version = "0.28.0", default-features = false, features = ["handshake"] }
+url = "2.5.8"
+
+[target.'cfg(windows)'.dependencies]
+almagest-windows-pipe = { path = "windows-pipe" }
 
 [lints.rust]
 unsafe_code = "forbid"
