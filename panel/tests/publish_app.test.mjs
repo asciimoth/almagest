@@ -35,7 +35,9 @@ test("desktop publication permits only isolated Tauri IPC", async () => {
   assert.equal(appDocument.querySelector("meta[http-equiv='Content-Security-Policy']"), null);
   assert.match(desktopEntry, /setPanelMode\(document\.documentElement, "desktop"\)/);
   assert.match(desktopEntry, /configureAdminTransport\(\(\) => new DesktopAdminTransport\(\)\)/);
-  assert.doesNotMatch(appSource, /currentPanelMode === "desktop"[\s\S]*return;/);
+  // Desktop mode must not bypass normal panel initialization. Compatibility
+  // branches for native webviews are permitted when they do not exit it.
+  assert.doesNotMatch(appSource, /if \(currentPanelMode === "desktop"\)\s*return;/);
   assert.equal(tauri.app.withGlobalTauri, false);
   assert.equal(tauri.app.security.pattern.use, "isolation");
   assert.equal(tauri.app.security.freezePrototype, true);

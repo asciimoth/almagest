@@ -236,6 +236,7 @@ import {
   type LocaleSnapshot,
 } from "./localization.js";
 import { tabHash, tabNameFromHash } from "./tab_navigation.js";
+import { applyStandardWheelZoom, redrawRevealedGraph } from "./graph_canvas_compat.js";
 import { apiReconnectDelay } from "./api_reconnect.js";
 import {
   preservePendingNodePosition,
@@ -1406,6 +1407,7 @@ function initGraph(): void {
   window.visualViewport?.addEventListener("resize", scheduleGraphCanvasResize);
   canvas.startRendering();
   graph.start();
+  if (currentPanelMode === "desktop") installDesktopGraphWheel();
   el.graphCanvas.addEventListener("pointerdown", (event) => {
     armGraphShortcuts(event);
     el.graphCanvas.focus({ preventScroll: true });
@@ -1451,6 +1453,20 @@ function initGraph(): void {
   }, { capture: true });
   el.graphCanvas.tabIndex = 0;
   requestAnimationFrame(resizeGraphCanvas);
+}
+
+function installDesktopGraphWheel(): void {
+  // LiteGraph 0.7 binds only legacy wheel event names. Remove those listeners
+  // in the desktop panel so a browser that emits both old and new events does
+  // not zoom twice, then handle the standard event used by WebKitGTK.
+  const legacyHandler = canvas?._mousewheel_callback as EventListener | undefined;
+  if (legacyHandler) {
+    el.graphCanvas.removeEventListener("mousewheel", legacyHandler);
+    el.graphCanvas.removeEventListener("DOMMouseScroll", legacyHandler);
+  }
+  el.graphCanvas.addEventListener("wheel", (event) => {
+    if (applyStandardWheelZoom(canvas, el.graphCanvas, event)) scheduleGraphViewportSave();
+  }, { passive: false });
 }
 
 function disableOverlappingLiteGraphUI(): void {
@@ -6417,10 +6433,16 @@ function setTab(name: string, updateLocation = true): void {
   if (name === "config") void activateConfigPanel();
   if (name === "snapshots") void activateSnapshotsPanel();
   if (name === "graph") {
-    setTimeout(() => {
-      resizeGraphCanvas();
-      centerPendingGraphContent();
-    }, 0);
+    // WebKit can discard the composited canvas while its panel has
+    // `display: none`. Wait for two frames so layout and compositing both see
+    // the revealed panel, then force a full LiteGraph frame.
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        resizeGraphCanvas();
+        centerPendingGraphContent();
+        redrawRevealedGraph(canvas);
+      });
+    });
   }
   updateWorkerAgeTimer();
   if (updateLocation && window.location.hash !== tabHash(name)) window.location.hash = tabHash(name);

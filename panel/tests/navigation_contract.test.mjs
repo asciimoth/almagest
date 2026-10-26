@@ -36,6 +36,19 @@ test("the graph theme is configured before LiteGraph starts rendering", () => {
   assert.match(app, /if \(width === graphCanvasWidth && height === graphCanvasHeight\) return;/);
 });
 
+test("desktop graph input uses standard wheel events without legacy duplicates", () => {
+  assert.match(app, /currentPanelMode === "desktop"\) installDesktopGraphWheel\(\)/);
+  assert.match(app, /removeEventListener\("mousewheel", legacyHandler\)/);
+  assert.match(app, /addEventListener\("wheel", \(event\) =>/);
+  assert.match(app, /applyStandardWheelZoom\(canvas, el\.graphCanvas, event\)/);
+});
+
+test("returning to the graph tab waits for layout and forces a complete frame", () => {
+  const setTab = app.slice(app.indexOf("function setTab"), app.indexOf("function moveTabFocus"));
+  assert.match(setTab, /requestAnimationFrame\(\(\) => \{\s*window\.requestAnimationFrame/);
+  assert.match(setTab, /resizeGraphCanvas\(\);\s*centerPendingGraphContent\(\);\s*redrawRevealedGraph\(canvas\)/);
+});
+
 test("description port links highlight selected node slots without HTML parsing", () => {
   assert.match(app, /drawHighlightedDescriptionPort\(ctx, this\)/);
   assert.match(app, /\(slot\.label \?\? slot\.name\) !== highlighted\.name/);
