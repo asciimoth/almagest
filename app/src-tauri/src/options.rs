@@ -2,6 +2,8 @@ use std::ffi::OsString;
 
 use crate::endpoint::{self, Endpoint};
 
+pub(crate) const API_URL_ENV: &str = "ALMAGEST_API_URL";
+
 pub(crate) const HELP: &str = "\
 Usage:
   almagest-app [--url ENDPOINT]
@@ -16,6 +18,9 @@ Endpoint URLs:
 Options:
   -u, --url ENDPOINT   admin API endpoint URL
   -h, --help           show help
+
+Environment:
+  ALMAGEST_API_URL     admin API endpoint URL; overridden by -u or --url
 ";
 
 #[derive(Debug, Eq, PartialEq)]
@@ -25,7 +30,10 @@ pub(crate) enum Options {
 }
 
 /// Parse only the global endpoint flags supported by `almagest-cli`.
-pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Options, String> {
+pub(crate) fn parse(
+    args: impl IntoIterator<Item = OsString>,
+    environment_endpoint: Option<OsString>,
+) -> Result<Options, String> {
     let mut args = args.into_iter();
     let mut raw_endpoint = None;
     while let Some(argument) = args.next() {
@@ -54,7 +62,18 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Options,
             }
         }
     }
-    endpoint::parse(raw_endpoint.as_deref().unwrap_or_default()).map(Options::Connect)
+    let raw_endpoint = raw_endpoint
+        .map(Ok)
+        .or_else(|| {
+            environment_endpoint.map(|value| {
+                value
+                    .into_string()
+                    .map_err(|_| format!("{API_URL_ENV} must be valid UTF-8"))
+            })
+        })
+        .transpose()?
+        .unwrap_or_default();
+    endpoint::parse(&raw_endpoint).map(Options::Connect)
 }
 
 #[cfg(test)]
@@ -71,22 +90,46 @@ mod tests {
     fn accepts_cli_url_flags() {
         for flag in ["-u", "--url"] {
             assert_eq!(
-                parse(args(&[flag, "unix:///tmp/admin.sock"])),
+                parse(args(&[flag, "unix:///tmp/admin.sock"]), None),
                 Ok(Options::Connect(Endpoint::Unix(PathBuf::from(
                     "/tmp/admin.sock"
                 ))))
             );
         }
         assert!(matches!(
-            parse(args(&["--url=web://127.0.0.1:8090"])),
+            parse(args(&["--url=web://127.0.0.1:8090"]), None),
             Ok(Options::Connect(Endpoint::Web(_)))
         ));
     }
 
     #[test]
     fn accepts_help_and_rejects_bad_arguments() {
-        assert_eq!(parse(args(&["--help"])), Ok(Options::Help));
-        assert!(parse(args(&["--url"])).is_err());
-        assert!(parse(args(&["--unknown"])).is_err());
+        assert_eq!(parse(args(&["--help"]), None), Ok(Options::Help));
+        assert!(parse(args(&["--url"]), None).is_err());
+        assert!(parse(args(&["--unknown"]), None).is_err());
+    }
+
+    #[test]
+    fn applies_endpoint_environment_before_builtin_default() {
+        assert!(matches!(
+            parse(
+                args(&[]),
+                Some(OsString::from("web://127.0.0.1:8091"))
+            ),
+            Ok(Options::Connect(Endpoint::Web(url)))
+                if url.as_str() == "ws://127.0.0.1:8091/api/ws"
+        ));
+    }
+
+    #[test]
+    fn cli_url_overrides_endpoint_environment() {
+        assert!(matches!(
+            parse(
+                args(&["--url", "web://127.0.0.1:8092"]),
+                Some(OsString::from("web://127.0.0.1:8091"))
+            ),
+            Ok(Options::Connect(Endpoint::Web(url)))
+                if url.as_str() == "ws://127.0.0.1:8092/api/ws"
+        ));
     }
 }

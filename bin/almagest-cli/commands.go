@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,8 @@ import (
 )
 
 var errHelp = errors.New("help requested")
+
+const apiURLEnv = "ALMAGEST_API_URL"
 
 type globalOptions struct {
 	endpoint string
@@ -93,11 +96,15 @@ func run(
 }
 
 func parseGlobal(args []string, stderr io.Writer) (globalOptions, []string, error) {
-	opts := globalOptions{endpoint: defaultEndpoint}
+	endpoint := os.Getenv(apiURLEnv)
+	if endpoint == "" {
+		endpoint = defaultEndpoint
+	}
+	opts := globalOptions{endpoint: endpoint}
 	fs := flag.NewFlagSet("almagest-cli", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.StringVar(&opts.endpoint, "url", defaultEndpoint, "admin API endpoint URL")
-	fs.StringVar(&opts.endpoint, "u", defaultEndpoint, "admin API endpoint URL")
+	fs.StringVar(&opts.endpoint, "url", endpoint, "admin API endpoint URL")
+	fs.StringVar(&opts.endpoint, "u", endpoint, "admin API endpoint URL")
 	fs.Usage = func() { printTopHelp(stderr) }
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -783,6 +790,9 @@ Surfaces:
 Global flags:
   -u, --url ENDPOINT   admin API endpoint URL (unix://, pipe://user, pipe://machine, or web://)
   -h, --help           show help
+
+Environment:
+  ALMAGEST_API_URL     admin API endpoint URL; overridden by -u or --url
 
 Run "almagest-cli <surface> --help" for command-specific help.
 `)

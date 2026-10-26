@@ -8,7 +8,10 @@ use connection::AdminConnection;
 use options::Options;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let options = options::parse(std::env::args_os().skip(1))?;
+    let options = options::parse(
+        std::env::args_os().skip(1),
+        std::env::var_os(options::API_URL_ENV),
+    )?;
     let Options::Connect(endpoint) = options else {
         print!("{}", options::HELP);
         return Ok(());

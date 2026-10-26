@@ -277,6 +277,36 @@ func TestRunPingPrintsPrettyResult(t *testing.T) {
 	}
 }
 
+func TestRunEndpointEnvironmentPrecedence(t *testing.T) {
+	t.Setenv(apiURLEnv, "web://127.0.0.1:8091")
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "environment", args: []string{"admin", "ping"}, want: "ws://127.0.0.1:8091/api/ws"},
+		{name: "explicit flag", args: []string{"--url", "web://127.0.0.1:8092", "admin", "ping"}, want: "ws://127.0.0.1:8092/api/ws"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response, err := api.NewResponse("1", api.PingResponse{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = run(context.Background(), test.args, nil, io.Discard, io.Discard, func(_ context.Context, ep endpoint) (apiTransport, error) {
+				if ep.url != test.want {
+					t.Fatalf("endpoint URL = %q, want %q", ep.url, test.want)
+				}
+				return &fakeTransport{reads: []api.Message{response}}, nil
+			})
+			if err != nil {
+				t.Fatalf("run failed: %v", err)
+			}
+		})
+	}
+}
+
 func TestRunRawSendsJSONPayload(t *testing.T) {
 	resp, err := api.NewResponse("1", map[string]any{"ok": true})
 	if err != nil {
