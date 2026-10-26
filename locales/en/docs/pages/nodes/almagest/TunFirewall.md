@@ -1,5 +1,6 @@
-Filters IP packets between one TUN provider on [Tun](@port/right/Tun) and one
-TUN consumer on [Tun](@port/left/Tun).
+Filters IP packets between one
+[TUN](https://www.kernel.org/doc/html/latest/networking/tuntap.html) provider on
+[Tun](@port/right/Tun) and one TUN consumer on [Tun](@port/left/Tun).
 
 The default policy is stateful and has these actions:
 
@@ -12,9 +13,9 @@ non-IP packets that it cannot parse.
 
 ## Policy format
 
-Enter **Firewall rules** as one JSON object. Use `{}` for the default policy.
-The node rejects empty input, invalid JSON, unknown fields, invalid port values,
-and non-positive response times.
+Enter **Firewall rules** as one [JSON](https://www.json.org/json-en.html)
+object. Use `{}` for the default policy. The node rejects empty input, invalid
+JSON, unknown fields, invalid port values, and non-positive response times.
 
 Each entry in `exclude` or `include` can contain these fields:
 
@@ -22,9 +23,10 @@ Each entry in `exclude` or `include` can contain these fields:
   `udp4`, `udp6`, `icmp`, `icmp4`, `icmp6`, `ip`, `ip4`, and `ip6`. `tcp`,
   `udp`, and `icmp` match both IP versions. An empty or omitted value matches
   all parsed IP protocols.
-- `hosts` selects the remote peer. Use an IP address, CIDR prefix, or hostname
-  pattern. For outgoing packets, this is the destination. For incoming packets,
-  this is the source. An omitted list matches every peer.
+- `hosts` selects the remote peer. Use an IP address,
+  [CIDR](https://www.rfc-editor.org/rfc/rfc4632) prefix, or hostname pattern.
+  For outgoing packets, this is the destination. For incoming packets, this is
+  the source. An omitted list matches every peer.
 - `localHosts` selects the local destination of an incoming packet. It has no
   effect in an `exclude` rule. An omitted list matches every local address.
 - `ports` lists individual service ports. An `exclude` rule checks the remote
@@ -61,8 +63,10 @@ matches GRE in both IP versions, while `ip4:47` matches only IPv4 GRE.
 ## Reply tracking
 
 Each allowed outgoing packet records its reverse flow. A matching incoming
-packet is accepted without an `include` rule. Related ICMP and ICMPv6 error
-packets are also accepted when they contain a recorded outgoing flow.
+packet is accepted without an `include` rule. Related
+[ICMP](https://www.rfc-editor.org/rfc/rfc792) and
+[ICMPv6](https://www.rfc-editor.org/rfc/rfc4443) error packets are also accepted
+when they contain a recorded outgoing flow.
 
 `responseTTL` controls how long reply state is kept. Use a positive duration
 such as `"30s"` or `"5m"`. The default is two minutes. A policy change applies

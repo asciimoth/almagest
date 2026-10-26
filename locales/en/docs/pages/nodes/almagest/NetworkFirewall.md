@@ -1,5 +1,7 @@
-Filters TCP and UDP traffic from a source [Network](@port/right/Network).
-Connect clients or servers to its filtered [Network](@port/left/Network).
+Filters [TCP](https://www.rfc-editor.org/rfc/rfc9293) and
+[UDP](https://www.rfc-editor.org/rfc/rfc768) traffic from a source
+[Network](@port/right/Network). Connect clients or servers to its filtered
+[Network](@port/left/Network).
 
 The default policy has these actions:
 
@@ -12,18 +14,20 @@ traffic is not delivered to the client or server.
 
 ## Policy format
 
-Enter the policy in **Firewall rules** as a JSON object. Use `{}` for the
-default policy. The node rejects invalid JSON, unknown fields, invalid port
-values, and non-positive response times.
+Enter the policy in **Firewall rules** as a
+[JSON](https://www.json.org/json-en.html) object. Use `{}` for the default
+policy. The node rejects invalid JSON, unknown fields, invalid port values, and
+non-positive response times.
 
 Each `exclude` or `include` entry can contain these fields:
 
 - `network`: A protocol such as `tcp`, `tcp4`, `tcp6`, `udp`, `udp4`, or `udp6`.
   `tcp` and `udp` match both IP versions. An omitted value matches all
   protocols.
-- `hosts`: Remote hostnames, IP addresses, or CIDR prefixes. Hostname matching
-  is not case-sensitive. You can use patterns such as `*.example.test`. An
-  omitted value matches all remote hosts.
+- `hosts`: Remote hostnames, IP addresses, or
+  [CIDR](https://www.rfc-editor.org/rfc/rfc4632) prefixes. Hostname matching is
+  not case-sensitive. You can use patterns such as `*.example.test`. An omitted
+  value matches all remote hosts.
 - `localHosts`: Local destination hostnames, IP addresses, or CIDR prefixes.
   This field applies only to `include` rules. An omitted value matches all local
   destinations.

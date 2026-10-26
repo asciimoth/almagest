@@ -1,7 +1,10 @@
-Spoofer converts IPv4 and IPv6 TCP or UDP flows from [Tun](@port/left/Tun) into
-new connections through [Network](@port/right/Network). It acts as the requested
-destination on the TUN side and returns replies as if they came from that
-destination.
+Spoofer converts [IPv4](https://www.rfc-editor.org/rfc/rfc791) and
+[IPv6](https://www.rfc-editor.org/rfc/rfc8200)
+[TCP](https://www.rfc-editor.org/rfc/rfc9293) or
+[UDP](https://www.rfc-editor.org/rfc/rfc768) flows from [Tun](@port/left/Tun)
+into new connections through [Network](@port/right/Network). It acts as the
+requested destination on the TUN side and returns replies as if they came from
+that destination.
 
 Connect the intercepted packet path to [Tun](@port/left/Tun) and the required
 outbound path to [Network](@port/right/Network). Spoofer starts only when both
@@ -34,9 +37,10 @@ target IP address, even if it comes from a different source port. Replies from a
 different IP address are discarded.
 
 Other IP protocols are not forwarded through [Network](@port/right/Network). In
-particular, the ICMP settings control messages made by the TUN-facing network
-stack; they do not make ICMP an outbound Network flow. Use a different TUN
-transport when the backend must carry arbitrary IP packets.
+particular, the [ICMP](https://www.rfc-editor.org/rfc/rfc792) settings control
+messages made by the TUN-facing network stack; they do not make ICMP an outbound
+Network flow. Use a different TUN transport when the backend must carry
+arbitrary IP packets.
 
 Spoofer does not decrypt or inspect application payloads. TCP and UDP payloads
 are copied between the two flows.
@@ -56,9 +60,9 @@ do not change the separate connection made by the selected Network:
 - **ICMP burst** is the number of ICMP messages that the rate limiter can send
   at once. **ICMP limit** is the sustained rate in messages per second. Zero
   keeps the built-in defaults.
-- **Disable TCP SACK**, **Disable Nagle**, and **Disable TCP receive autotune**
-  change the named TCP behaviors. Disable them only for a tested compatibility
-  or latency requirement.
+- **Disable [TCP SACK](https://www.rfc-editor.org/rfc/rfc2018)**, **Disable
+  Nagle**, and **Disable TCP receive autotune** change the named TCP behaviors.
+  Disable them only for a tested compatibility or latency requirement.
 - **TCP send buffer**, **TCP receive buffer**, and **TCP forward window** are
   byte counts. Zero uses the built-in value.
 - **TCP congestion** selects the congestion-control algorithm, such as `cubic`

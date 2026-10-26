@@ -1,6 +1,7 @@
-Caches DNS responses from an optional upstream [DNS](@port/right/DNS) service.
-On a cache hit, the node returns the stored response. On a cache miss, it
-queries the upstream service and stores a successful response.
+Caches [DNS](https://www.rfc-editor.org/rfc/rfc1034) responses from an optional
+upstream [DNS](@port/right/DNS) service. On a cache hit, the node returns the
+stored response. On a cache miss, it queries the upstream service and stores a
+successful response.
 
 **CacheStorage name** selects the shared cache. An empty name uses `default`.
 DnsCache nodes that use the same name read and write the same entries. Other

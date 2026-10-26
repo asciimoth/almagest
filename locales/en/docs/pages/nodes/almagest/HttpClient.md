@@ -1,6 +1,6 @@
-Sends an HTTP or HTTPS request through a connected
-[Network](@port/right/Network). Use this node to test a route or examine the
-response from a service.
+Sends an [HTTP or HTTPS](https://www.rfc-editor.org/rfc/rfc9110) request through
+a connected [Network](@port/right/Network). Use this node to test a route or
+examine the response from a service.
 
 ## Request
 
@@ -26,10 +26,10 @@ start the request. Only one request can run at a time. Each request has a fixed
 
 ## HTTPS
 
-For an HTTPS URL, select the TLS configuration that contains the required trust
-settings and client certificate settings. Certificate verification uses the
-hostname in the URL unless the selected configuration specifies a different
-server name.
+For an HTTPS URL, select the [TLS](https://www.rfc-editor.org/rfc/rfc8446)
+configuration that contains the required trust settings and client certificate
+settings. Certificate verification uses the hostname in the URL unless the
+selected configuration specifies a different server name.
 
 An invalid TLS configuration stops an HTTPS request. It does not affect an HTTP
 request because HTTP does not use TLS.

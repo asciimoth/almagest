@@ -1,6 +1,7 @@
-Serves configured DNS records and optionally sends misses to one
-[Fallback](@port/right/Fallback) DNS service. The [DNS](@port/left/DNS) output
-is available even when no records or fallback are configured.
+Serves configured [DNS](https://www.rfc-editor.org/rfc/rfc1034) records and
+optionally sends misses to one [Fallback](@port/right/Fallback) DNS service. The
+[DNS](@port/left/DNS) output is available even when no records or fallback are
+configured.
 
 Write one record on each line in this form:
 
@@ -12,7 +13,9 @@ Blank lines and lines that start with `#` are ignored. Name matching is not
 case-sensitive. A final dot is optional in configured names and domain-name
 values.
 
-These record types and value formats are supported:
+These
+[record types](https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-4)
+and value formats are supported:
 
 - `A IPV4_ADDRESS`
 - `AAAA IPV6_ADDRESS` (`AAA` is also accepted as an alias for `AAAA`)

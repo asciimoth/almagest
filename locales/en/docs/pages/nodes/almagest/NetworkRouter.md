@@ -28,8 +28,9 @@ rules continue to operate.
 Use these predicates to describe an operation:
 
 - `DIAL`, `LISTEN`, and `LOOKUP` match the operation type. `DIAL` also matches
-  the route decision for each outgoing packet from an unconnected UDP socket.
-  `LISTEN` applies to TCP listeners.
+  the route decision for each outgoing packet from an unconnected
+  [UDP](https://www.rfc-editor.org/rfc/rfc768) socket. `LISTEN` applies to
+  [TCP](https://www.rfc-editor.org/rfc/rfc9293) listeners.
 - `TCP` and `UDP` match the transport. `NET4` and `NET6` match the address
   family.
 - `FQDN` matches a remote hostname instead of an IP address. `LFQDN` applies the
@@ -72,11 +73,12 @@ Without a connection to [DNS](@port/right/DNS), `LOOKUP` rules select the
 backend that handles each name lookup. Hostname dials keep their original host
 text during routing, so `ADDR_S` and `ADDR_RE` can match that text.
 
-When [DNS](@port/right/DNS) is connected, all explicit name lookups go directly
-to that DNS service and bypass the backend slots. The router also resolves host
-and service names through that DNS service before it selects a slot for a dial
-or listener. Address rules then see the selected numeric address instead of the
-original hostname.
+When [DNS](@port/right/DNS) is connected, all explicit
+[DNS](https://www.rfc-editor.org/rfc/rfc1034) lookups go directly to that DNS
+service and bypass the backend slots. The router also resolves host and service
+names through that DNS service before it selects a slot for a dial or listener.
+Address rules then see the selected numeric address instead of the original
+hostname.
 
 **DNS cache storage** has a different purpose. Select a cache when `ADDR_S` or
 `ADDR_RE` must match a cached reverse name for a numeric IP address. A

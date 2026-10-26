@@ -1,7 +1,7 @@
-Runs a SOCKS4, SOCKS4a, and SOCKS5 proxy. The [listen](@port/right/listen)
-Network accepts client connections. The [proxy](@port/right/proxy) Network
-performs the connections, listeners, UDP operations, and name lookups that
-clients request.
+Runs a [SOCKS4, SOCKS4a, and SOCKS5](https://www.rfc-editor.org/rfc/rfc1928)
+proxy. The [listen](@port/right/listen) Network accepts client connections. The
+[proxy](@port/right/proxy) Network performs the connections, listeners, UDP
+operations, and name lookups that clients request.
 
 The [listen](@port/right/listen) Network is required. The server can start
 without a [proxy](@port/right/proxy) Network, but client commands then fail.
@@ -10,7 +10,7 @@ error.
 
 ## Use with a GOST client
 
-### SOCKS over WebSocket
+### SOCKS over [WebSocket](https://www.rfc-editor.org/rfc/rfc6455)
 
 Set **SOCKS+WS host** and a nonzero **SOCKS+WS port**. The default Almagest
 WebSocket path is `/socks`, but GOST defaults to `/ws`. Therefore, specify the
@@ -21,9 +21,10 @@ gost -L "http://127.0.0.1:8080" \
   -F "socks5+ws://user:pass@almagest.example:1081?path=/socks&notls=true"
 ```
 
-This command provides a local HTTP proxy at `127.0.0.1:8080` and sends its
-traffic through this node. Configure the same `user` and `pass` in **Users**.
-Remove `user:pass@` when the node has no users.
+This command provides a local [HTTP](https://www.rfc-editor.org/rfc/rfc9110)
+proxy at `127.0.0.1:8080` and sends its traffic through this node. Configure the
+same `user` and `pass` in **Users**. Remove `user:pass@` when the node has no
+users.
 
 Alternatively, set **SOCKS+WS path** to `/ws`. GOST can then use its default
 path, so remove `path=/socks` from the forwarding URL. Keep `notls=true`; it
@@ -111,8 +112,10 @@ need:
 - **BIND** opens a one-connection TCP listener through the
   [proxy](@port/right/proxy) Network. SOCKS4, SOCKS4a, and SOCKS5 support it.
 - **UDP ASSOC** relays UDP for SOCKS5 clients.
-- **Tor RESOLVE** performs the Tor forward-lookup extension through the
-  [proxy](@port/right/proxy) Network. SOCKS4, SOCKS4a, and SOCKS5 support it.
+- **Tor RESOLVE** performs the
+  [Tor forward-lookup extension](https://spec.torproject.org/socks-extensions.html)
+  through the [proxy](@port/right/proxy) Network. SOCKS4, SOCKS4a, and SOCKS5
+  support it.
 - **Tor RESOLVE_PTR** performs the Tor reverse-lookup extension for SOCKS5.
 - **Gost MBIND** opens a multiplexed TCP listener through the
   [proxy](@port/right/proxy) Network. SOCKS4, SOCKS4a, and SOCKS5 support it.

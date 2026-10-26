@@ -1,6 +1,6 @@
-Creates an Amnezia VPN connection and owns its WireGuard device. Use this node
-when you want one node to import the connection, create the tunnel, and provide
-tunnel DNS.
+Creates an [Amnezia](https://docs.amnezia.org/) VPN connection and owns its
+[WireGuard](https://www.wireguard.com/) device. Use this node when you want one
+node to import the connection, create the tunnel, and provide tunnel DNS.
 
 Connect a TUN provider to [Tun](@port/left/Tun) and an outgoing network to
 [Network](@port/right/Network). The node uses the outgoing network for Amnezia
@@ -18,8 +18,9 @@ secret**:
 - a native WireGuard or AmneziaWG client configuration.
 
 **Server country** selects the service endpoint for a service key. Use a
-two-letter ISO 3166-1 country code, such as `de` or `nl`. Static self-hosted and
-native profiles ignore this setting.
+two-letter [ISO 3166-1 country code](https://en.wikipedia.org/wiki/ISO_3166-1),
+such as `de` or `nl`. Static self-hosted and native profiles ignore this
+setting.
 
 For a custom service deployment, set **Gateway URL** and select a **Gateway
 public key secret**. The gateway URL must use HTTP or HTTPS. Select a TLS config

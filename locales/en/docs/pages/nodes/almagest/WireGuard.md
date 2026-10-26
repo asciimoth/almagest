@@ -1,8 +1,9 @@
-WireGuard connects a [Tun](@port/left/Tun) packet path to an encrypted UDP
-tunnel. Connect the local IP stack or system TUN to [Tun](@port/left/Tun).
-Connect a UDP-capable Network to [Network](@port/right/Network). The node uses
-that [Network](@port/right/Network) for the listen socket and for the endpoints
-of peers configured in the menu or through [Peers](@port/left/Peers).
+[WireGuard](https://www.wireguard.com/) connects a [Tun](@port/left/Tun) packet
+path to an encrypted UDP tunnel. Connect the local IP stack or system TUN to
+[Tun](@port/left/Tun). Connect a UDP-capable Network to
+[Network](@port/right/Network). The node uses that
+[Network](@port/right/Network) for the listen socket and for the endpoints of
+peers configured in the menu or through [Peers](@port/left/Peers).
 
 Both connections are required for the `up` state. The node does not open its UDP
 socket when only [Network](@port/right/Network) is ready. If
@@ -113,10 +114,11 @@ calculation message while another valid ceiling still keeps the tunnel usable.
 
 ## AmneziaWG settings
 
-**AWG obfuscation** is off by default. When it is off, WireGuard uses the plain
-WireGuard-compatible profile. When it is on, configure the Jc/Jmin/Jmax junk
-settings, S1-S4 padding, H1-H4 headers, and I1-I5 initiation packets to match
-the remote peer. Incorrect values prevent communication.
+**[AmneziaWG](https://docs.amnezia.org/documentation/amnezia-wg/) obfuscation**
+is off by default. When it is off, WireGuard uses the plain WireGuard-compatible
+profile. When it is on, configure the Jc/Jmin/Jmax junk settings, S1-S4 padding,
+H1-H4 headers, and I1-I5 initiation packets to match the remote peer. Incorrect
+values prevent communication.
 
 Turning obfuscation off hides these fields but keeps their values. They have no
 effect until you enable obfuscation again.

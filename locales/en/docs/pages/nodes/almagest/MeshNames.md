@@ -5,15 +5,18 @@ only when you must resolve a format that sends an authority DNS request.
 
 The node supports these name formats:
 
-- `.meshname` uses the label before the suffix as a Meshname authority. The node
-  sends a DNS request for the full name to that authority.
+- `.meshname` uses the label before the suffix as a
+  [Meshname](https://github.com/zhoreeq/meshname) authority. The node sends a
+  DNS request for the full name to that authority.
 - `.meship` decodes its single name label directly to an IPv6 address. This
   format does not send a DNS request.
-- `.pk.ygg` derives a Yggdrasil IPv6 address from the Ed25519 public key in the
-  label before the suffix. This format does not send a DNS request.
+- `.pk.ygg` derives a [Yggdrasil](https://yggdrasil-network.github.io/) IPv6
+  address from the [Ed25519](https://www.rfc-editor.org/rfc/rfc8032) public key
+  in the label before the suffix. This format does not send a DNS request.
 - `.ygg` uses the label before the suffix as a Yggdrasil authority. Straight
-  hexadecimal, base32, and dashed YggNS authority labels are supported. The node
-  sends a DNS request for the full name to that authority.
+  hexadecimal, base32, and dashed
+  [YggNS](https://github.com/ru-crypto-anarchy/YggNS) authority labels are
+  supported. The node sends a DNS request for the full name to that authority.
 - `.ipv6-literal.net` decodes an IPv6 address from the name. It accepts the
   Windows IPv6 literal form and validates an optional zone identifier. DNS
   answers contain the address without the zone. This format does not send a DNS

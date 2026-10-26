@@ -1,5 +1,7 @@
-TunSplitter sends packets from one TUN connection to numbered output slots. Use
-this node when you must select each path with explicit packet rules. Use
+TunSplitter sends packets from one
+[TUN](https://www.kernel.org/doc/html/latest/networking/tuntap.html) connection
+to numbered output slots. Use this node when you must select each path with
+explicit packet rules. Use
 [AutoTunSplitter](@docs/node/almagest/AutoTunSplitter) instead when the output
 paths advertise the routes that they can reach.
 
@@ -18,8 +20,9 @@ if the selected slot is not connected, or if the packet is not a valid IPv4 or
 IPv6 packet. Empty or comment-only rules therefore drop all packets. Add a final
 `TRUE` segment when you need a default path.
 
-This example sends traffic for the Tailscale IPv4 range to
-[slot 2](@port/right/slot%202) and sends all other valid packets to
+This example sends traffic for the
+[Tailscale IPv4 range](https://tailscale.com/docs/reference/reserved-ip-addresses)
+to [slot 2](@port/right/slot%202) and sends all other valid packets to
 [slot 1](@port/right/slot%201):
 
 ```rulev1

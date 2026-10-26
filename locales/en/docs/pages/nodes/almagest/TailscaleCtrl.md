@@ -1,7 +1,8 @@
 TailscaleCtrl connects a [WireGuard](@docs/node/almagest/WireGuard) node to
-Tailscale or to a compatible control server such as Headscale. It uses the
-private key of the connected [WireGuard](@docs/node/almagest/WireGuard) node. It
-adds and removes only the peers and relay path that it manages, so
+[Tailscale](https://tailscale.com/docs) or to a compatible control server such
+as [Headscale](https://headscale.net/). It uses the private key of the connected
+[WireGuard](@docs/node/almagest/WireGuard) node. It adds and removes only the
+peers and relay path that it manages, so
 [WireGuard](@docs/node/almagest/WireGuard) peers from other sources can use the
 same device.
 
@@ -19,8 +20,10 @@ Connect [Network](@port/right/Network) to the path that must carry these
 connections:
 
 - control-server requests and control-server name lookups
-- STUN and DISCO discovery traffic
-- DERP relay traffic over TLS
+- [STUN](https://tailscale.com/docs/reference/stun-protocol) and DISCO discovery
+  traffic
+- [DERP](https://tailscale.com/docs/reference/derp-servers) relay traffic over
+  TLS
 
 Direct peer UDP traffic does not use this Network input. It uses the default
 Network connected to the [WireGuard](@docs/node/almagest/WireGuard) node. For
@@ -85,11 +88,12 @@ still carry traffic unless you also disable DERP.
 
 ## [DNS](@port/left/DNS) output
 
-The [DNS](@port/left/DNS) output serves the current MagicDNS records received
-from the control server. It supports `A`, `AAAA`, `CNAME`, `PTR`, `NS`, `MX`,
-`SRV`, and `TXT` queries. Reverse lookups are made from the received address
-records. A single-label name also uses the MagicDNS search domains. A name that
-contains a dot is looked up as written.
+The [DNS](@port/left/DNS) output serves the current
+[MagicDNS](https://tailscale.com/docs/features/magicdns) records received from
+the control server. It supports `A`, `AAAA`, `CNAME`, `PTR`, `NS`, `MX`, `SRV`,
+and `TXT` queries. Reverse lookups are made from the received address records. A
+single-label name also uses the MagicDNS search domains. A name that contains a
+dot is looked up as written.
 
 Successful answers have a TTL of 60 seconds. The output does not query the
 nameservers advertised by the control server, the host resolver, or another DNS

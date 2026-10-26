@@ -5,12 +5,13 @@ start a check when [Network](@port/right/Network) becomes ready.
 
 Select one of these providers:
 
-- `ifconfig.co` is the default. The node requests `https://ifconfig.co/json` and
-  can return [Public IP](@port/right/Public%20IP),
+- [ifconfig.co](https://ifconfig.co/) is the default. The node requests
+  `https://ifconfig.co/json` and can return
+  [Public IP](@port/right/Public%20IP),
   [Country code](@port/right/Country%20code), [City](@port/right/City),
   [Latitude](@port/right/Latitude), and [Longitude](@port/right/Longitude).
-- `ipify` requests `https://api.ipify.org?format=json` and returns only
-  [Public IP](@port/right/Public%20IP). Its
+- [ipify](https://www.ipify.org/) requests `https://api.ipify.org?format=json`
+  and returns only [Public IP](@port/right/Public%20IP). Its
   [Country code](@port/right/Country%20code), [City](@port/right/City),
   [Latitude](@port/right/Latitude), and [Longitude](@port/right/Longitude)
   results stay empty or zero.

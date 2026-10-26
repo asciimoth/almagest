@@ -1,6 +1,6 @@
-Sends a test query to an attached DNS provider. Use this node to check a DNS
-chain and inspect the complete response. Connect the resolver to
-[DNS](@port/right/DNS).
+Sends a test query to an attached [DNS](https://www.rfc-editor.org/rfc/rfc1034)
+provider. Use this node to check a DNS chain and inspect the complete response.
+Connect the resolver to [DNS](@port/right/DNS).
 
 ## Request
 
@@ -9,7 +9,8 @@ request**. A name without a final dot gets one automatically. An empty name
 becomes `example.test.`. The type is not case-sensitive, and an empty type
 becomes `A`.
 
-The node supports these query types:
+The node supports these
+[query types](https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-4):
 
 - `A` and `AAAA`;
 - `CNAME`, `NS`, and `PTR`;

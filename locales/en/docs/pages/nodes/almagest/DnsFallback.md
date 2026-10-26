@@ -1,6 +1,6 @@
-Tries connected DNS services in ascending slot order.
-[slot 1](@port/right/slot%201) has the highest priority. Empty slots are
-skipped.
+Tries connected [DNS](https://www.rfc-editor.org/rfc/rfc1034) services in
+ascending slot order. [slot 1](@port/right/slot%201) has the highest priority.
+Empty slots are skipped.
 
 The node returns the first response with the `NOERROR` status. It tries the next
 connected slot when a service returns an error, returns no response, exceeds the

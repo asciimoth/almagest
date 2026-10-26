@@ -1,18 +1,20 @@
-LocalProxy provides a SOCKS proxy to applications on the daemon host. Client
-connections use the system-local network. The requested connections, name
-lookups, and remote listeners use the connected [proxy](@port/right/proxy). Use
-this node to give a local application access to a VPN, tunnel, proxy chain, or
-test network from an ordinary SOCKS client.
+LocalProxy provides a [SOCKS](https://www.rfc-editor.org/rfc/rfc1928) proxy to
+applications on the daemon host. Client connections use the system-local
+network. The requested connections, name lookups, and remote listeners use the
+connected [proxy](@port/right/proxy). Use this node to give a local application
+access to a VPN, tunnel, proxy chain, or test network from an ordinary SOCKS
+client.
 
 The plain SOCKS listener supports SOCKS4, SOCKS4a, and SOCKS5. Its default
 address is `127.0.0.1:1080`. An empty host also uses `127.0.0.1`. Set the port
 to `0` to disable this listener.
 
-The optional SOCKS-over-WebSocket listener uses plain WebSocket transport. Set
-**SOCKS+WS port** to a nonzero value to enable it. The default path is `/socks`;
-a path without a leading slash gets one automatically. This listener does not
-add TLS, so it provides `ws`, not `wss`. The plain SOCKS and WebSocket listeners
-can run together, but they cannot use the same host and port.
+The optional SOCKS-over-WebSocket listener uses plain
+[WebSocket](https://www.rfc-editor.org/rfc/rfc6455) transport. Set **SOCKS+WS
+port** to a nonzero value to enable it. The default path is `/socks`; a path
+without a leading slash gets one automatically. This listener does not add TLS,
+so it provides `ws`, not `wss`. The plain SOCKS and WebSocket listeners can run
+together, but they cannot use the same host and port.
 
 ## Authentication and access
 
@@ -74,8 +76,8 @@ not need:
   [proxy](@port/right/proxy).
 - **UDP ASSOC** relays SOCKS5 UDP traffic. The local UDP relay uses a port
   selected by the system; a client cannot request a fixed relay port.
-- **Tor RESOLVE** and **Tor RESOLVE_PTR** provide the Tor name-resolution
-  extensions.
+- **Tor RESOLVE** and **Tor RESOLVE_PTR** provide the
+  [Tor name-resolution extensions](https://spec.torproject.org/socks-extensions.html).
 - **Gost MBIND** and **Gost UDPTUN** provide the corresponding
   [Gost](https://gost.run/en/tutorials/protocols/socks/) extensions.
 

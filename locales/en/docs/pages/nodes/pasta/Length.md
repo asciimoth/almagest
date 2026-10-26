@@ -4,7 +4,8 @@ an integer. The [input](@port/left/input) accepts one connection. The
 
 Length uses these rules:
 
-- A JSON object returns its number of top-level members.
+- A [JSON](https://www.json.org/json-en.html) object returns its number of
+  top-level members.
 - A JSON array returns its number of top-level elements.
 - A top-level string returns its byte length.
 - `null`, numbers, Booleans, and unsupported values return `0`.
@@ -12,10 +13,10 @@ Length uses these rules:
 The node does not count nested members or elements. For example,
 `{"items": [1, 2, 3]}` has a length of `1`, not `3` or `4`.
 
-String length counts bytes, not Unicode characters. For example, the UTF-8
-string `é` has a length of `2`. Standard Object editors accept an object, an
-array, or `null`, but Length can also measure a top-level string supplied by a
-compatible Object source.
+String length counts bytes, not Unicode characters. For example, the
+[UTF-8](https://www.rfc-editor.org/rfc/rfc3629) string `é` has a length of `2`.
+Standard Object editors accept an object, an array, or `null`, but Length can
+also measure a top-level string supplied by a compatible Object source.
 
 The result starts at `0`. It also returns to `0` when the
 [input](@port/left/input) disconnects. When an [input](@port/left/input)

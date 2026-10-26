@@ -1,6 +1,8 @@
 TorDriver starts a separate [Tor](https://www.torproject.org/) client and
 supplies one or more Tor-backed Networks. Use these Networks for outgoing TCP
-connections, or add a v3 onion service for incoming TCP connections.
+connections, or add a
+[v3 onion service](https://community.torproject.org/onion-services/overview/)
+for incoming TCP connections.
 
 Connect a working Network to [out](@port/right/out). Tor uses this Network for
 its relay and control connections. It does not use a direct host connection as a
@@ -91,8 +93,9 @@ Optional relay fingerprints contain exactly 40 hexadecimal characters.
 
 For an obfs4 bridge, also enable **Enable obfs4** and supply its fingerprint,
 certificate, and inter-arrival timing setting. Host env must provide the
-optional obfs4 program. A missing obfs4 program does not prevent normal Tor or
-plain bridges from working, but an obfs4 configuration cannot start without it.
+optional [obfs4](https://tb-manual.torproject.org/circumvention/) program. A
+missing obfs4 program does not prevent normal Tor or plain bridges from working,
+but an obfs4 configuration cannot start without it.
 
 The policy section also controls bandwidth, padding, reachable relay ports,
 pending circuits, CPU count, and relay selection. Set **Bandwidth rate** and

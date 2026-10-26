@@ -1,7 +1,8 @@
-VTun supplies a userspace IP stack as both [Network](@port/left/Network) and
-[Tun](@port/right/Tun). Connect client or server nodes to
-[Network](@port/left/Network). Connect [Tun](@port/right/Tun) to the path that
-carries the stack's IPv4 and IPv6 packets, such as
+VTun supplies a
+[userspace IP stack](https://gvisor.dev/docs/architecture_guide/networking/) as
+both [Network](@port/left/Network) and [Tun](@port/right/Tun). Connect client or
+server nodes to [Network](@port/left/Network). Connect [Tun](@port/right/Tun) to
+the path that carries the stack's IPv4 and IPv6 packets, such as
 [WireGuard](@docs/node/almagest/WireGuard),
 [TunCopy](@docs/node/almagest/TunCopy),
 [TunSplitter](@docs/node/almagest/TunSplitter), or
@@ -27,9 +28,10 @@ Address selection uses this priority:
 1. Automatically allocated local IPv4 and IPv6 addresses.
 
 Enter one or more IP addresses in **Local addrs**, separated by spaces, commas,
-semicolons, or new lines. CIDR values are accepted, but VTun uses only their IP
-address. The prefix does not create a route. Automatically allocated addresses
-appear in **Effective** and are not saved as menu configuration.
+semicolons, or new lines. [CIDR](https://www.rfc-editor.org/rfc/rfc4632) values
+are accepted, but VTun uses only their IP address. The prefix does not create a
+route. Automatically allocated addresses appear in **Effective** and are not
+saved as menu configuration.
 
 By default, the stack also has `127.0.0.1` and `::1`. Enable **No loopback
 addrs** when the packet path must not select loopback addresses. With this
@@ -90,9 +92,9 @@ configurations.
 queues can absorb longer bursts but can use more memory. Values that are zero or
 negative reset to the defaults.
 
-Enable **Disable TCP SACK** only when the peer or carrier has a compatibility
-problem with TCP Selective Acknowledgment. Disabling it can reduce TCP
-performance when packets are lost.
+Enable **Disable [TCP SACK](https://www.rfc-editor.org/rfc/rfc2018)** only when
+the peer or carrier has a compatibility problem with TCP Selective
+Acknowledgment. Disabling it can reduce TCP performance when packets are lost.
 
 ## Configuration changes
 

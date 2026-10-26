@@ -1,6 +1,7 @@
-TlsWrapper adds TLS to both client and server TCP operations on a Network. Place
-it between a [Network](@port/left/Network) consumer and the
-[Network](@port/right/Network) that supplies the actual connections.
+TlsWrapper adds [TLS](https://www.rfc-editor.org/rfc/rfc8446) to both client and
+server TCP operations on a Network. Place it between a
+[Network](@port/left/Network) consumer and the [Network](@port/right/Network)
+that supplies the actual connections.
 
 - For a TCP dial, TlsWrapper connects to the requested destination and completes
   a TLS client handshake. The consumer uses a normal plaintext stream, while the
@@ -26,14 +27,14 @@ certificate authorities, TLS version limits, and a client certificate for mutual
 TLS. If no config is selected, the default TLS config applies. If a named config
 is removed, the node uses the default config and shows a warning.
 
-**Client server name** overrides the certificate-verification name and the SNI
-name from the selected TLS config. If this field is empty, TlsWrapper uses the
-server name from the selected config. If both are empty, it uses the host from
-the dial destination.
+**Client server name** overrides the certificate-verification name and the
+[SNI](https://www.rfc-editor.org/rfc/rfc6066) name from the selected TLS config.
+If this field is empty, TlsWrapper uses the server name from the selected
+config. If both are empty, it uses the host from the dial destination.
 
-Use **Client ALPN** to replace the ALPN protocol list from the selected TLS
-config. Separate values with spaces, commas, semicolons, or new lines. For
-example:
+Use **Client [ALPN](https://www.rfc-editor.org/rfc/rfc7301)** to replace the
+ALPN protocol list from the selected TLS config. Separate values with spaces,
+commas, semicolons, or new lines. For example:
 
 ```text
 h2
@@ -73,7 +74,7 @@ create certificates that those clients trust.
 
 UDP, packet connections, DNS lookups, interface queries, and other non-TCP
 operations pass through without TLS. This means TlsWrapper does not encrypt UDP
-or QUIC.
+or [QUIC](https://www.rfc-editor.org/rfc/rfc9000).
 
 The node supplies its [Network](@port/left/Network) only when the connected
 [Network](@port/right/Network), selected client TLS config, local CA, server

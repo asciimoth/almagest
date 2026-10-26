@@ -1,7 +1,7 @@
 Supplies a configurable Object value to one or more consumers. The default value
 is `null`.
 
-## Accepted JSON
+## Accepted [JSON](https://www.json.org/json-en.html)
 
 **Value** must contain valid JSON with one of these top-level forms:
 

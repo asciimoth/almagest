@@ -1,5 +1,6 @@
-Sends DNS requests to upstream servers through an attached Network. Connect the
-transport network to [Network](@port/right/Network) and connect DNS consumers to
+Sends [DNS](https://www.rfc-editor.org/rfc/rfc1034) requests to upstream servers
+through an attached Network. Connect the transport network to
+[Network](@port/right/Network) and connect DNS consumers to
 [DNS](@port/left/DNS). The [DNS](@port/left/DNS) output becomes available when
 the [Network](@port/right/Network) is ready and at least one valid server is
 configured.
@@ -12,7 +13,7 @@ them. Each server URL must use one of these schemes:
 - `udp://` sends DNS over UDP. If the server returns a truncated response, the
   node retries the request over TCP to the same address.
 - `tcp://` sends DNS over TCP.
-- `dot://` sends DNS over TLS.
+- `dot://` sends [DNS over TLS](https://www.rfc-editor.org/rfc/rfc7858).
 
 For example, use `udp://192.0.2.53:53`, `tcp://192.0.2.53:53`, or
 `dot://dns.example:853`. An address without a scheme becomes a UDP URL. If you

@@ -1,13 +1,14 @@
-Provides a Network that sends supported TCP and UDP operations through a SOCKS
-proxy. Connect the network used to reach the proxy to [out](@port/right/out).
-Connect clients or tunnel nodes to the [Network](@port/left/Network) output. The
-node does not bypass the proxy for loopback or local addresses.
+Provides a Network that sends supported TCP and UDP operations through a
+[SOCKS](https://www.rfc-editor.org/rfc/rfc1928) proxy. Connect the network used
+to reach the proxy to [out](@port/right/out). Connect clients or tunnel nodes to
+the [Network](@port/left/Network) output. The node does not bypass the proxy for
+loopback or local addresses.
 
 ## Use with a GOST server
 
-### SOCKS over WebSocket
+### SOCKS over [WebSocket](https://www.rfc-editor.org/rfc/rfc6455)
 
-Start a GOST SOCKS5-over-WebSocket server:
+Start a [GOST](https://gost.run/en/) SOCKS5-over-WebSocket server:
 
 ```sh
 gost -L "socks5+ws://user:pass@:8080?notls=true"
@@ -99,10 +100,11 @@ sends the request. It does not use graph DNS or the resolver from
 [out](@port/right/out) for this step.
 
 Explicit forward and reverse lookups are disabled by default. Add `?tor` to use
-the Tor `RESOLVE` and `RESOLVE_PTR` extensions through a compatible SOCKS5
-server. Other record lookups, such as MX, SRV, TXT, and CNAME, are not
-supported. The `tor` option is not required for normal SOCKS5 connections to a
-hostname.
+the
+[Tor `RESOLVE` and `RESOLVE_PTR` extensions](https://spec.torproject.org/socks-extensions.html)
+through a compatible SOCKS5 server. Other record lookups, such as MX, SRV, TXT,
+and CNAME, are not supported. The `tor` option is not required for normal SOCKS5
+connections to a hostname.
 
 ## UDP and listeners
 

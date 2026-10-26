@@ -1,6 +1,7 @@
 Sniffer routes Network operations to as many as 16 backend slots. It can make an
 immediate routing decision, or it can inspect the first bytes that a client
-sends on an outgoing TCP connection before it selects a backend.
+sends on an outgoing [TCP](https://www.rfc-editor.org/rfc/rfc9293) connection
+before it selects a backend.
 
 Connect consumers to [Network](@port/left/Network), and connect backend paths to
 the numbered slots. The node supplies [Network](@port/left/Network) only when
@@ -51,12 +52,26 @@ traffic in the connection.
 
 The built-in classifiers are:
 
-- `HTTP`, `TLS`, `SSH`, `HTTP2`, `AMQP`, `MQTT`, `PostgreSQL`, `MongoDB`, and
-  `Redis`
-- `ProxyProtocolV1`, `ProxyProtocolV2`, and `ProxyProtocol`
-- `SOCKS4`, `SOCKS5`, and `SOCKS`
-- `DNSOverTCP`, `RTSP`, `SIP`, `STUN`, `RDP`, `SMB`, `LDAP`, and `Cassandra`
-- `MemcachedBinary`, `MemcachedASCII`, and `Memcached`
+- [`HTTP`](https://www.rfc-editor.org/rfc/rfc9110),
+  [`TLS`](https://www.rfc-editor.org/rfc/rfc8446),
+  [`SSH`](https://www.rfc-editor.org/rfc/rfc4253),
+  [`HTTP2`](https://www.rfc-editor.org/rfc/rfc9113),
+  [`AMQP`](https://docs.oasis-open.org/amqp/core/v1.0/amqp-core-overview-v1.0.html),
+  [`MQTT`](https://mqtt.org/),
+  [`PostgreSQL`](https://www.postgresql.org/docs/current/protocol.html),
+  [`MongoDB`](https://www.mongodb.com/docs/manual/reference/mongodb-wire-protocol/),
+  and [`Redis`](https://redis.io/docs/latest/develop/reference/protocol-spec/)
+- [`ProxyProtocolV1`, `ProxyProtocolV2`, and `ProxyProtocol`](https://github.com/haproxy/haproxy/blob/master/doc/proxy-protocol.txt)
+- [`SOCKS4`, `SOCKS5`, and `SOCKS`](https://www.rfc-editor.org/rfc/rfc1928)
+- [`DNSOverTCP`](https://www.rfc-editor.org/rfc/rfc7766),
+  [`RTSP`](https://www.rfc-editor.org/rfc/rfc7826),
+  [`SIP`](https://www.rfc-editor.org/rfc/rfc3261),
+  [`STUN`](https://www.rfc-editor.org/rfc/rfc8489),
+  [`RDP`](https://learn.microsoft.com/en-us/windows/win32/termserv/remote-desktop-protocol),
+  [`SMB`](https://learn.microsoft.com/en-us/windows/desktop/fileio/microsoft-smb-protocol-and-cifs-protocol-overview),
+  [`LDAP`](https://www.rfc-editor.org/rfc/rfc4511), and
+  [`Cassandra`](https://cassandra.apache.org/doc/latest/cassandra/reference/native-protocol.html)
+- [`MemcachedBinary`, `MemcachedASCII`, and `Memcached`](https://docs.memcached.org/protocols/)
 
 Classifier names are case-sensitive. The combined `ProxyProtocol`, `SOCKS`, and
 `Memcached` classifiers match either of their protocol variants. `HTTP2` matches
@@ -72,12 +87,14 @@ a query string when present. Host matching is not case-sensitive and ignores an
 optional port. It uses the hostname in an absolute request target or the `Host`
 header.
 
-A TLS classifier examines the ClientHello. It can match `VERSION`, `SNI`,
-`SNI_PATTERN`, `ALPN`, `ALPN_PATTERN`, `SNI_AVAILABLE`, or `SNI_ENCRYPTED`. SNI
-matching is not case-sensitive. ALPN matching is case-sensitive. Sniffer does
-not decrypt TLS. With Encrypted Client Hello, it can detect the ECH signal but
-cannot read the encrypted inner hostname; an SNI rule sees only a visible outer
-hostname.
+A TLS classifier examines the ClientHello. It can match `VERSION`,
+[`SNI`](https://www.rfc-editor.org/rfc/rfc6066), `SNI_PATTERN`, `ALPN`,
+`ALPN_PATTERN`, `SNI_AVAILABLE`, or `SNI_ENCRYPTED`. SNI matching is not
+case-sensitive. [ALPN](https://www.rfc-editor.org/rfc/rfc7301) matching is
+case-sensitive. Sniffer does not decrypt TLS. With
+[Encrypted Client Hello](https://www.rfc-editor.org/rfc/rfc9849), it can detect
+the ECH signal but cannot read the encrypted inner hostname; an SNI rule sees
+only a visible outer hostname.
 
 Patterns match the complete value. `*` matches any byte sequence, `?` matches
 one byte, and `\` escapes the next byte. When an option appears more than once,

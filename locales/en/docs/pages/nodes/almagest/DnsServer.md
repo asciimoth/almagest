@@ -1,10 +1,12 @@
-Accepts UDP DNS requests through an attached Network and sends each request to
-an attached DNS resolver. Connect the listening network to
+Accepts [DNS](https://www.rfc-editor.org/rfc/rfc1034) requests over
+[UDP](https://www.rfc-editor.org/rfc/rfc768) through an attached Network and
+sends each request to an attached DNS resolver. Connect the listening network to
 [Network](@port/right/Network) and the resolver that will answer requests to
 [DNS](@port/right/DNS).
 
-This node provides a UDP listener only. It does not provide DNS over TCP or DNS
-over TLS.
+This node provides a UDP listener only. It does not provide
+[DNS over TCP](https://www.rfc-editor.org/rfc/rfc7766) or
+[DNS over TLS](https://www.rfc-editor.org/rfc/rfc7858).
 
 ## Listen address
 

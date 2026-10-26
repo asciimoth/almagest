@@ -1,6 +1,7 @@
 StringLower converts letters in [input 1](@port/left/input%201) to lowercase and
-leaves other characters unchanged. It uses Unicode lowercase mappings, so it is
-not limited to ASCII. For example, `ÄBC 12` becomes `äbc 12`.
+leaves other characters unchanged. It uses
+[Unicode](https://www.unicode.org/standard/standard.html) lowercase mappings, so
+it is not limited to ASCII. For example, `ÄBC 12` becomes `äbc 12`.
 
 The conversion is not language- or locale-specific. It maps each character to at
 most one lowercase character, so it does not apply expansions that require

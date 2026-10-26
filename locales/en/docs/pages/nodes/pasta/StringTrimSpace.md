@@ -1,11 +1,12 @@
 Removes whitespace from the start and end of a String. Whitespace inside the
 String is unchanged.
 
-The node uses the Unicode definition of whitespace. It removes spaces, tabs,
-line breaks, non-breaking spaces, and other Unicode whitespace characters at
-both ends. A zero-width space is not classified as Unicode whitespace, so it is
-not removed. If the [input](@port/left/input) contains only whitespace, the
-result is an empty string.
+The node uses the [Unicode](https://www.unicode.org/standard/standard.html)
+definition of whitespace. It removes spaces, tabs, line breaks, non-breaking
+spaces, and other Unicode whitespace characters at both ends. A zero-width space
+is not classified as Unicode whitespace, so it is not removed. If the
+[input](@port/left/input) contains only whitespace, the result is an empty
+string.
 
 If the [input](@port/left/input) is missing or disconnected, the result is an
 empty string. The [input](@port/left/input) accepts one connection.

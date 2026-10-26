@@ -1,6 +1,7 @@
-DnsInject adds a selected DNS resolver to an existing Network. Connect the
-connection path to the [Network](@port/right/Network) input, connect a resolver
-to the [DNS](@port/right/DNS) input, and connect network consumers to the
+DnsInject adds a selected [DNS](https://www.rfc-editor.org/rfc/rfc1034) resolver
+to an existing Network. Connect the connection path to the
+[Network](@port/right/Network) input, connect a resolver to the
+[DNS](@port/right/DNS) input, and connect network consumers to the
 [Network](@port/left/Network) output.
 
 The resulting [Network](@port/left/Network) uses the connected

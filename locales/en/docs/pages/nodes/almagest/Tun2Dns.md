@@ -1,6 +1,7 @@
-Tun2Dns receives raw DNS packets from [Tun](@port/left/Tun), sends their DNS
-messages to the connected [DNS](@port/right/DNS) resolver, and writes raw
-response packets back to the same TUN.
+Tun2Dns receives raw [DNS](https://www.rfc-editor.org/rfc/rfc1034) packets from
+[Tun](@port/left/Tun), sends their DNS messages to the connected
+[DNS](@port/right/DNS) resolver, and writes raw response packets back to the
+same TUN.
 
 Use Tun2Dns as the DNS endpoint of a routed TUN path. A common layout sends UDP
 destination port 53 from [TunSplitter](@docs/node/almagest/TunSplitter) to
@@ -23,9 +24,12 @@ Tun2Dns accepts packets with all these properties:
 - The UDP checksum is valid. IPv4 can omit the UDP checksum, but IPv6 cannot.
 
 Some IPv6 extension headers are accepted, but an IPv6 Fragment header is not.
-TCP DNS, DNS over TLS, DNS over HTTPS, and QUIC do not match these rules.
-Tun2Dns does not reassemble requests or fragment responses. Keep DNS packets
-within the usable TUN MTU.
+[DNS over TCP](https://www.rfc-editor.org/rfc/rfc7766),
+[DNS over TLS](https://www.rfc-editor.org/rfc/rfc7858),
+[DNS over HTTPS](https://www.rfc-editor.org/rfc/rfc8484), and
+[QUIC](https://www.rfc-editor.org/rfc/rfc9000) do not match these rules. Tun2Dns
+does not reassemble requests or fragment responses. Keep DNS packets within the
+usable TUN MTU.
 
 Malformed packets, fragments, packets for another port, DNS responses, and
 invalid DNS messages are ignored. Tun2Dns does not send an error packet for

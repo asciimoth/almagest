@@ -1,7 +1,8 @@
 Provides the daemon's direct operating-system network as a
 [Network](@port/left/Network) output. Use OutNetwork as the final network for
 clients, proxies, and tunnel transports. Network servers can also use it to open
-TCP or UDP listeners.
+[TCP](https://www.rfc-editor.org/rfc/rfc9293) or
+[UDP](https://www.rfc-editor.org/rfc/rfc768) listeners.
 
 Connections created through OutNetwork bypass
 [DefaultTun](@docs/node/almagest/DefaultTun) and use the original outbound path.
@@ -23,8 +24,9 @@ or source address disappears. Linux name resolution checks the hosts file before
 it uses the original outbound DNS service. It does not fall back to DNS
 installed by [DefaultTun](@docs/node/almagest/DefaultTun).
 
-On Windows, each socket is bound to the selected physical network. IPv4 or IPv6
-operations are available only when a network for that address family is
-selected. Operations fail after the selected network is lost; there is no
-unrestricted fallback. TCP and UDP unicast are supported. Multicast and raw
-sockets are not supported.
+On Windows, each socket is bound to the selected physical network.
+[IPv4](https://www.rfc-editor.org/rfc/rfc791) or
+[IPv6](https://www.rfc-editor.org/rfc/rfc8200) operations are available only
+when a network for that address family is selected. Operations fail after the
+selected network is lost; there is no unrestricted fallback. TCP and UDP unicast
+are supported. Multicast and raw sockets are not supported.

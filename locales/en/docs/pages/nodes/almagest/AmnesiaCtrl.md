@@ -1,10 +1,11 @@
 AmnesiaCtrl is deprecated. Use the [Amnesia](@docs/node/almagest/Amnesia) node
 for new configurations.
 
-AmnesiaCtrl imports an Amnezia VPN connection and adds its peer to an attached
-WireGuard node. The WireGuard node continues to control the device private key,
-TUN connection, listen settings, and UDP transport. AmnesiaCtrl removes only the
-peer that it added when you disable or disconnect the node.
+AmnesiaCtrl imports an [Amnezia](https://docs.amnezia.org/) VPN connection and
+adds its peer to an attached [WireGuard](https://www.wireguard.com/) node. The
+WireGuard node continues to control the device private key, TUN connection,
+listen settings, and UDP transport. AmnesiaCtrl removes only the peer that it
+added when you disable or disconnect the node.
 
 Connect the [WireGuard](@port/right/WireGuard) port to the control port of a
 WireGuard node. Store one of these values in a secret, and select the secret in
@@ -38,9 +39,9 @@ settings, and then sends the result to its TUN provider.
 
 ## Service options
 
-**Server country** selects a country for a service import. Use a two-letter ISO
-3166-1 country code, such as `de`. Leave the field empty to let the service
-select the country.
+**Server country** selects a country for a service import. Use a two-letter
+[ISO 3166-1 country code](https://en.wikipedia.org/wiki/ISO_3166-1), such as
+`de`. Leave the field empty to let the service select the country.
 
 Enable **Send connect event** if the service must receive its connect event
 during import. **Reconnect** imports the profile again and replaces the peer,

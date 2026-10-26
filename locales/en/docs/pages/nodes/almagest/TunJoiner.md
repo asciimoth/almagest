@@ -1,7 +1,8 @@
-TunJoiner combines multiple TUN paths into one [Tun](@port/right/Tun)
-connection. Connect one fallback path to [Default](@port/left/Default). Connect
-any number of additional paths to the shared [Secondary](@port/left/Secondary)
-port.
+TunJoiner combines multiple
+[TUN](https://www.kernel.org/doc/html/latest/networking/tuntap.html) paths into
+one [Tun](@port/right/Tun) connection. Connect one fallback path to
+[Default](@port/left/Default). Connect any number of additional paths to the
+shared [Secondary](@port/left/Secondary) port.
 
 [Default](@port/left/Default) and [Tun](@port/right/Tun) each accept one
 connection. [Secondary](@port/left/Secondary) accepts multiple connections on
@@ -24,11 +25,14 @@ Packets from all connected paths go to [Tun](@port/right/Tun). For packets that
 return from [Tun](@port/right/Tun), TunJoiner learns which connected path owns
 the destination.
 
-It first uses the learned flow for TCP, UDP, ICMP echo, and IP fragments. This
-lets different paths use the same local IPv4 or IPv6 address when their flow
-details are different. If there is no learned flow, it uses the path that most
-recently sent a packet from the destination IP address. If there is no learned
-address, it sends the packet to [Default](@port/left/Default).
+It first uses the learned flow for
+[TCP](https://www.rfc-editor.org/rfc/rfc9293),
+[UDP](https://www.rfc-editor.org/rfc/rfc768),
+[ICMP](https://www.rfc-editor.org/rfc/rfc792) echo, and IP fragments. This lets
+different paths use the same local IPv4 or IPv6 address when their flow details
+are different. If there is no learned flow, it uses the path that most recently
+sent a packet from the destination IP address. If there is no learned address,
+it sends the packet to [Default](@port/left/Default).
 
 Malformed packets and packets with an unknown destination also go to
 [Default](@port/left/Default). If no default path is available, TunJoiner drops

@@ -3,11 +3,12 @@ when the nodes on the output slots advertise the destination networks that they
 can reach. For example, a VPN branch can advertise its private networks while
 [slot 1](@port/right/slot%201) provides the default path.
 
-The node learns IPv4 and IPv6 destination prefixes from each output slot. The
-most-specific matching prefix selects the slot. If two slots advertise the same
-prefix, an address associated with that route can select its slot. Otherwise,
-the lower slot number has priority. An address without a route does not make its
-slot handle other destinations.
+The node learns [IPv4](https://www.rfc-editor.org/rfc/rfc791) and
+[IPv6](https://www.rfc-editor.org/rfc/rfc8200) destination prefixes from each
+output slot. The most-specific matching prefix selects the slot. If two slots
+advertise the same prefix, an address associated with that route can select its
+slot. Otherwise, the lower slot number has priority. An address without a route
+does not make its slot handle other destinations.
 
 Packets that do not match an advertised prefix go to
 [slot 1](@port/right/slot%201). Connect the fallback path to

@@ -1,5 +1,6 @@
-Converts one Object [input](@port/left/input) to a JSON String. Use it when a
-String node or an external service needs the JSON representation of an Object.
+Converts one Object [input](@port/left/input) to a
+[JSON](https://www.json.org/json-en.html) String. Use it when a String node or
+an external service needs the JSON representation of an Object.
 
 ## Format options
 

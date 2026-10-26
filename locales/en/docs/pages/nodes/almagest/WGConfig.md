@@ -1,6 +1,7 @@
-Adds a separately managed peer list to an existing WireGuard node. WGConfig does
-not create a WireGuard interface. It also does not configure the device private
-key, listen port, interface addresses, or system routes.
+Adds a separately managed peer list to an existing
+[WireGuard](https://www.wireguard.com/) node. WGConfig does not create a
+WireGuard interface. It also does not configure the device private key, listen
+port, interface addresses, or system routes.
 
 Connect [WireGuard](@port/right/WireGuard) to the **WGCtrl** connector of a
 WireGuard node. Connect [Network](@port/right/Network) to give these peers a UDP
@@ -60,8 +61,9 @@ WireGuard connection.
 
 ## AmneziaWG peer overrides
 
-By default, a peer inherits the AmneziaWG profile of the WireGuard device.
-Enable **AWG override** to give the peer its own profile.
+By default, a peer inherits the
+[AmneziaWG](https://docs.amnezia.org/documentation/amnezia-wg/) profile of the
+WireGuard device. Enable **AWG override** to give the peer its own profile.
 
 With the override enabled, **AWG obfuscation** selects the effective profile:
 

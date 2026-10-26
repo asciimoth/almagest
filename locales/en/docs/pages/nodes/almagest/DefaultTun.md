@@ -1,5 +1,6 @@
 DefaultTun captures traffic from the host system and provides it through the
-[Tun](@port/right/Tun) port. Connect this port to the start of a TUN processing
+[Tun](@port/right/Tun) port. Connect this port to the start of a
+[TUN](https://www.kernel.org/doc/html/latest/networking/tuntap.html) processing
 path, such as a tunnel, splitter, firewall, or spoofer. The node also installs
 the operating system routes and DNS settings that send traffic to this TUN.
 
@@ -53,9 +54,9 @@ rule type first, and then use autocomplete where it is available.
 
 ### Linux
 
-Linux implements process routing with eBPF process tracking and packet marks. It
-supports **Exclude**, **Include**, and **Strict routing**. The supported rule
-types are:
+Linux implements process routing with [eBPF](https://docs.ebpf.io/) process
+tracking and packet marks. It supports **Exclude**, **Include**, and **Strict
+routing**. The supported rule types are:
 
 - `comm`: a regular expression for the process command name
 - `exec`: an executable basename or absolute-path pattern
@@ -77,7 +78,8 @@ Enter an absolute executable path, such as
 its descendant processes. Windows does not support **Include** or **Strict
 routing**.
 
-Executable-tree exclusions use the pinned Mullvad split-tunnel driver and
+Executable-tree exclusions use the pinned
+[Mullvad split-tunnel driver](https://github.com/mullvad/win-split-tunnel) and
 Windows Filtering Platform rules. The driver is a global, exclusive resource. An
 exclusion cannot start if the compatible driver is missing, another program owns
 it, or its state requires recovery. DefaultTun reports the failure in the node
