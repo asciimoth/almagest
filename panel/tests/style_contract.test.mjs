@@ -6,7 +6,7 @@ const css = await readFile(new URL("../style.css", import.meta.url), "utf8");
 
 function cssRule(selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = css.match(new RegExp(`${escaped}\\s*\\{(?<body>[^}]*)\\}`, "m"));
+  const match = css.match(new RegExp(`^${escaped}\\s*\\{(?<body>[^}]*)\\}`, "m"));
   assert.ok(match?.groups?.body, `missing CSS rule for ${selector}`);
   return match.groups.body;
 }
@@ -48,6 +48,21 @@ test("SPA tab and locale glyphs use one fixed control width", () => {
     assert.match(rule, /min-width:\s*38px;/);
     assert.match(rule, /padding:\s*0;/);
   }
+});
+
+test("select controls do not use browser-specific native styling", () => {
+  const selectRule = cssRule("select");
+  const singleSelectRule = cssRule("select:not([multiple])");
+  const optionRule = cssRule("select option");
+
+  assert.match(selectRule, /-webkit-appearance:\s*none;/);
+  assert.match(selectRule, /appearance:\s*none;/);
+  assert.match(singleSelectRule, /padding-inline-end:\s*28px;/);
+  assert.match(singleSelectRule, /background-image:\s*url\(/);
+  assert.match(singleSelectRule, /background-repeat:\s*no-repeat;/);
+  assert.match(optionRule, /background-color:\s*var\(--crust\);/);
+  assert.match(optionRule, /color:\s*var\(--text\);/);
+  assert.match(cssRule("#locale-select"), /background-image:\s*none;/);
 });
 
 test("KV, DNS, Sec, and TLS value inspectors keep content top-aligned", () => {
