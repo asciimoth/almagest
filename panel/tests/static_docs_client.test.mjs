@@ -134,6 +134,8 @@ test("static documentation loads cached node preview data without interpreting t
   };
   const client = new StaticDocsClient();
 
+  assert.equal(client.previewsUnavailableNodes, true);
+
   const response = await client.nodeClass("en", "node/demo/Unsafe<img>");
   assert.deepEqual(response, {
     snapshot: {

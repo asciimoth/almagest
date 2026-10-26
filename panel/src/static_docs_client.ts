@@ -18,6 +18,7 @@ type StaticNodeClassCache = {
 };
 
 export class StaticDocsClient implements DocsClient {
+  readonly previewsUnavailableNodes = true;
   readonly #siteBase: URL;
   #catalog: Promise<StaticCatalog> | null = null;
   #nodeClasses: Promise<StaticNodeClassCache> | null = null;

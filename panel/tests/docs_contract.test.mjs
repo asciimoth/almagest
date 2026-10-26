@@ -99,7 +99,8 @@ test("documentation loads localized pages over HTTP without a WebSocket", () => 
   assert.match(docsSource, /if \(deprecated\) deprecated\.setAttribute\("role", "status"\)/);
   assert.match(panelStyle, /\.docs-node-warning\s*\{/);
   assert.doesNotMatch(docsSource, /innerHTML/);
-  assert.match(docsSource, /if \(!unavailable\) void loadNodePreview/);
+  assert.match(docsSource, /if \(!unavailable \|\| docsClient\(\)\.previewsUnavailableNodes\) void loadNodePreview/);
+  assert.match(docsClientSource, /readonly previewsUnavailableNodes = false/);
   assert.match(docsSource, /console\.error\(`Could not load node preview/);
   assert.match(docsSource, /writeLocaleCookie/);
   assert.match(docsSource, /docsClient\(\)\.pageFromLocation\(window\.location\)/);

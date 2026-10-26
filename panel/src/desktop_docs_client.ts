@@ -23,6 +23,7 @@ type APIResponse = {
  * listener and immediately receives the connection's current state.
  */
 export class DesktopDocsClient implements DocsClient {
+  readonly previewsUnavailableNodes = false;
   readonly #transport: AdminTransport;
   readonly #pending = new Map<string, PendingRequest>();
   #connecting: Promise<void> | null = null;

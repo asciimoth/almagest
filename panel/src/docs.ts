@@ -318,7 +318,7 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
     }
     if (window.location.hash) scrollToCurrentAnchor();
     else restoreDesktopDocsScroll(id);
-    if (!unavailable) void loadNodePreview(id, title);
+    if (!unavailable || docsClient().previewsUnavailableNodes) void loadNodePreview(id, title);
     selectPageInTree(treeElement, id);
   } catch (error) {
     pageElement.replaceChildren(

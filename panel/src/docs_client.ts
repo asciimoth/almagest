@@ -1,4 +1,5 @@
 export interface DocsClient {
+  readonly previewsUnavailableNodes: boolean;
   tree(locale: string): Promise<unknown>;
   raw(locale: string, id: string): Promise<string>;
   nodeClass(locale: string, id: string): Promise<unknown>;
@@ -12,6 +13,8 @@ export function siteBaseURL(): URL {
 }
 
 export class HTTPDocsClient implements DocsClient {
+  readonly previewsUnavailableNodes = false;
+
   async tree(locale: string): Promise<unknown> {
     return await fetchJSON(this.apiURL("tree", locale));
   }
