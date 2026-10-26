@@ -37,7 +37,7 @@ Almagest is a Go userspace network stack built around a Pasta node graph.
 - `bin/` is the runnable module. It owns daemon startup, config files, platform
   integration, admin API plumbing, and the CLI placeholder.
 - `panel/` is the TypeScript admin UI. `just build-web` compiles it into
-  `bin/almagestd/static` for daemon embedding.
+  `bin/almagestd/static` for daemon embedding and `app/frontend` for Tauri.
 
 Runtime path:
 
@@ -241,7 +241,11 @@ Platform and CLI:
 
 Admin panel:
 
-- `panel/src/app.ts`: graph UI and WebSocket admin API client.
+- `panel/src/app.ts`: graph UI and transport-neutral admin API client.
+- `panel/src/admin_transport.ts`: daemon WebSocket transport and the transport
+  selection boundary.
+- `panel/src/desktop_admin_transport.ts`: isolated Tauri admin channel adapter.
+- `panel/src/wasm_transport.ts`: in-process web demo transport.
 - `panel/src/docs.ts`: dedicated documentation page using the read-only HTTP
   documentation API.
 - `panel/src/pasta_model.ts`: snapshot/notification helpers.

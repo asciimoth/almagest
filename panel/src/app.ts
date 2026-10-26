@@ -706,6 +706,16 @@ function connectAPI(): Promise<void> {
       handleAPIDisconnect();
       apiTransport = null;
     },
+    status(connected) {
+      if (connected || apiTransport !== transport) return;
+      setBackendStatus("app.status.disconnected", "Admin API disconnected", true);
+    },
+    diagnostic(level, message) {
+      log("desktop-api", level, message);
+      const output = `[almagest-panel] ${message}`;
+      if (level === "warn") console.warn(output);
+      else console.debug(output);
+    },
   });
 }
 

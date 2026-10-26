@@ -202,13 +202,13 @@ build-web:
 
 # Build and run the desktop client with debug settings and hot reload. Pass
 # daemon or daemon-sudo to also run a development daemon for the app.
-app-debug daemon='':
+app-debug daemon='': build-web
   ./scripts/run-app-debug.sh {{quote(daemon)}}
 
-app-test:
+app-test: build-web
   cargo test --manifest-path app/src-tauri/Cargo.toml --locked
 
-app-lint:
+app-lint: build-web
   cargo clippy --manifest-path app/src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
 
 app-fmt:

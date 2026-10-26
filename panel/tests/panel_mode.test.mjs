@@ -38,3 +38,16 @@ test("admin panel keeps all tabs and runtime security status", () => {
   assert.equal(document.querySelector("#ps-runtime-status")?.hidden, false);
   assert.equal(showsRuntimeSecurityStatus(mode), true);
 });
+
+test("desktop panel keeps the complete UI and native runtime status", () => {
+  const document = new JSDOM(html).window.document;
+  setPanelMode(document.documentElement, "desktop");
+  const mode = panelMode(document.documentElement);
+  applyPanelMode(document, mode);
+
+  assert.equal(mode, "desktop");
+  assert.equal([...document.querySelectorAll("[data-tab]")].every((tab) => !tab.hidden), true);
+  assert.equal([...document.querySelectorAll("[data-panel]")].every((panel) => !panel.hidden), true);
+  assert.equal(document.querySelector("#ps-runtime-status")?.hidden, false);
+  assert.equal(showsRuntimeSecurityStatus(mode), true);
+});

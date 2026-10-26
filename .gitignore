@@ -48,7 +48,7 @@ go.work.sum
 /bin/almagestd/static
 /app/src-tauri/gen
 /app/src-tauri/target
-/app/frontend/logo-light.svg
+/app/frontend
 /app/src-tauri/icons/*.png
 /app/src-tauri/icons/icon.ico
 

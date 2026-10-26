@@ -5,13 +5,15 @@
   "scripts": {
     "vendor": "node scripts/vendor-deps.mjs",
     "compile": "npm run vendor && tsc -p tsconfig.json",
-    "build": "npm run compile && node scripts/publish-static.mjs",
+    "build": "npm run compile && node scripts/publish-static.mjs && node scripts/publish-app.mjs",
+    "build:app": "npm run compile && node scripts/publish-app.mjs",
     "build:webdemo": "npm run compile && node scripts/publish-webdemo.mjs",
     "graph:image": "npm run compile && node scripts/render-graph-image.mjs",
     "test": "npm run build && node --test tests/*.mjs"
   },
   "dependencies": {
     "@asciimoth/formular-menu": "^0.4.1",
+    "@tauri-apps/api": "2.12.4",
     "litegraph.js": "^0.7.18"
   },
   "devDependencies": {

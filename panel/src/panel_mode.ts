@@ -1,4 +1,4 @@
-export type PanelMode = "admin" | "webdemo";
+export type PanelMode = "admin" | "desktop" | "webdemo";
 
 const WEB_DEMO_EXCLUDED_TABS = new Set(["tls", "snapshots"]);
 
@@ -7,7 +7,8 @@ export function setPanelMode(root: HTMLElement, mode: PanelMode): void {
 }
 
 export function panelMode(root: HTMLElement): PanelMode {
-  return root.dataset.almagestPanelMode === "webdemo" ? "webdemo" : "admin";
+  const mode = root.dataset.almagestPanelMode;
+  return mode === "desktop" || mode === "webdemo" ? mode : "admin";
 }
 
 export function applyPanelMode(document: Document, mode: PanelMode): void {
@@ -25,5 +26,5 @@ export function applyPanelMode(document: Document, mode: PanelMode): void {
 }
 
 export function showsRuntimeSecurityStatus(mode: PanelMode): boolean {
-  return mode === "admin";
+  return mode !== "webdemo";
 }

@@ -29,6 +29,7 @@ const RETRY_POLICY: RetryPolicy = RetryPolicy {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum FrontendEvent {
     ConnectionStatus { connected: bool },
+    ConnectionError { message: String },
     Message { message: String },
 }
 
@@ -143,11 +144,16 @@ impl Frontend {
             .state
             .lock()
             .map_err(|_| "frontend state lock is poisoned")?;
+        eprintln!(
+            "panel admin IPC: register listener (native connected={})",
+            state.connected
+        );
         channel
             .send(FrontendEvent::ConnectionStatus {
                 connected: state.connected,
             })
             .map_err(|error| format!("send initial connection status: {error}"))?;
+        eprintln!("panel admin IPC: initial connection status queued");
         state.channel = Some(channel);
         Ok(())
     }
@@ -161,6 +167,10 @@ impl Frontend {
 
     fn message(&self, message: String) {
         self.send(FrontendEvent::Message { message });
+    }
+
+    fn connection_error(&self, message: String) {
+        self.send(FrontendEvent::ConnectionError { message });
     }
 
     fn connected(&self) {
@@ -333,7 +343,9 @@ fn spawn_supervisor(
                                 match activate_connection(connection, id, sender.clone()) {
                                     Ok(transport) => transport,
                                     Err(error) => {
-                                        eprintln!("connect to admin API: {error}");
+                                        let message = format!("connect to admin API: {error}");
+                                        eprintln!("{message}");
+                                        frontend.connection_error(message);
                                         schedule_retry(
                                             &mut next_attempt,
                                             &mut retry_attempt,
@@ -353,7 +365,9 @@ fn spawn_supervisor(
                             }
                         }
                         Err(error) => {
-                            eprintln!("connect to admin API: {error}");
+                            let message = format!("connect to admin API: {error}");
+                            eprintln!("{message}");
+                            frontend.connection_error(message);
                             schedule_retry(
                                 &mut next_attempt,
                                 &mut retry_attempt,
@@ -385,7 +399,9 @@ fn spawn_supervisor(
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     if attempt.take().is_some() {
-                        eprintln!("connect to admin API: attempt timed out");
+                        let message = "connect to admin API: attempt timed out".to_owned();
+                        eprintln!("{message}");
+                        frontend.connection_error(message);
                         schedule_retry(&mut next_attempt, &mut retry_attempt, interactive, policy);
                     } else {
                         let id = next_id;
@@ -628,7 +644,7 @@ fn is_transient_web_error(error: &tungstenite::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{AdminConnection, Frontend, RetryPolicy, validate_request};
+    use super::{AdminConnection, Frontend, FrontendEvent, RetryPolicy, validate_request};
     use crate::endpoint::Endpoint;
     use std::{
         io::{BufRead, BufReader},
@@ -690,6 +706,20 @@ mod tests {
         assert!(!receiver.recv().expect("disconnected status"));
         frontend.disconnected();
         assert!(receiver.try_recv().is_err());
+    }
+
+    #[test]
+    fn serializes_frontend_connection_errors_for_the_panel() {
+        let event = FrontendEvent::ConnectionError {
+            message: "connect failed".to_owned(),
+        };
+        assert_eq!(
+            serde_json::to_value(event).expect("serialize frontend event"),
+            serde_json::json!({
+                "type": "connection_error",
+                "message": "connect failed",
+            })
+        );
     }
 
     #[cfg(unix)]

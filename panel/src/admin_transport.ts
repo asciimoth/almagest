@@ -1,6 +1,8 @@
 export type AdminTransportHandlers = {
   message(data: string): void;
   close(): void;
+  status?(connected: boolean): void;
+  diagnostic?(level: "debug" | "warn", message: string): void;
 };
 
 export interface AdminTransport {

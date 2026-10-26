@@ -54,7 +54,12 @@ test("page boot and immediate reconnect drop the previous backoff state", () => 
   assert.match(reconnect, /resetAPIReconnectBackoff\(\)/);
 
   const boot = app.slice(app.indexOf("function boot"), app.indexOf("boot();"));
-  assert.match(boot, /resetAPIReconnectBackoff\(\)[\s\S]*void startAPIConnection\(\)/);
+  // All entry points configure their transport before app.ts loads. Keep their
+  // common startup sequence in its established order.
+  assert.match(
+    boot,
+    /resetAPIReconnectBackoff\(\)[\s\S]*wireUI\(\)[\s\S]*initGraph\(\)[\s\S]*installTestHooks\(\)[\s\S]*void startAPIConnection\(\)/,
+  );
 });
 
 test("an immediate reconnect cancels a pending connection attempt", () => {

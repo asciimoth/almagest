@@ -956,6 +956,9 @@ test("panel source does not use script execution or HTML parser sinks", async ()
   const files = (await readdir(new URL("../src/", import.meta.url)))
     .filter((file) => file.endsWith(".ts"))
     .map((file) => `src/${file}`);
+  // Keep the desktop entry point inside the same automatic XSS scan as the
+  // daemon panel and web demo entry points.
+  assert.equal(files.includes("src/desktop.ts"), true);
   for (const file of files) {
     const source = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
     assert.doesNotMatch(
