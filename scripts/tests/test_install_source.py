@@ -59,6 +59,20 @@ class SourceInstallTests(unittest.TestCase):
                 result = self.run_function(f"node_version_supported {version}")
                 self.assertNotEqual(result.returncode, 0)
 
+    def test_app_rust_version_boundaries(self):
+        for version in ("1.90.0", "1.90.1", "1.91.0", "2.0.0"):
+            with self.subTest(version=version):
+                result = self.run_function(
+                    f"version_at_least {version} 1.90.0"
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+        for version in ("1.89.0", "1.89.9"):
+            with self.subTest(version=version):
+                result = self.run_function(
+                    f"version_at_least {version} 1.90.0"
+                )
+                self.assertNotEqual(result.returncode, 0)
+
     def test_non_amd64_warning_describes_runtime_limits(self):
         for architecture in ("aarch64", "arm64", "riscv64"):
             with self.subTest(architecture=architecture):
@@ -74,9 +88,27 @@ class SourceInstallTests(unittest.TestCase):
         self.assertEqual(amd64.returncode, 0, amd64.stderr)
         self.assertEqual(amd64.stderr, "")
 
-    def test_just_install_uses_lightweight_installer(self):
+    def test_install_part_selection(self):
+        for expression, expected in (
+            ("select_parts daemon", "1 0"),
+            ("select_parts app", "0 1"),
+            ("select_parts daemon app", "1 1"),
+        ):
+            with self.subTest(expression=expression):
+                result = self.run_function(
+                    f"{expression}; printf '%s %s' \"$install_daemon\" \"$install_app\""
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, expected)
+
+        for expression in ("select_parts", "select_parts unknown"):
+            with self.subTest(expression=expression):
+                result = self.run_function(expression)
+                self.assertEqual(result.returncode, 2)
+
+    def test_just_install_passes_parts_to_lightweight_installer(self):
         result = subprocess.run(
-            ["just", "--dry-run", "install"],
+            ["just", "--dry-run", "install", "daemon", "app"],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -85,6 +117,7 @@ class SourceInstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         output = result.stdout + result.stderr
         self.assertIn("./packaging/install-source.sh", output)
+        self.assertIn("daemon app", output)
         for excluded in ("nix", "docker", "goreleaser"):
             self.assertNotIn(excluded, output.lower())
 

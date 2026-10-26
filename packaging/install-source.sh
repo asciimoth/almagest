@@ -3,16 +3,38 @@ set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 minimum_go=1.26.9
+minimum_rust=1.90.0
 libseccomp_version=2.6.1
 libseccomp_sha256=501f66c667225d53791b97e1d7cf85ab764c297d04881f60f38f451c4b0ee1be
 
 usage() {
 	cat <<'EOF'
-Usage: packaging/install-source.sh [--check]
+Usage: packaging/install-source.sh [--check] PART...
 
-Build and install Almagest from this source tree. Use --check to check the
-host without building or installing anything.
+Build and install selected Almagest parts from this source tree. Use --check to
+check the host without building or installing anything.
+
+Parts:
+  daemon  Install the daemon and command-line client.
+  app     Install the desktop app.
 EOF
+}
+
+select_parts() {
+	local part
+	declare -g install_daemon=0
+	declare -g install_app=0
+	(($#)) || {
+		printf 'Select at least one part: daemon or app.\n' >&2
+		return 2
+	}
+	for part in "$@"; do
+		case "$part" in
+			daemon) install_daemon=1 ;;
+			app) install_app=1 ;;
+			*) printf 'Unknown install part: %s\n' "$part" >&2; return 2 ;;
+		esac
+	done
 }
 
 version_at_least() {
@@ -80,36 +102,44 @@ add_suggestion_packages() {
 	case "$family:$requirement" in
 		deb:go) append_unique golang-go ;;
 		deb:node) append_unique nodejs; append_unique npm ;;
+		deb:rust) append_unique cargo; append_unique rustc ;;
 		deb:gcc) append_unique build-essential ;;
 		deb:pkgconfig) append_unique pkg-config ;;
 		deb:seccomp) append_unique libseccomp-dev ;;
 		deb:systemd) append_unique systemd ;;
 		deb:sudo) append_unique sudo ;;
 		deb:core) append_unique coreutils ;;
+		deb:appdev) append_unique libdbus-1-dev; append_unique libgtk-3-dev; append_unique libwebkit2gtk-4.1-dev ;;
 		arch:go) append_unique go ;;
 		arch:node) append_unique nodejs; append_unique npm ;;
+		arch:rust) append_unique rust ;;
 		arch:gcc) append_unique gcc ;;
 		arch:pkgconfig) append_unique pkgconf ;;
 		arch:seccomp) append_unique libseccomp ;;
 		arch:systemd) append_unique systemd ;;
 		arch:sudo) append_unique sudo ;;
 		arch:core) append_unique coreutils ;;
+		arch:appdev) append_unique dbus; append_unique gtk3; append_unique webkit2gtk-4.1 ;;
 		suse:go) append_unique go ;;
 		suse:node) append_unique nodejs; append_unique npm ;;
+		suse:rust) append_unique cargo; append_unique rust ;;
 		suse:gcc) append_unique gcc ;;
 		suse:pkgconfig) append_unique pkg-config ;;
 		suse:seccomp) append_unique libseccomp-devel ;;
 		suse:systemd) append_unique systemd ;;
 		suse:sudo) append_unique sudo ;;
 		suse:core) append_unique coreutils ;;
+		suse:appdev) append_unique dbus-1-devel; append_unique gtk3-devel; append_unique webkit2gtk-4_1-devel ;;
 		rpm:go) append_unique golang ;;
 		rpm:node) append_unique nodejs; append_unique npm ;;
+		rpm:rust) append_unique cargo; append_unique rust ;;
 		rpm:gcc) append_unique gcc ;;
 		rpm:pkgconfig) append_unique pkgconf-pkg-config ;;
 		rpm:seccomp) append_unique libseccomp-devel ;;
 		rpm:systemd) append_unique systemd ;;
 		rpm:sudo) append_unique sudo ;;
 		rpm:core) append_unique coreutils ;;
+		rpm:appdev) append_unique dbus-devel; append_unique gtk3-devel; append_unique webkit2gtk4.1-devel ;;
 		deb:static) append_unique libc6-dev ;;
 		arch:static) append_unique glibc ;;
 		rpm:static) append_unique glibc-static ;;
@@ -138,7 +168,7 @@ print_install_suggestion() {
 }
 
 check_host() {
-	local family architecture go_version='' node_version='' command_name link_probe
+	local family architecture go_version='' node_version='' rust_version='' command_name link_probe
 	local -a missing=() probe_flags=() probe_ldflags=() bootstrap_commands=()
 	declare -g -a suggested_packages=()
 	declare -g needs_bundled_seccomp=0
@@ -146,13 +176,16 @@ check_host() {
 	architecture="$(uname -m 2>/dev/null || true)"
 
 	if [[ "$(uname -s 2>/dev/null || true)" != Linux ]]; then
-		missing+=("Linux (the source installer installs a systemd service)")
+		missing+=("Linux")
 	fi
 	case "$architecture" in
 		x86_64|aarch64|arm64) ;;
 		*) missing+=("a supported CPU architecture (x86_64 or arm64)") ;;
 	esac
-	if [[ -n "$architecture" ]]; then
+	if ((install_app)) && [[ "$architecture" != x86_64 ]]; then
+		missing+=("x86_64 (the desktop app supports only linux/amd64)")
+	fi
+	if ((install_daemon)) && [[ -n "$architecture" ]]; then
 		print_architecture_warning "$architecture"
 	fi
 
@@ -163,15 +196,30 @@ check_host() {
 		fi
 	done
 
-	if ! command -v go >/dev/null 2>&1; then
+	if ((install_daemon)) && ! command -v go >/dev/null 2>&1; then
 		missing+=("Go $minimum_go or newer")
 		add_suggestion_packages "$family" go
-	else
+	elif ((install_daemon)); then
 		go_version="$(go env GOVERSION 2>/dev/null || true)"
 		go_version="${go_version#go}"
 		if [[ ! "$go_version" =~ ^[0-9]+\.[0-9]+([.][0-9]+)? ]] || ! version_at_least "$go_version" "$minimum_go"; then
 			missing+=("Go $minimum_go or newer (found ${go_version:-unknown})")
 			add_suggestion_packages "$family" go
+		fi
+	fi
+
+	if ((install_app)); then
+		if ! command -v cargo >/dev/null 2>&1 || ! command -v rustc >/dev/null 2>&1; then
+			missing+=("Rust $minimum_rust or newer and Cargo")
+			add_suggestion_packages "$family" rust
+		else
+			rust_version="$(rustc --version 2>/dev/null || true)"
+			rust_version="${rust_version#rustc }"
+			rust_version="${rust_version%% *}"
+			if [[ ! "$rust_version" =~ ^[0-9]+\.[0-9]+([.][0-9]+)? ]] || ! version_at_least "$rust_version" "$minimum_rust"; then
+				missing+=("Rust $minimum_rust or newer (found ${rust_version:-unknown})")
+				add_suggestion_packages "$family" rust
+			fi
 		fi
 	fi
 
@@ -187,7 +235,7 @@ check_host() {
 		fi
 	fi
 
-	if [[ "$architecture" == x86_64 ]]; then
+	if ((install_daemon)) && [[ "$architecture" == x86_64 ]]; then
 		if ! command -v gcc >/dev/null 2>&1; then
 			missing+=("gcc")
 			add_suggestion_packages "$family" gcc
@@ -229,14 +277,30 @@ check_host() {
 		fi
 	fi
 
-	for command_name in systemctl systemd-sysusers systemd-tmpfiles; do
-		if ! command -v "$command_name" >/dev/null 2>&1; then
-			missing+=("$command_name")
-			add_suggestion_packages "$family" systemd
+	if ((install_app)); then
+		if ! command -v pkg-config >/dev/null 2>&1; then
+			missing+=("pkg-config")
+			add_suggestion_packages "$family" pkgconfig
+		else
+			for command_name in dbus-1 gtk+-3.0 webkit2gtk-4.1; do
+				if ! pkg-config --exists "$command_name"; then
+					missing+=("$command_name development files")
+					add_suggestion_packages "$family" appdev
+				fi
+			done
 		fi
-	done
-	if command -v systemctl >/dev/null 2>&1 && [[ ! -d /run/systemd/system ]]; then
-		missing+=("a running systemd system manager")
+	fi
+
+	if ((install_daemon)); then
+		for command_name in systemctl systemd-sysusers systemd-tmpfiles; do
+			if ! command -v "$command_name" >/dev/null 2>&1; then
+				missing+=("$command_name")
+				add_suggestion_packages "$family" systemd
+			fi
+		done
+		if command -v systemctl >/dev/null 2>&1 && [[ ! -d /run/systemd/system ]]; then
+			missing+=("a running systemd system manager")
+		fi
 	fi
 	if ((EUID != 0)) && ! command -v sudo >/dev/null 2>&1; then
 		missing+=("sudo (or run from a root-owned checkout as root)")
@@ -251,7 +315,7 @@ check_host() {
 		else
 			print_install_suggestion "$family"
 		fi
-		if [[ " ${missing[*]} " == *" Go "* || " ${missing[*]} " == *" Node.js "* ]]; then
+		if [[ " ${missing[*]} " == *" Go "* || " ${missing[*]} " == *" Node.js "* || " ${missing[*]} " == *" Rust "* ]]; then
 			printf 'The distribution package must meet the version shown above; use the language vendor package if it does not.\n' >&2
 		fi
 		return 1
@@ -260,17 +324,10 @@ check_host() {
 	printf 'All source-install requirements are available (%s).\n' "$architecture"
 }
 
-stage_payload() {
+stage_daemon_payload() {
 	local stage="$1" architecture="$2"
 	local -a common_flags extra_ldflags seccomp_flags
 	stage="$(cd -- "$stage" && pwd -P)"
-
-	printf 'Building the admin panel...\n'
-	(
-		cd "$repo_root/panel"
-		npm ci
-		npm run build
-	)
 
 	install -d "$stage/usr/bin" "$stage/usr/libexec/almagest"
 	install -d "$stage/etc/almagest" "$stage/usr/lib/systemd/system"
@@ -318,6 +375,38 @@ stage_payload() {
 	install -m 0644 "$repo_root/LICENSE" "$stage/usr/share/licenses/almagest/LICENSE"
 }
 
+stage_app_payload() {
+	local stage="$1"
+	printf 'Building almagest-app...\n'
+	cargo build --manifest-path "$repo_root/app/src-tauri/Cargo.toml" --release --locked
+	install -Dm0755 "$repo_root/app/src-tauri/target/release/almagest-app" "$stage/usr/bin/almagest-app"
+	install -Dm0644 "$repo_root/packaging/linux/almagest-app.desktop" \
+		"$stage/usr/share/applications/almagest-app.desktop"
+	install -Dm0644 "$repo_root/packaging/linux/almagest-app-autostart.desktop" \
+		"$stage/etc/xdg/autostart/almagest-app.desktop"
+	install -Dm0644 "$repo_root/app/src-tauri/icons/128x128.png" \
+		"$stage/usr/share/icons/hicolor/128x128/apps/almagest.png"
+	install -Dm0644 "$repo_root/packaging/linux/app-README.md" \
+		"$stage/usr/share/doc/almagest-app/README.md"
+	install -Dm0644 "$repo_root/LICENSE" "$stage/usr/share/licenses/almagest-app/LICENSE"
+}
+
+stage_payload() {
+	local stage="$1" architecture="$2"
+	printf 'Building the admin panel...\n'
+	(
+		cd "$repo_root/panel"
+		npm ci
+		npm run build
+	)
+	if ((install_daemon)); then
+		stage_daemon_payload "$stage" "$architecture"
+	fi
+	if ((install_app)); then
+		stage_app_payload "$stage"
+	fi
+}
+
 build_bundled_seccomp() {
 	local stage="$1"
 	local source_root="$stage/libseccomp-source"
@@ -337,9 +426,8 @@ build_bundled_seccomp() {
 	)
 }
 
-install_payload() {
+install_daemon_payload() {
 	local stage="${1:?staged payload is required}" was_active=0 path relative
-	[[ "$EUID" == 0 ]] || { printf 'The final install phase must run as root.\n' >&2; return 1; }
 	[[ -x "$stage/usr/libexec/almagest/almagestd" && -x "$stage/usr/bin/almagest-cli" ]] || {
 		printf 'The staged payload is incomplete: %s\n' "$stage" >&2
 		return 1
@@ -389,21 +477,55 @@ install_payload() {
 	fi
 }
 
+install_app_payload() {
+	local stage="${1:?staged payload is required}"
+	[[ -x "$stage/usr/bin/almagest-app" ]] || {
+		printf 'The staged app payload is incomplete: %s\n' "$stage" >&2
+		return 1
+	}
+	install -Dm0755 "$stage/usr/bin/almagest-app" /usr/bin/almagest-app
+	install -Dm0644 "$stage/usr/share/applications/almagest-app.desktop" \
+		/usr/share/applications/almagest-app.desktop
+	install -Dm0644 "$stage/etc/xdg/autostart/almagest-app.desktop" \
+		/etc/xdg/autostart/almagest-app.desktop
+	install -Dm0644 "$stage/usr/share/icons/hicolor/128x128/apps/almagest.png" \
+		/usr/share/icons/hicolor/128x128/apps/almagest.png
+	install -Dm0644 "$stage/usr/share/doc/almagest-app/README.md" \
+		/usr/share/doc/almagest-app/README.md
+	install -Dm0644 "$stage/usr/share/licenses/almagest-app/LICENSE" \
+		/usr/share/licenses/almagest-app/LICENSE
+}
+
+install_payload() {
+	local stage="${1:?staged payload is required}"
+	[[ "$EUID" == 0 ]] || { printf 'The final install phase must run as root.\n' >&2; return 1; }
+	if ((install_daemon)); then
+		install_daemon_payload "$stage"
+	fi
+	if ((install_app)); then
+		install_app_payload "$stage"
+	fi
+}
+
 main() {
-	local mode="${1:-}" architecture stage
-	case "$mode" in
+	local check_only=0 architecture stage
+	case "${1:-}" in
 		--help|-h) usage; return ;;
-		--check|'') ;;
+		--check) check_only=1; shift ;;
 		--install-stage)
 			shift
-			install_payload "${1:-}"
+			stage="${1:-}"
+			[[ -n "$stage" ]] || { usage >&2; return 2; }
+			shift
+			select_parts "$@"
+			install_payload "$stage"
 			return
 			;;
-		*) usage >&2; return 2 ;;
 	esac
 
+	select_parts "$@" || { usage >&2; return 2; }
 	check_host
-	[[ "$mode" == --check ]] && return
+	((check_only)) && return
 	architecture="$(uname -m)"
 	[[ "$architecture" == arm64 ]] && architecture=aarch64
 	install -d "$repo_root/build"
@@ -415,10 +537,13 @@ main() {
 	if ((EUID == 0)); then
 		install_payload "$stage"
 	else
-		sudo -- "$repo_root/packaging/install-source.sh" --install-stage "$stage"
+		sudo -- "$repo_root/packaging/install-source.sh" --install-stage "$stage" "$@"
 	fi
-	printf '\nAlmagest is installed. Enable and start it with:\n'
-	printf '  sudo systemctl enable --now almagestd.service\n'
+	printf '\nThe selected Almagest parts are installed.\n'
+	if ((install_daemon)); then
+		printf 'Enable and start the daemon with:\n'
+		printf '  sudo systemctl enable --now almagestd.service\n'
+	fi
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

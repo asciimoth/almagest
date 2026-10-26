@@ -103,14 +103,16 @@ On a Debian-, RPM-, or Arch-based Linux system, install
 [`just`](https://github.com/casey/just), clone this repository, and run:
 
 ```sh
-just install
+just install daemon app
 ```
 
-The command checks all build and runtime requirements before it builds. If a
-requirement is missing, it prints a package-manager command for the current
-distribution when one is available. It builds and installs the same Linux
-payload as the native package without Nix, Docker, GoReleaser, or another
-package builder. Existing files in `/etc/almagest` are preserved.
+Specify `daemon`, `app`, or both. The `daemon` part includes the command-line
+client. The command checks the selected parts' build and runtime requirements
+before it builds. If a requirement is missing, it prints a package-manager
+command for the current distribution when one is available. It builds and
+installs the same Linux payloads as the native packages without Nix, Docker,
+GoReleaser, or another package builder. Existing files in `/etc/almagest` are
+preserved.
 
 The command does not enable the service. After installation, start it with:
 
