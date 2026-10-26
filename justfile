@@ -3,7 +3,7 @@ set dotenv-load := true
 
 
 # TODO: Enable vulncheck again after Go is updated to 1.26.10 or later.
-check *selectors: tidy typos fmt lint actionlint shellcheck vet build-wasm app-test # vulncheck
+check *selectors: tidy typos fmt lint actionlint shellcheck vet build-wasm # vulncheck
   @just locales-check
   @just test-total {{quote(selectors)}}
   @if [[ -z {{quote(selectors)}} ]]; then just fuzz; fi
@@ -65,7 +65,7 @@ test-e2e-docker-all: repair-go-work build-web
 test-e2e-light:
   E2E_EXCLUDE_HEAVY=1 just test-e2e
 
-test: test-go test-js
+test: test-go test-js app-test
 
 # Run all Go fuzz targets with one shared time budget.
 fuzz: repair-go-work certcat-ensure-generated build-web

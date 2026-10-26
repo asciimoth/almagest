@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GO_MODULES = {"certcat", "lib", "bin"}
 WINVM_MANIFEST = ROOT / "dev/winvm/test-suites.json"
 TEST_NAME = re.compile(r"(?:Test|Fuzz|Example)[A-Za-z0-9_]*(?:/[A-Za-z0-9_.-]+)*$")
+RUST_TEST_NAME = re.compile(r"[A-Za-z0-9_]+(?:::[A-Za-z0-9_]+)*$")
 
 
 class SelectionError(ValueError):
@@ -34,6 +35,7 @@ class GoSelection:
 @dataclass
 class Selections:
     go: list[GoSelection]
+    rust: list[str]
     e2e: list[str]
     winvm: list[str]
     javascript: list[str]
@@ -93,7 +95,7 @@ def load_winvm_cases(path=WINVM_MANIFEST):
 def parse_selectors(values, root=ROOT, manifest_path=WINVM_MANIFEST):
     if not values:
         raise SelectionError("at least one test selector is required")
-    selected = Selections([], [], [], [], [], [])
+    selected = Selections([], [], [], [], [], [], [])
     winvm_cases = load_winvm_cases(manifest_path)
     seen = set()
     for selector in values:
@@ -102,6 +104,11 @@ def parse_selectors(values, root=ROOT, manifest_path=WINVM_MANIFEST):
         seen.add(selector)
         if selector.startswith("go:"):
             selected.go.append(parse_go(selector.removeprefix("go:"), root))
+        elif selector.startswith("rust:"):
+            name = selector.removeprefix("rust:")
+            if not RUST_TEST_NAME.fullmatch(name):
+                raise SelectionError(f"invalid exact Rust test name: {name}")
+            selected.rust.append(name)
         elif selector.startswith("e2e:"):
             name = selector.removeprefix("e2e:")
             if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", name):
@@ -141,8 +148,8 @@ def parse_selectors(values, root=ROOT, manifest_path=WINVM_MANIFEST):
             selected.windows_package.append(name)
         else:
             raise SelectionError(
-                f"unknown selector {selector!r}; use go:, e2e:, winvm:, js:, "
-                "python:, or winpkg:"
+                f"unknown selector {selector!r}; use go:, rust:, e2e:, winvm:, "
+                "js:, python:, or winpkg:"
             )
     return selected, winvm_cases
 
@@ -234,6 +241,27 @@ class Harness:
                 print(f"selected Go test did not run: {test.test}", file=sys.stderr)
             self.failed = True
 
+    def rust_test(self, name):
+        command = [
+            "cargo", "test", "--manifest-path", "app/src-tauri/Cargo.toml",
+            "--locked", name, "--", "--exact",
+        ]
+        print("==> selected:", shlex.join(command), flush=True)
+        result = self.run_process(
+            command, cwd=self.root, check=False, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True,
+        )
+        if result.stdout:
+            print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+        ran = any(
+            re.match(rf"^test {re.escape(name)} \.\.\. ", line)
+            for line in (result.stdout or "").splitlines()
+        )
+        if result.returncode or not ran:
+            if not ran:
+                print(f"selected Rust test did not run: {name}", file=sys.stderr)
+            self.failed = True
+
     def execute(self, selected, winvm_cases):
         if not self.prepare_host_build(selected):
             return 1
@@ -241,6 +269,9 @@ class Harness:
         if selected.go:
             for test in selected.go:
                 self.go_test(test)
+
+        for test in selected.rust:
+            self.rust_test(test)
 
         if selected.javascript:
             self.command(["node", "--test", *selected.javascript], cwd=self.root / "panel")
@@ -291,8 +322,9 @@ class Harness:
 def main(arguments=None):
     parser = argparse.ArgumentParser(
         description=__doc__,
-        epilog=("Selectors: go:MODULE[/PACKAGE]:TEST, e2e:CASE, winvm:CASE-ID, "
-                "js:panel/tests/FILE.mjs, python:DOTTED-UNITTEST, "
+        epilog=("Selectors: go:MODULE[/PACKAGE]:TEST, rust:TEST, e2e:CASE, "
+                "winvm:CASE-ID, js:panel/tests/FILE.mjs, "
+                "python:DOTTED-UNITTEST, "
                 "winpkg:{build,smoke,lifecycle,integration}"),
     )
     parser.add_argument("selectors", nargs="+")

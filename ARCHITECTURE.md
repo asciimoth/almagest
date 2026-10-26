@@ -108,6 +108,7 @@ narrow set of tests that the change adds, changes, or can affect:
 
 ```sh
 just check go:lib/http:TestHTTPClientServerE2EMockNetwork e2e:static_dns_records
+just check rust:endpoint::tests::rejects_invalid_endpoints
 just test-total winvm:m8::daemon-user-named-pipe-cli-access winvm:m6::xtor-restricted-token
 just test-total js:panel/tests/api_model.test.mjs
 just test-total python:scripts.tests.test_cycles.CycleTests.test_go_leaf_and_package_failures
@@ -118,6 +119,8 @@ The selector forms are:
 
 - `go:MODULE[/PACKAGE]:TEST` for one exact Go test, fuzz target, or subtest in
   `certcat`, `lib`, or `bin`.
+- `rust:TEST` for one exact Rust test in the desktop app, including its module
+  path.
 - `e2e:CASE` for one directory name under `e2e/cases/`.
 - `winvm:CASE-ID` for one Go case ID in `dev/winvm/test-suites.json`.
 - `js:panel/tests/FILE.mjs` for one panel test file.

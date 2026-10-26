@@ -18,11 +18,12 @@ ROOT = SCRIPT.parents[1]
 
 
 class SelectedTestHarnessTests(unittest.TestCase):
-    def test_parses_exact_go_e2e_winvm_js_python_and_package_tests(self):
+    def test_parses_exact_go_rust_e2e_winvm_js_python_and_package_tests(self):
         manifest_cases = MODULE.load_winvm_cases()
         case_id = next(iter(manifest_cases))
         selected, _ = MODULE.parse_selectors([
             "go:lib/http:TestHTTPClientServerE2EMockNetwork",
+            "rust:endpoint::tests::rejects_invalid_endpoints",
             "e2e:static_dns_records",
             f"winvm:{case_id}",
             "js:panel/tests/api_model.test.mjs",
@@ -31,6 +32,9 @@ class SelectedTestHarnessTests(unittest.TestCase):
         ])
         self.assertEqual(selected.go, [MODULE.GoSelection(
             "lib", "./http", "TestHTTPClientServerE2EMockNetwork")])
+        self.assertEqual(selected.rust, [
+            "endpoint::tests::rejects_invalid_endpoints",
+        ])
         self.assertEqual(selected.e2e, ["static_dns_records"])
         self.assertEqual(selected.winvm, [case_id])
         self.assertEqual(selected.javascript, ["tests/api_model.test.mjs"])
@@ -104,6 +108,35 @@ class SelectedTestHarnessTests(unittest.TestCase):
 
         def run(argv, **kwargs):
             return subprocess.CompletedProcess(argv, 0, stdout="")
+
+        with redirect_stderr(io.StringIO()):
+            self.assertEqual(MODULE.Harness(run=run).execute(selected, cases), 1)
+
+    def test_exact_rust_selection_runs_only_that_test(self):
+        name = "endpoint::tests::rejects_invalid_endpoints"
+        selected, cases = MODULE.parse_selectors([f"rust:{name}"])
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append(argv)
+            output = f"running 1 test\ntest {name} ... ok\n"
+            return subprocess.CompletedProcess(argv, 0, stdout=output)
+
+        self.assertEqual(MODULE.Harness(run=run).execute(selected, cases), 0)
+        self.assertEqual(calls, [[
+            "cargo", "test", "--manifest-path", "app/src-tauri/Cargo.toml",
+            "--locked", name, "--", "--exact",
+        ]])
+
+    def test_rust_selection_fails_when_the_exact_test_does_not_run(self):
+        selected, cases = MODULE.parse_selectors([
+            "rust:endpoint::tests::not_a_real_test",
+        ])
+
+        def run(argv, **kwargs):
+            return subprocess.CompletedProcess(
+                argv, 0, stdout="running 0 tests\n",
+            )
 
         with redirect_stderr(io.StringIO()):
             self.assertEqual(MODULE.Harness(run=run).execute(selected, cases), 1)
