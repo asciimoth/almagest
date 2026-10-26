@@ -13,9 +13,22 @@
 #       isolation = "off"; # Use "auto" or "strict" to enable isolation.
 #       settings.Config.Save.IdleMilliseconds = 500;
 #     };
-#   Generated settings are read-only and are stored in the Nix store. For
-#   secrets, use configFile and protectedConfigFile and set settings and
-#   protectedSettings to null.
+#   Generated settings are read-only and are stored in the Nix store.
+# - Initialize a mutable configuration from Nix settings:
+#     services.almagestd = {
+#       enable = true;
+#       isolation = "off";
+#       settings = null;
+#       initialSettings = {
+#         Config.Save.IdleMilliseconds = 500;
+#         nodes.proxy.Class = "almagest/SOCKS5Server";
+#       };
+#       configFile = "/var/lib/almagest/alm.hujson";
+#     };
+#   The service creates configFile only when it does not exist. Almagest can
+#   then update the file. protectedSettings stays read-only and Nix-managed.
+#   For protected secrets, use protectedConfigFile and set protectedSettings
+#   to null.
 {
   description = "almagest dev env";
   inputs = {
@@ -540,7 +553,13 @@
           (if cfg.settings == null then {} else cfg.settings)
           // { Protected = if cfg.protectedSettings == null then {} else cfg.protectedSettings; }
         );
+        initialConfig = jsonFormat.generate "almagestd-initial.json" cfg.initialSettings;
+        generatedProtectedConfig = jsonFormat.generate "almagestd-protected.json" cfg.protectedSettings;
         useGeneratedConfig = cfg.configFile == null;
+        protectedConfig =
+          if cfg.protectedConfigFile == null
+          then generatedProtectedConfig
+          else cfg.protectedConfigFile;
       in {
         options.services.almagestd = {
           enable = lib.mkEnableOption "Almagest network daemon";
@@ -569,6 +588,24 @@
             '';
           };
 
+          initialSettings = lib.mkOption {
+            type = lib.types.nullOr jsonFormat.type;
+            default = null;
+            example = lib.literalExpression ''
+              {
+                nodes.proxy = {
+                  Class = "almagest/SOCKS5Server";
+                };
+              }
+            '';
+            description = ''
+              Initial regular daemon configuration for configFile. Before the
+              service starts, the module copies this value to configFile only
+              when that file does not exist. Almagest can then update the file.
+              Set settings to null when this option is used.
+            '';
+          };
+
           protectedSettings = lib.mkOption {
             type = lib.types.nullOr jsonFormat.type;
             default = {
@@ -584,8 +621,8 @@
             };
             description = ''
               Protected daemon configuration. The module renders this value
-              as JSON together with settings. Values in this option are stored
-              in the Nix store. Use protectedConfigFile for secrets.
+              as JSON. Values in this option are stored in the Nix store. Use
+              protectedConfigFile for secrets.
             '';
           };
 
@@ -640,12 +677,16 @@
               message = "Set exactly one of services.almagestd.settings and services.almagestd.configFile.";
             }
             {
+              assertion = cfg.initialSettings == null || cfg.configFile != null;
+              message = "services.almagestd.initialSettings requires services.almagestd.configFile.";
+            }
+            {
               assertion = (cfg.protectedConfigFile == null) == (cfg.protectedSettings != null);
               message = "Set exactly one of services.almagestd.protectedSettings and services.almagestd.protectedConfigFile.";
             }
             {
-              assertion = (cfg.configFile == null) == (cfg.protectedConfigFile == null);
-              message = "Generated and file-based Almagest configuration cannot be mixed.";
+              assertion = cfg.configFile != null || cfg.protectedConfigFile == null;
+              message = "services.almagestd.protectedConfigFile requires services.almagestd.configFile.";
             }
           ];
 
@@ -679,9 +720,17 @@
             wantedBy = [ "multi-user.target" ];
             wants = [ "network-online.target" ];
             after = [ "network-online.target" ];
-            preStart = lib.mkIf (cfg.isolation != "off") ''
-              ${cfg.package}/libexec/almagest/almagest-isolation-storage prepare
-            '';
+            preStart = lib.concatStringsSep "\n" (
+              lib.optional (cfg.initialSettings != null) ''
+                config_file=${lib.escapeShellArg (toString cfg.configFile)}
+                if [ ! -e "$config_file" ]; then
+                  ${pkgs.coreutils}/bin/install -D --mode=0600 ${initialConfig} "$config_file"
+                fi
+              ''
+              ++ lib.optional (cfg.isolation != "off") ''
+                ${cfg.package}/libexec/almagest/almagest-isolation-storage prepare
+              ''
+            );
             serviceConfig = {
               Type = "simple";
               ExecStart =
@@ -690,7 +739,7 @@
                 + lib.optionalString useGeneratedConfig " --stdin"
                 + lib.optionalString (!useGeneratedConfig) (
                   " --config ${lib.escapeShellArg (toString cfg.configFile)}"
-                  + " --protected ${lib.escapeShellArg (toString cfg.protectedConfigFile)}"
+                  + " --protected ${lib.escapeShellArg (toString protectedConfig)}"
                 )
                 + lib.optionalString (cfg.extraArgs != []) " ${lib.escapeShellArgs cfg.extraArgs}";
               StandardInput = lib.mkIf useGeneratedConfig "file:${generatedConfig}";
