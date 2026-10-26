@@ -22,11 +22,17 @@ tauri = { version = "2.12.5", default-features = false, features = [
   "compression",
   "dbus",
   "isolation",
+  "tray-icon",
   "wry",
   "x11",
 ] }
 tungstenite = { version = "0.28.0", default-features = false, features = ["handshake"] }
 url = "2.5.8"
+
+[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))'.dependencies]
+# Tauri enables AppIndicator, which panics at runtime when its optional shared
+# library is absent. Enabling KSNI makes tray-icon use its D-Bus backend.
+tray-icon = { version = "0.25.1", default-features = false, features = ["ksni"] }
 
 [target.'cfg(windows)'.dependencies]
 almagest-windows-pipe = { path = "windows-pipe" }

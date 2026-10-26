@@ -3,6 +3,7 @@
 mod connection;
 mod endpoint;
 mod options;
+mod tray;
 
 use connection::{AdminConnection, FrontendEvent};
 use options::Options;
@@ -38,6 +39,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let connection = AdminConnection::connect(&endpoint)?;
     tauri::Builder::default()
         .manage(connection)
+        .setup(tray::setup)
+        .on_window_event(tray::handle_window_event)
         .invoke_handler(tauri::generate_handler![listen_admin, send_admin_message])
         .run(tauri::generate_context!())?;
     Ok(())

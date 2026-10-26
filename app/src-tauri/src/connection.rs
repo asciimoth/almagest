@@ -46,6 +46,7 @@ struct Frontend {
 struct FrontendState {
     channel: Option<Channel<FrontendEvent>>,
     connected: bool,
+    status_handler: Option<Arc<dyn Fn(bool) + Send + Sync>>,
 }
 
 impl Frontend {
@@ -54,8 +55,26 @@ impl Frontend {
             state: Mutex::new(FrontendState {
                 channel: None,
                 connected: true,
+                status_handler: None,
             }),
         }
+    }
+
+    fn set_status_handler(
+        &self,
+        handler: impl Fn(bool) + Send + Sync + 'static,
+    ) -> Result<(), String> {
+        let handler = Arc::new(handler);
+        let connected = {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| "frontend state lock is poisoned")?;
+            state.status_handler = Some(handler.clone());
+            state.connected
+        };
+        handler(connected);
+        Ok(())
     }
 
     fn register(&self, channel: Channel<FrontendEvent>) -> Result<(), String> {
@@ -84,14 +103,21 @@ impl Frontend {
     }
 
     fn disconnected(&self) {
-        if let Ok(mut state) = self.state.lock()
-            && state.connected
-        {
+        let handler = if let Ok(mut state) = self.state.lock() {
+            if !state.connected {
+                return;
+            }
             state.connected = false;
             Self::send_locked(
                 &mut state,
                 FrontendEvent::ConnectionStatus { connected: false },
             );
+            state.status_handler.clone()
+        } else {
+            None
+        };
+        if let Some(handler) = handler {
+            handler(false);
         }
     }
 
@@ -164,6 +190,13 @@ impl AdminConnection {
 
     pub(crate) fn register(&self, channel: Channel<FrontendEvent>) -> Result<(), String> {
         self.frontend.register(channel)
+    }
+
+    pub(crate) fn set_status_handler(
+        &self,
+        handler: impl Fn(bool) + Send + Sync + 'static,
+    ) -> Result<(), String> {
+        self.frontend.set_status_handler(handler)
     }
 
     pub(crate) fn send(&self, message: String) -> Result<(), String> {
@@ -321,7 +354,7 @@ fn is_transient_web_error(error: &tungstenite::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{AdminConnection, validate_request};
+    use super::{AdminConnection, Frontend, validate_request};
     use crate::endpoint::Endpoint;
     use std::{
         io::{BufRead, BufReader},
@@ -343,6 +376,21 @@ mod tests {
         ] {
             assert!(validate_request(invalid).is_err(), "accepted {invalid}");
         }
+    }
+
+    #[test]
+    fn reports_connection_status_to_rust_handler() {
+        let frontend = Frontend::new();
+        let (sender, receiver) = mpsc::channel();
+        frontend
+            .set_status_handler(move |connected| sender.send(connected).expect("report status"))
+            .expect("set status handler");
+
+        assert!(receiver.recv().expect("initial status"));
+        frontend.disconnected();
+        assert!(!receiver.recv().expect("disconnected status"));
+        frontend.disconnected();
+        assert!(receiver.try_recv().is_err());
     }
 
     #[cfg(unix)]
