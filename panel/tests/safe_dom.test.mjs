@@ -865,6 +865,27 @@ test("documentation links use the hosting-mode URL resolver when supplied", () =
   assert.equal(link?.rel, "noopener noreferrer");
 });
 
+test("desktop documentation links stay in the current webview without parsing HTML", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(
+    root,
+    `[${payload}](@docs/node/almagest/Tun)`,
+    "panel",
+    "",
+    undefined,
+    () => "./docs/index.html?page=node%2Falmagest%2FTun",
+    undefined,
+    "_self",
+  );
+
+  const link = root.querySelector("a");
+  assert.equal(link?.target, "_self");
+  assertNoParsedPayload(root);
+  // The generated href is fixed by the trusted resolver, not by Markdown.
+  assert.equal(link?.getAttribute("href"), "./docs/index.html?page=node%2Falmagest%2FTun");
+});
+
 test("documentation links are relative to the current documentation page", () => {
   installDOM();
   const root = document.createElement("div");

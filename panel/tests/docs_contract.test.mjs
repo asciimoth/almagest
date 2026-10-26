@@ -132,19 +132,19 @@ test("documentation links adjacent pages in sidebar order", () => {
   assert.match(panelStyle, /\.docs-page-mark-available\s*\{[^}]*background:\s*var\(--green\)/s);
 });
 
-test("panel documentation controls open the separate page in a new tab", () => {
+test("web panel documentation controls keep their separate-page behavior", () => {
   const dom = new JSDOM(panelHTML);
   const button = dom.window.document.querySelector("#tab-docs");
 
   assert.equal(button?.getAttribute("role"), "link");
   assert.equal(button?.hasAttribute("data-tab"), false);
-  assert.match(appSource, /window\.open\(documentationURL\(\), "_blank"/);
-  assert.match(appSource, /docsLink\.target = "_blank"/);
+  assert.match(appSource, /window\.open\(url, "_blank"\)/);
+  assert.match(appSource, /if \(currentPanelMode === "desktop"\)[\s\S]*?else \{\s*docsLink\.target = "_blank"/);
   assert.match(appSource, /docsLink\.rel = "opener"/);
   assert.match(appSource, /documentationURL\(`node\/\$\{node\.class\}`\)/);
   assert.match(appSource, /button\.addEventListener\("contextmenu"/);
   assert.match(appSource, /localizedText\("node\.docs\.context_menu", "Open documentation"\)/);
-  assert.match(appSource, /window\.open\(documentationURL\(`node\/\$\{cls\.class\}`\), "_blank"\)/);
+  assert.match(appSource, /openDocumentation\(`node\/\$\{cls\.class\}`\)/);
   assert.match(appSource, /short_description\.trimStart\(\)\.startsWith\("DEBUG "\)/);
   assert.match(appSource, /import \{ documentationURL \} from "\.\/site_navigation\.js"/);
   assert.match(siteNavigationSource, /if \(configured\)/);

@@ -2,6 +2,7 @@
 
 mod connection;
 mod endpoint;
+mod navigation;
 mod options;
 mod tray;
 
@@ -38,6 +39,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let connection = AdminConnection::connect(&endpoint);
     tauri::Builder::default()
+        // The opener plugin is used only from trusted Rust. No opener command
+        // is present in the frontend capability.
+        .plugin(tauri_plugin_opener::init())
+        .plugin(navigation::plugin())
         .manage(connection)
         .setup(tray::setup)
         .on_window_event(tray::handle_window_event)

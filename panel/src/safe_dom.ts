@@ -776,6 +776,7 @@ type MarkdownRenderContext = {
   onPortHighlight: MarkdownPortHighlightHandler | undefined;
   documentationURL: ((id: string) => string) | undefined;
   onGraphPreview: MarkdownGraphPreviewHandler | undefined;
+  documentationTarget: "_blank" | "_self";
 };
 
 export function renderNodeDescription(
@@ -786,13 +787,16 @@ export function renderNodeDescription(
   onPortHighlight?: MarkdownPortHighlightHandler,
   documentationURL?: (id: string) => string,
   onGraphPreview?: MarkdownGraphPreviewHandler,
+  documentationTarget: "_blank" | "_self" = "_blank",
 ): void {
   const text = value.trim();
   if (!text) {
     node.textContent = t("node.description.empty", "No long description is registered for this node class.");
     return;
   }
-  const context: MarkdownRenderContext = { mode, documentID, onPortHighlight, documentationURL, onGraphPreview };
+  const context: MarkdownRenderContext = {
+    mode, documentID, onPortHighlight, documentationURL, onGraphPreview, documentationTarget,
+  };
   const headingIDs = new Map<string, number>();
   node.replaceChildren(...parseMarkdownBlocks(text).flatMap((block) => {
     const rendered = renderMarkdownBlock(block, context, headingIDs);
@@ -1163,7 +1167,16 @@ function renderMarkdownDocumentationLink(
     : context.mode === "docs"
     ? relativeMarkdownDocumentationURL(context.documentID, destination)
     : `./docs/${encodeMarkdownDocumentationID(destination)}`;
-  if (context.mode === "panel") anchor.target = "_blank";
+  if (context.mode === "panel") {
+    anchor.target = context.documentationTarget;
+    if (context.documentationTarget === "_self") {
+      anchor.addEventListener("click", (event) => {
+        // Do not let modifier keys request another native webview.
+        event.preventDefault();
+        window.location.assign(anchor.href);
+      });
+    }
+  }
   if (title) anchor.title = title;
   anchor.rel = "noopener noreferrer";
   return anchor;

@@ -5,12 +5,13 @@ import "github.com/asciimoth/almagest/lib/typecolor"
 type DocsMethod string
 
 const (
-	MethodDocsTree DocsMethod = "tree"
-	MethodDocsPage DocsMethod = "page"
+	MethodDocsTree      DocsMethod = "tree"
+	MethodDocsPage      DocsMethod = "page"
+	MethodDocsNodeClass DocsMethod = "node_class"
 )
 
 func DocsMethods() []string {
-	return []string{string(MethodDocsTree), string(MethodDocsPage)}
+	return []string{string(MethodDocsTree), string(MethodDocsPage), string(MethodDocsNodeClass)}
 }
 
 type DocsPageRequest struct {

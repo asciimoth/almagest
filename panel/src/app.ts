@@ -247,6 +247,11 @@ import { createAdminTransport, type AdminTransport } from "./admin_transport.js"
 import { docsClient } from "./docs_client.js";
 import { documentationURL } from "./site_navigation.js";
 import { applyPanelMode, panelMode, showsRuntimeSecurityStatus } from "./panel_mode.js";
+import {
+  rememberDesktopDocsPage,
+  rememberDesktopPanelTab,
+  rememberDesktopSurface,
+} from "./desktop_route_memory.js";
 
 const SECRET_NODE_AUTOCOMPLETE_LIMIT = 8;
 const TLS_CERT_OPENSSL_COMMAND = [
@@ -485,6 +490,7 @@ let nativePasteEvents = 0;
 let pasteShortcutActive = false;
 let pasteShortcutConsumed = false;
 let apiTransport: AdminTransport | null = null;
+let desktopNavigationSuspended = false;
 let apiReconnectAllowed = true;
 let apiConnectPending = false;
 let apiReconnectAfterPending = false;
@@ -704,6 +710,12 @@ function connectAPI(): Promise<void> {
     },
     close() {
       if (apiTransport !== transport) return;
+      if (desktopNavigationSuspended) {
+        apiTransport = null;
+        rejectPendingAPIRequests(new Error("Admin API page listener suspended"));
+        resetAPISubscriptions();
+        return;
+      }
       handleAPIDisconnect();
       apiTransport = null;
     },
@@ -755,12 +767,14 @@ function handleAPIDisconnect(): void {
     unavailable ? "Browser engine not included yet" : "Admin API disconnected",
     true,
   );
-  for (const { reject } of pendingRequests.values()) {
-    reject(new Error("Admin API disconnected"));
-  }
-  pendingRequests.clear();
+  rejectPendingAPIRequests(new Error("Admin API disconnected"));
   resetAPISubscriptions();
   scheduleAPIReconnect();
+}
+
+function rejectPendingAPIRequests(error: Error): void {
+  for (const { reject } of pendingRequests.values()) reject(error);
+  pendingRequests.clear();
 }
 
 function scheduleAPIReconnect(): void {
@@ -2094,7 +2108,7 @@ function renderClassPanel(selectedCount: number): void {
       new LiteGraph.ContextMenu([{
         content: localizedText("node.docs.context_menu", "Open documentation"),
         callback: () => {
-          window.open(documentationURL(`node/${cls.class}`), "_blank");
+          openDocumentation(`node/${cls.class}`);
         },
       }], { event }, canvas.getCanvasWindow());
     });
@@ -2113,6 +2127,19 @@ function addPastaNodeAt(className: string, pos: [number, number]): void {
     }
     placement.id = id;
   });
+}
+
+function openDocumentation(page = ""): void {
+  const url = documentationURL(page);
+  if (currentPanelMode === "desktop") {
+    if (page) rememberDesktopDocsPage(window.localStorage, page);
+    rememberDesktopSurface(window.localStorage, "docs");
+    // The desktop has one surface. Replace it instead of building a hidden
+    // cross-document history stack that WebKit can restore asynchronously.
+    window.location.replace(url);
+  } else {
+    window.open(url, "_blank");
+  }
 }
 
 function visibleCanvasSpawnPosition(): [number, number] {
@@ -2224,17 +2251,36 @@ function renderNodePanel(id: number): void {
   const descriptionPanel = document.createElement("div");
   descriptionPanel.className = "node-description";
   descriptionPanel.dataset.nodeDescription = "";
-  renderNodeDescription(descriptionPanel, description, "panel", "", undefined, documentationURL);
+  renderNodeDescription(
+    descriptionPanel,
+    description,
+    "panel",
+    "",
+    undefined,
+    documentationURL,
+    undefined,
+    currentPanelMode === "desktop" ? "_self" : "_blank",
+  );
   const descriptionHeader = document.createElement("div");
   descriptionHeader.className = "node-description-header";
   descriptionHeader.append(textElement("h2", shortClass(node.class)));
   if (!nodeClass?.short_description.trimStart().startsWith("DEBUG ")) {
-    const docsLink = textElement("a", localizedText("node.docs.open", "Open in a new tab"));
+    const docsLink = textElement("a", localizedText(
+      "node.docs.open",
+      currentPanelMode === "desktop" ? "Open documentation" : "Open in a new tab",
+    ));
     docsLink.className = "node-docs-link";
     docsLink.href = documentationURL(`node/${node.class}`);
-    docsLink.target = "_blank";
-    // The trusted same-origin docs use the opener relationship to find this panel tab.
-    docsLink.rel = "opener";
+    if (currentPanelMode === "desktop") {
+      docsLink.addEventListener("click", (event) => {
+        event.preventDefault();
+        openDocumentation(`node/${node.class}`);
+      });
+    } else {
+      docsLink.target = "_blank";
+      // The trusted same-origin docs use the opener relationship to find this panel tab.
+      docsLink.rel = "opener";
+    }
     descriptionHeader.append(docsLink);
   }
   docsPanel.append(descriptionHeader, descriptionPanel);
@@ -2250,7 +2296,7 @@ function renderNodePanel(id: number): void {
     ) {
       renderNodeDescription(descriptionPanel, text ?? "", "panel", "", (side, name, highlighted) => {
         setDescriptionPortHighlight(id, side, name, highlighted);
-      }, documentationURL);
+      }, documentationURL, undefined, currentPanelMode === "desktop" ? "_self" : "_blank");
     }
   });
   for (const tab of el.sidekick.querySelectorAll<HTMLButtonElement>("[data-node-tab]")) {
@@ -6412,6 +6458,7 @@ function setTab(name: string, updateLocation = true): void {
   if (previousTab === "tls" && name !== "tls") deactivateTLSPanel();
   if (previousTab === "kv" && name !== "kv") deactivateKVPanel();
   activeTab = name;
+  if (currentPanelMode === "desktop") rememberDesktopPanelTab(window.localStorage, name);
   if (name !== "graph") graphShortcutsArmed = false;
   for (const tab of el.tabs) {
     const selected = tab.dataset.tab === name;
@@ -6445,7 +6492,15 @@ function setTab(name: string, updateLocation = true): void {
     });
   }
   updateWorkerAgeTimer();
-  if (updateLocation && window.location.hash !== tabHash(name)) window.location.hash = tabHash(name);
+  if (updateLocation && window.location.hash !== tabHash(name)) {
+    if (currentPanelMode === "desktop") {
+      // Replacing the hash keeps a cached documentation entry in the forward
+      // list. Browser panels retain their existing per-tab history behavior.
+      window.history.replaceState(window.history.state, "", tabHash(name));
+    } else {
+      window.location.hash = tabHash(name);
+    }
+  }
 }
 
 function moveTabFocus(event: KeyboardEvent): void {
@@ -6690,12 +6745,26 @@ function wireUI(): void {
   });
   window.addEventListener("focus", requestImmediateAPIReconnect);
   window.addEventListener("pageshow", (event) => {
-    if (event.persisted) requestImmediateAPIReconnect();
+    if (!event.persisted) return;
+    if (currentPanelMode === "desktop") {
+      desktopNavigationSuspended = false;
+      void startAPIConnection(true);
+    } else {
+      requestImmediateAPIReconnect();
+    }
+  });
+  window.addEventListener("pagehide", () => {
+    if (currentPanelMode !== "desktop") return;
+    desktopNavigationSuspended = true;
+    apiReconnectAfterPending = false;
+    window.clearTimeout(apiReconnectTimer);
+    apiReconnectTimer = 0;
+    apiTransport?.close();
   });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") requestImmediateAPIReconnect();
   });
-  el.docs.addEventListener("click", () => window.open(documentationURL(), "_blank"));
+  el.docs.addEventListener("click", () => openDocumentation());
   el.secPanel.addEventListener("scroll", rememberSecScrollState);
   el.dnsPanel.addEventListener("scroll", rememberDNSScrollState);
   el.tlsPanel.addEventListener("scroll", rememberTLSScrollState);
@@ -6788,9 +6857,9 @@ function installTestHooks(): void {
   };
 }
 
-async function initializeAPISession(): Promise<void> {
+async function initializeAPISession(quiet = false): Promise<void> {
   await connectAPI();
-  setBackendStatus("app.status.initializing", "Initializing admin API");
+  if (!quiet) setBackendStatus("app.status.initializing", "Initializing admin API");
   const hello = await backend("hello");
   applyProjectVersionStatus(hello.project_version_status);
   if (showsRuntimeSecurityStatus(currentPanelMode)) {
@@ -6822,14 +6891,14 @@ async function initializeAuxiliaryAPISession(): Promise<void> {
   ]);
 }
 
-async function startAPIConnection(): Promise<void> {
+async function startAPIConnection(quiet = false): Promise<void> {
   if (apiConnectPending || apiTransport?.connected) return;
   window.clearTimeout(apiReconnectTimer);
   apiReconnectTimer = 0;
   apiConnectPending = true;
-  setBackendStatus("app.status.connecting", "Connecting admin API");
+  if (!quiet) setBackendStatus("app.status.connecting", "Connecting admin API");
   try {
-    await initializeAPISession();
+    await initializeAPISession(quiet);
     apiReconnectAttempt = 0;
     setBackendStatus("app.status.connected", "Admin API connected");
     if (panelStarted) {
@@ -6842,6 +6911,10 @@ async function startAPIConnection(): Promise<void> {
   } catch (error) {
     const failedTransport = apiTransport;
     failedTransport?.close();
+    if (desktopNavigationSuspended) {
+      apiTransport = null;
+      return;
+    }
     handleAPIDisconnect();
     apiTransport = null;
     log("api", "warn", `Admin API connection failed: ${errorMessage(error)}`);

@@ -33,6 +33,7 @@ async function optimize(directory) {
 
 await rm(target, { recursive: true, force: true });
 await mkdir(new URL("public/build/", target), { recursive: true });
+await mkdir(new URL("docs/", target), { recursive: true });
 await mkdir(new URL("vendor/formular-menu/", target), { recursive: true });
 await mkdir(new URL("vendor/litegraph/", target), { recursive: true });
 await cp(new URL("logo-light.svg", repository), new URL("logo.svg", target));
@@ -45,17 +46,22 @@ await cp(new URL("vendor/litegraph/litegraph.js", panel), new URL("vendor/litegr
 // it from a versioned URL at runtime.
 await build({
   bundle: true,
-  entryPoints: [fileURLToPath(new URL("public/build/desktop.js", panel))],
+  entryPoints: {
+    desktop: fileURLToPath(new URL("public/build/desktop.js", panel)),
+    "desktop-docs": fileURLToPath(new URL("public/build/desktop_docs.js", panel)),
+  },
   format: "esm",
   legalComments: "eof",
   minify: true,
-  outfile: fileURLToPath(new URL("public/build/desktop.js", target)),
+  outdir: fileURLToPath(new URL("public/build/", target)),
   target: "es2022",
 });
 await optimize(target);
 
 const desktop = await readFile(new URL("public/build/desktop.js", target));
 const version = createHash("sha256").update(desktop).digest("hex").slice(0, 16);
+const desktopDocs = await readFile(new URL("public/build/desktop-docs.js", target));
+const docsVersion = createHash("sha256").update(desktopDocs).digest("hex").slice(0, 16);
 const sourceHTML = await readFile(new URL("index.html", panel), "utf8");
 const appHTML = sourceHTML
   // Tauri supplies a restrictive response CSP and adds its randomized
@@ -63,8 +69,29 @@ const appHTML = sourceHTML
   // `frame-src 'none'`, which would intersect with Tauri's policy and block
   // the isolation iframe, leaving all IPC requests queued forever.
   .replace(/^\s*<meta http-equiv="Content-Security-Policy"[^>]*>\s*$/m, "")
+  // Warm the other page's module graph. Navigation can then reuse the parsed
+  // HTTP cache when the webview does not retain a back-forward entry.
+  .replace("</head>", `  <link rel="modulepreload" href="./public/build/desktop-docs.js?v=${docsVersion}">\n  </head>`)
   .replace("./public/build/app.js", `./public/build/desktop.js?v=${version}`);
 await writeFile(new URL("index.html", target), await minifyHTML(appHTML, {
+  collapseWhitespace: true,
+  conservativeCollapse: true,
+  removeComments: true,
+}));
+
+const sourceDocsHTML = await readFile(new URL("docs.html", panel), "utf8");
+const docsHTML = sourceDocsHTML
+  // Use Tauri's response CSP for the same isolation-frame reason as index.html.
+  .replace(/^\s*<meta http-equiv="Content-Security-Policy"[^>]*>\s*$/m, "")
+  .replace('content="/"', 'content="../"')
+  .replaceAll('href="/style.css"', 'href="../style.css"')
+  .replaceAll('href="/vendor/', 'href="../vendor/')
+  .replaceAll('src="/vendor/', 'src="../vendor/')
+  .replaceAll('src="/logo.svg"', 'src="../logo.svg"')
+  .replace('href="/"', 'href="../index.html"')
+  .replace("</head>", `  <link rel="modulepreload" href="../public/build/desktop.js?v=${version}">\n  </head>`)
+  .replace('src="/public/build/docs.js"', `src="../public/build/desktop-docs.js?v=${docsVersion}"`);
+await writeFile(new URL("docs/index.html", target), await minifyHTML(docsHTML, {
   collapseWhitespace: true,
   conservativeCollapse: true,
   removeComments: true,

@@ -68,7 +68,7 @@ test("empty node menus open the description tab by default", () => {
 test("the full documentation link is in the description header", () => {
   assert.match(app, /descriptionHeader\.append\(docsLink\)/);
   assert.match(app, /docsPanel\.append\(descriptionHeader, descriptionPanel\)/);
-  assert.match(app, /localizedText\("node\.docs\.open", "Open in a new tab"\)/);
+  assert.match(app, /localizedText\(\s*"node\.docs\.open",\s*currentPanelMode === "desktop" \? "Open documentation" : "Open in a new tab"/);
 });
 
 test("web demo node descriptions use the published static documentation", () => {

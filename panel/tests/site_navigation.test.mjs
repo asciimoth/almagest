@@ -11,6 +11,14 @@ function installDOM(url, base = "") {
   globalThis.document = dom.window.document;
 }
 
+test("desktop documentation links use the packaged page and query route", () => {
+  installDOM("tauri://localhost/index.html");
+  document.documentElement.dataset.almagestPanelMode = "desktop";
+
+  assert.equal(documentationURL(), "./docs/index.html");
+  assert.equal(documentationURL("node/almagest/Tun"), "./docs/index.html?page=node%2Falmagest%2FTun");
+});
+
 test("daemon panel documentation links retain path-based routes", () => {
   installDOM("http://127.0.0.1:8090/");
 

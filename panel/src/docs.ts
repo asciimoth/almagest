@@ -19,6 +19,14 @@ import {
 } from "./pasta_model.js";
 import { docsClient } from "./docs_client.js";
 import { renderGraphPreview } from "./graph_preview.js";
+import { panelMode } from "./panel_mode.js";
+import {
+  rememberDesktopDocsPage,
+  rememberDesktopDocsScroll,
+  rememberDesktopSurface,
+  rememberedDesktopDocsPage,
+  rememberedDesktopDocsScroll,
+} from "./desktop_route_memory.js";
 
 type PageMark = "available" | "unavailable" | "deprecated";
 type PageSummary = { id: string; name: string; folded: boolean; order?: number; default?: boolean; available?: boolean; marks?: PageMark[] };
@@ -42,9 +50,12 @@ const adminPanelLink = document.querySelector<HTMLAnchorElement>("#admin-panel-l
 const navigationToggle = document.querySelector<HTMLButtonElement>("#docs-navigation-toggle")!;
 const navigationScrim = document.querySelector<HTMLButtonElement>("#docs-navigation-scrim")!;
 const parameters = new URLSearchParams(window.location.search);
+const desktopMode = panelMode(document.documentElement) === "desktop";
 let urlLocale = parameters.get("locale") || "";
 const requestedLocale = urlLocale || readLocaleCookie() || savedLocale() || navigator.language || "en";
-let currentPage = parameters.get("page") || docsClient().pageFromLocation(window.location);
+let currentPage = parameters.get("page")
+  || (desktopMode ? rememberedDesktopDocsPage(window.localStorage) : "")
+  || docsClient().pageFromLocation(window.location);
 let effectiveLocale = requestedLocale;
 let orderedPageIDs: string[] = [];
 const pageNames = new Map<string, string>();
@@ -104,8 +115,23 @@ function renderPageMarks(values: readonly unknown[] | undefined): HTMLElement | 
   return container;
 }
 
-adminPanelLink.target = adminPanelWindowName(window.location.origin);
+if (desktopMode) {
+  adminPanelLink.href = "../index.html";
+  adminPanelLink.removeAttribute("target");
+} else {
+  adminPanelLink.target = adminPanelWindowName(window.location.origin);
+}
 adminPanelLink.addEventListener("click", (event) => {
+  if (desktopMode) {
+    // Modifier keys must not create another native webview. The desktop app
+    // has one page surface, so all packaged-page navigation uses that surface.
+    event.preventDefault();
+    saveCurrentDesktopDocsScroll();
+    rememberDesktopDocsPage(window.localStorage, currentPage);
+    rememberDesktopSurface(window.localStorage, "panel");
+    window.location.replace(adminPanelLink.href);
+    return;
+  }
   // Keep standard browser behavior when the user requests a separate tab or window.
   if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
   // If the pop-up is blocked, do not cancel the link's native new-tab fallback.
@@ -246,11 +272,13 @@ function renderPageNavigation(id: string): HTMLElement | null {
 }
 
 async function openPage(id: string, updateHistory: boolean): Promise<void> {
+  if (desktopMode && currentPage && currentPage !== id) saveCurrentDesktopDocsScroll();
   pageElement.replaceChildren(textElement("p", "Loading documentation."));
   try {
     const contentText = await docsClient().raw(effectiveLocale, id);
     const name = pageNames.get(id) || id;
     currentPage = id;
+    if (desktopMode) rememberDesktopDocsPage(window.localStorage, id);
     document.title = `${name} — Almagest Documentation`;
     const title = textElement("h1", name);
     const content = document.createElement("div");
@@ -279,8 +307,17 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
       content,
       ...(navigation ? [navigation] : []),
     );
-    if (updateHistory) window.history.pushState({ page: id }, "", docsURL(id));
-    scrollToCurrentAnchor();
+    if (updateHistory) {
+      if (desktopMode) {
+        // Keep one native-webview history entry. The persistent route memory
+        // restores this page without relying on WebKit document restoration.
+        window.history.replaceState({ page: id }, "", docsURL(id));
+      } else {
+        window.history.pushState({ page: id }, "", docsURL(id));
+      }
+    }
+    if (window.location.hash) scrollToCurrentAnchor();
+    else restoreDesktopDocsScroll(id);
     if (!unavailable) void loadNodePreview(id, title);
     selectPageInTree(treeElement, id);
   } catch (error) {
@@ -316,6 +353,20 @@ function scrollToCurrentAnchor(): void {
   } catch {
     // Ignore malformed percent escapes in an external URL fragment.
   }
+}
+
+function saveCurrentDesktopDocsScroll(): void {
+  if (!desktopMode || !currentPage) return;
+  rememberDesktopDocsScroll(window.localStorage, currentPage, pageElement.scrollTop);
+}
+
+function restoreDesktopDocsScroll(id: string): void {
+  const top = rememberedDesktopDocsScroll(window.localStorage, id) ?? 0;
+  // Wait for layout so the browser does not clamp the saved value against the
+  // short loading placeholder that preceded the rendered document.
+  window.requestAnimationFrame(() => {
+    if (currentPage === id) pageElement.scrollTop = top;
+  });
 }
 
 async function loadNodePreview(id: string, title: HTMLElement): Promise<void> {
@@ -430,5 +481,7 @@ window.addEventListener("popstate", () => {
   if (locale !== effectiveLocale) void loadTree(locale);
   else if (id) void openPage(id, false);
 });
+
+window.addEventListener("pagehide", saveCurrentDesktopDocsScroll);
 
 void loadTree(requestedLocale);

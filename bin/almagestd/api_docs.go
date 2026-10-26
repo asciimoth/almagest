@@ -38,6 +38,20 @@ func (s *apiSession) handleDocsMessage(msg api.Message) (api.Message, error) {
 			return newRequestError(msg.ID, api.ErrorNotFound, "documentation page was not found")
 		}
 		return api.NewResponse(msg.ID, page)
+	case api.MethodDocsNodeClass:
+		req, err := decodePayload[api.DocsPageRequest](msg)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, err.Error())
+		}
+		class, isNode := strings.CutPrefix(req.ID, "node/")
+		if !isNode {
+			return newRequestError(msg.ID, api.ErrorNotFound, "node documentation page was not specified")
+		}
+		snapshot, ok := s.docsNodeClass(s.currentLocale(), class)
+		if !ok {
+			return newRequestError(msg.ID, api.ErrorNotFound, "node class was not found")
+		}
+		return api.NewResponse(msg.ID, snapshot)
 	default:
 		return newRequestError(msg.ID, api.ErrorInvalidMethod, "api method is not implemented")
 	}

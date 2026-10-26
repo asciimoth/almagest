@@ -112,6 +112,16 @@ func TestDocsAPIFiltersRuntimeClassesAndServesLocalizedHTTP(t *testing.T) {
 	if !slices.Equal(availablePageIDs, wantPageIDs) {
 		t.Fatalf("available node documentation page order = %v, want node picker order %v", availablePageIDs, wantPageIDs)
 	}
+	nodeClassMessage := mustRequest(t, "node-class", api.SurfaceDocs, string(api.MethodDocsNodeClass), api.DocsPageRequest{ID: "node/test/AdminAPIBatchNode"})
+	nodeClassResponse, err := session.handleMessage(nodeClassMessage)
+	if err != nil || nodeClassResponse.Error != nil {
+		t.Fatalf("node class response = %#v, %v", nodeClassResponse, err)
+	}
+	nodeClass, err := api.DecodePayload[api.DocsNodeClassResponse](nodeClassResponse.Result)
+	if err != nil || nodeClass.Snapshot.Class != "test/AdminAPIBatchNode" ||
+		nodeClass.Snapshot.ShortDescription != "Nodus administrativus" || !nodeClass.Snapshot.Experimental {
+		t.Fatalf("node class = %#v, %v", nodeClass, err)
+	}
 	mux := http.NewServeMux()
 	admin.registerAPIHandlers(t.Context(), mux, engine, nil, nil)
 	server := httptest.NewServer(mux)

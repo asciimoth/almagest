@@ -18,7 +18,17 @@ test("desktop publication retains the panel document and uses its native entry p
     appDocument.querySelector("script[type='module']")?.getAttribute("src") ?? "",
     /^\.\/public\/build\/desktop\.js\?v=[a-f0-9]{16}$/,
   );
-  assert.deepEqual(await readdir(published("public/build/")), ["desktop.js"]);
+  assert.match(
+    appDocument.querySelector("link[rel='modulepreload']")?.getAttribute("href") ?? "",
+    /^\.\/public\/build\/desktop-docs\.js\?v=[a-f0-9]{16}$/,
+  );
+  assert.deepEqual((await readdir(published("public/build/"))).sort(), ["desktop-docs.js", "desktop.js"]);
+  const docsDocument = new JSDOM(await readFile(published("docs/index.html"), "utf8").then(String)).window.document;
+  assert.match(docsDocument.querySelector("script[type='module']")?.getAttribute("src") ?? "",
+    /^\.\.\/public\/build\/desktop-docs\.js\?v=[a-f0-9]{16}$/);
+  assert.match(docsDocument.querySelector("link[rel='modulepreload']")?.getAttribute("href") ?? "",
+    /^\.\.\/public\/build\/desktop\.js\?v=[a-f0-9]{16}$/);
+  assert.equal(docsDocument.querySelector("meta[http-equiv='Content-Security-Policy']"), null);
   await access(published("vendor/litegraph/litegraph.js"));
   await access(published("vendor/formular-menu/formular-menu.js"));
 });
@@ -50,4 +60,5 @@ test("desktop publication permits only isolated Tauri IPC", async () => {
     "style-src": "'self'",
   });
   assert.deepEqual(capability.permissions, ["allow-listen-admin", "allow-send-admin-message"]);
+  assert.equal(capability.permissions.some((permission) => String(permission).includes("opener")), false);
 });
