@@ -1,0 +1,38 @@
+[package]
+name = "almagest-app"
+version = "0.1.0"
+description = "Desktop client for the Almagest administration API"
+authors = ["Almagest contributors"]
+edition = "2024"
+rust-version = "1.90"
+license = "GPL-3.0-or-later"
+publish = false
+
+[build-dependencies]
+resvg = { version = "0.45.1", default-features = false }
+tauri-build = { version = "2.7.4", features = ["isolation"] }
+
+[dependencies]
+tauri = { version = "2.12.5", default-features = false, features = [
+  "common-controls-v6",
+  "compression",
+  "dbus",
+  "isolation",
+  "wry",
+  "x11",
+] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+multiple_crate_versions = "allow"
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "abort"
+strip = true

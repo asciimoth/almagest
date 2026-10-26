@@ -3,7 +3,7 @@ set dotenv-load := true
 
 
 # TODO: Enable vulncheck again after Go is updated to 1.26.10 or later.
-check *selectors: tidy typos fmt lint actionlint shellcheck vet build-wasm # vulncheck
+check *selectors: tidy typos fmt lint actionlint shellcheck vet build-wasm app-test # vulncheck
   @just locales-check
   @just test-total {{quote(selectors)}}
   @if [[ -z {{quote(selectors)}} ]]; then just fuzz; fi
@@ -123,7 +123,7 @@ repair-go-work:
 certcat-tidy:
 	go -C certcat mod tidy
 
-lint: test-winvm-harness certcat-lint lint-windows lint-windows-packaging lint-winvm lint-secrets markdownlint lint-wasm
+lint: test-winvm-harness certcat-lint lint-windows lint-windows-packaging lint-winvm lint-secrets markdownlint lint-wasm app-lint
   cd lib && golangci-lint run ./...
   cd bin && golangci-lint run ./...
 
@@ -157,7 +157,7 @@ shellcheck:
 certcat-lint: certcat-ensure-generated
   cd certcat && golangci-lint run ./...
 
-fmt: certcat-fmt markdown-fmt
+fmt: certcat-fmt markdown-fmt app-fmt
   cd lib && golangci-lint fmt ./...
   cd bin && golangci-lint fmt ./...
   git ls-files -z -- 'lib/*.go' 'lib/**/*.go' 'bin/*.go' 'bin/**/*.go' | while IFS= read -r -d '' file; do [[ -f "$file" ]] && printf '%s\0' "$file"; done | xargs -0 -r gofmt -w
@@ -199,6 +199,19 @@ clean: certcat-clean
 
 build-web:
   cd panel && npm ci && npm run build
+
+# Build and run the desktop client with debug settings and hot reload.
+app-debug:
+  cd app && cargo tauri dev
+
+app-test:
+  cargo test --manifest-path app/src-tauri/Cargo.toml --locked
+
+app-lint:
+  cargo clippy --manifest-path app/src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
+
+app-fmt:
+  cargo fmt --manifest-path app/src-tauri/Cargo.toml --all -- --check
 
 # Compile the library package and its selected dependencies for browser WASM.
 build-wasm:

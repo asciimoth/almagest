@@ -46,6 +46,10 @@ go.work.sum
 /panel/public
 /panel/vendor
 /bin/almagestd/static
+/app/src-tauri/gen
+/app/src-tauri/target
+/app/frontend/logo-light.svg
+/app/src-tauri/icons/*.png
 
 /almagestd
 /cli

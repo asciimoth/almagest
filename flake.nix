@@ -431,6 +431,13 @@
           pnpm
           typescript
 
+          # for the Tauri desktop client
+          cargo
+          cargo-tauri
+          clippy
+          rustc
+          rustfmt
+
           wireguard-tools
           xxd
 
@@ -439,8 +446,13 @@
 
           tor
           obfs4
+        ] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+          glib-networking
+          gtk3
+          libsoup_3
+          pkg-config
+          webkitgtk_4_1
         ] ++ pkgs.lib.optionals (system == "x86_64-linux") [
-          pkgs.pkg-config
           staticLibseccomp
           staticLibseccomp.lib
           pkgs.qemu
