@@ -5,12 +5,20 @@ export type GraphViewport = {
   offset: [number, number];
 };
 
+export type GraphViewportPadding = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
 export function fitGraphRectangles(
   rectangles: readonly GraphRectangle[],
   viewportWidth: number,
   viewportHeight: number,
-  padding: number,
+  padding: number | GraphViewportPadding,
   maxScale: number,
+  fixedScale?: number,
 ): GraphViewport | null {
   if (!rectangles.length || viewportWidth <= 0 || viewportHeight <= 0) return null;
 
@@ -27,20 +35,28 @@ export function fitGraphRectangles(
   }
   if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
 
+  const resolvedPadding = typeof padding === "number"
+    ? { top: padding, right: padding, bottom: padding, left: padding }
+    : padding;
+  const top = Math.max(0, resolvedPadding.top);
+  const right = Math.max(0, resolvedPadding.right);
+  const bottom = Math.max(0, resolvedPadding.bottom);
+  const left = Math.max(0, resolvedPadding.left);
   const contentWidth = Math.max(1, maxX - minX);
   const contentHeight = Math.max(1, maxY - minY);
-  const availableWidth = Math.max(1, viewportWidth - Math.max(0, padding) * 2);
-  const availableHeight = Math.max(1, viewportHeight - Math.max(0, padding) * 2);
+  const availableWidth = Math.max(1, viewportWidth - left - right);
+  const availableHeight = Math.max(1, viewportHeight - top - bottom);
   const upperScale = Math.max(Number.EPSILON, maxScale);
-  const scale = Math.min(
-    upperScale,
-    Math.max(Number.EPSILON, Math.min(availableWidth / contentWidth, availableHeight / contentHeight)),
-  );
+  const autoScale = Math.min(upperScale,
+    Math.max(Number.EPSILON, Math.min(availableWidth / contentWidth, availableHeight / contentHeight)));
+  const scale = fixedScale === undefined ? autoScale : Math.max(Number.EPSILON, fixedScale);
   const centerX = minX + (maxX - minX) * 0.5;
   const centerY = minY + (maxY - minY) * 0.5;
+  const viewportCenterX = left + availableWidth * 0.5;
+  const viewportCenterY = top + availableHeight * 0.5;
 
   return {
     scale,
-    offset: [viewportWidth / (2 * scale) - centerX, viewportHeight / (2 * scale) - centerY],
+    offset: [viewportCenterX / scale - centerX, viewportCenterY / scale - centerY],
   };
 }

@@ -1,4 +1,8 @@
-import { fitGraphRectangles, type GraphRectangle } from "./graph_viewport.js";
+import {
+  fitGraphRectangles,
+  type GraphRectangle,
+  type GraphViewportPadding,
+} from "./graph_viewport.js";
 import {
   DEFAULT_LINK_COLOR,
   DEFAULT_NODE_TEXT_COLOR,
@@ -42,6 +46,13 @@ export type GraphPreviewClass = {
 };
 
 export type GraphPreviewClassResolver = (className: string) => Promise<GraphPreviewClass | null>;
+
+export type GraphPreviewRenderOptions = {
+  width?: number;
+  height?: number;
+  zoom?: number;
+  padding?: number | Partial<GraphViewportPadding>;
+};
 
 type PreviewPort = { name: string; types: string[] };
 type PreviewNodePorts = { left: PreviewPort[]; right: PreviewPort[] };
@@ -105,26 +116,37 @@ export async function renderGraphPreview(
   host: HTMLElement,
   source: string,
   resolveClass: GraphPreviewClassResolver,
+  options: GraphPreviewRenderOptions = {},
 ): Promise<void> {
   try {
-    const config = parseGraphPreviewConfig(source);
-    if (!config.nodes.length) throw new Error("Graph preview has no nodes");
-    const classNames = [...new Set(config.nodes.map((node) => node.className))];
-    const resolved = await Promise.all(classNames.map(async (className) => {
-      try {
-        return [className, await resolveClass(className)] as const;
-      } catch {
-        return [className, null] as const;
-      }
-    }));
-    const classes = new Map(resolved);
-    drawGraphPreview(host, config, classes);
+    await renderGraphPreviewCanvas(host, source, resolveClass, options);
   } catch (error) {
     const message = document.createElement("p");
     message.className = "graph-preview-error";
     message.textContent = `Graph preview unavailable: ${error instanceof Error ? error.message : String(error)}`;
     host.replaceChildren(message);
   }
+}
+
+/** Render one graph frame and reject when the input cannot be rendered. */
+export async function renderGraphPreviewCanvas(
+  host: HTMLElement,
+  source: string,
+  resolveClass: GraphPreviewClassResolver,
+  options: GraphPreviewRenderOptions = {},
+): Promise<HTMLCanvasElement> {
+  validateRenderOptions(options);
+  const config = parseGraphPreviewConfig(source);
+  if (!config.nodes.length) throw new Error("Graph preview has no nodes");
+  const classNames = [...new Set(config.nodes.map((node) => node.className))];
+  const resolved = await Promise.all(classNames.map(async (className) => {
+    try {
+      return [className, await resolveClass(className)] as const;
+    } catch {
+      return [className, null] as const;
+    }
+  }));
+  return drawGraphPreview(host, config, new Map(resolved), options);
 }
 
 export function graphPreviewPorts(
@@ -158,7 +180,8 @@ function drawGraphPreview(
   host: HTMLElement,
   config: GraphPreviewConfig,
   classes: ReadonlyMap<string, GraphPreviewClass | null>,
-): void {
+  options: GraphPreviewRenderOptions,
+): HTMLCanvasElement {
   LiteGraph.allow_scripts = false;
   registerPreviewNode();
   const graph = new LGraph();
@@ -198,8 +221,12 @@ function drawGraphPreview(
   canvasElement.setAttribute("aria-label", "Node graph preview");
   canvasElement.setAttribute("role", "img");
   host.replaceChildren(canvasElement);
-  const width = Math.max(320, Math.round(host.getBoundingClientRect().width || host.clientWidth || 900));
-  const height = Math.min(520, Math.max(260, Math.round(width * 0.5)));
+  const width = options.width === undefined
+    ? Math.max(320, Math.round(host.getBoundingClientRect().width || host.clientWidth || 900))
+    : positiveDimension(options.width, "Graph preview width");
+  const height = options.height === undefined
+    ? Math.min(520, Math.max(260, Math.round(width * 0.5)))
+    : positiveDimension(options.height, "Graph preview height");
   canvasElement.width = width;
   canvasElement.height = height;
 
@@ -210,11 +237,12 @@ function drawGraphPreview(
   canvas.show_info = false;
   canvas.node_title_color = DEFAULT_NODE_TEXT_COLOR;
   canvas.allow_interaction = false;
-  centerPreview(canvas, graph, width, height);
+  centerPreview(canvas, graph, width, height, options);
   canvas.draw(true, true);
   canvas.stopRendering();
   canvas.setGraph(null, true);
   graph.stop();
+  return canvasElement;
 }
 
 function registerPreviewNode(): void {
@@ -240,16 +268,63 @@ function registerPreviewNode(): void {
   LiteGraph.registerNodeType(PREVIEW_NODE_TYPE, PreviewNode);
 }
 
-function centerPreview(canvas: any, graph: any, width: number, height: number): void {
+function centerPreview(
+  canvas: any,
+  graph: any,
+  width: number,
+  height: number,
+  options: GraphPreviewRenderOptions,
+): void {
   const rectangles = (graph._nodes as any[]).map((node): GraphRectangle => {
     const bounds = node.getBounding(undefined, true) as ArrayLike<number>;
     return [bounds[0] ?? 0, bounds[1] ?? 0, bounds[2] ?? 0, bounds[3] ?? 0];
   });
-  const viewport = fitGraphRectangles(rectangles, width, height, 32, 1);
+  const padding = previewPadding(options.padding);
+  const zoom = options.zoom === undefined ? undefined : positiveNumber(options.zoom, "Graph preview zoom");
+  const viewport = fitGraphRectangles(rectangles, width, height, padding, 1, zoom);
   if (!viewport) return;
   canvas.ds.scale = viewport.scale;
   canvas.ds.offset[0] = viewport.offset[0];
   canvas.ds.offset[1] = viewport.offset[1];
+}
+
+function previewPadding(value: GraphPreviewRenderOptions["padding"]): GraphViewportPadding {
+  if (typeof value === "number") {
+    const padding = nonNegativeNumber(value, "Graph preview padding");
+    return { top: padding, right: padding, bottom: padding, left: padding };
+  }
+  if (value !== undefined && (!value || typeof value !== "object" || Array.isArray(value))) {
+    throw new Error("Graph preview padding must be a number or an object");
+  }
+  return {
+    top: nonNegativeNumber(value?.top ?? 32, "Graph preview top padding"),
+    right: nonNegativeNumber(value?.right ?? 32, "Graph preview right padding"),
+    bottom: nonNegativeNumber(value?.bottom ?? 32, "Graph preview bottom padding"),
+    left: nonNegativeNumber(value?.left ?? 32, "Graph preview left padding"),
+  };
+}
+
+function validateRenderOptions(options: GraphPreviewRenderOptions): void {
+  if (options.width !== undefined) positiveDimension(options.width, "Graph preview width");
+  if (options.height !== undefined) positiveDimension(options.height, "Graph preview height");
+  if (options.zoom !== undefined) positiveNumber(options.zoom, "Graph preview zoom");
+  previewPadding(options.padding);
+}
+
+function positiveDimension(value: number, name: string): number {
+  const result = positiveNumber(value, name);
+  if (!Number.isInteger(result)) throw new Error(`${name} must be an integer`);
+  return result;
+}
+
+function positiveNumber(value: number, name: string): number {
+  if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be a positive number`);
+  return value;
+}
+
+function nonNegativeNumber(value: number, name: string): number {
+  if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be a non-negative number`);
+  return value;
 }
 
 function addLiteGraphPort(

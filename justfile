@@ -216,6 +216,11 @@ update-webdemo-node-classes cache='webdemo/node-classes.json':
 build-webdemo output='build/webdemo':
   cd panel && npm ci && npm run build:webdemo -- ../{{quote(output)}}
 
+# Render an almagestd graph description to a PNG with ephemeral Chromium.
+render-graph-image *args:
+  npm --prefix panel run compile
+  node panel/scripts/render-graph-image.mjs {{args}}
+
 # Build and serve the web demo. Set base_path=almagest to test a subpath.
 serve-webdemo base_path='' output='build/webdemo' port='8000' host='0.0.0.0':
   just build-webdemo {{quote(output)}}

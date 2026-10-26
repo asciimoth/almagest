@@ -79,3 +79,34 @@ just test-check
 
 Do not edit `public/build` or `bin/almagestd/static` by hand. They are generated
 by the build.
+
+## Render a graph image
+
+The graph image development tool uses the same parser, node metadata, drawing,
+and centering logic as documentation graph previews. It starts a temporary
+loopback server and an ephemeral headless Chromium process. It does not run any
+graph nodes.
+
+From `panel/`, render a graph file to the default `640x320` PNG:
+
+```sh
+npm run graph:image -- --output graph.png ../example.hjson
+```
+
+From the repository root, use the equivalent `just` command. Input and output
+paths are relative to the repository root:
+
+```sh
+just render-graph-image --output graph.png example.hjson
+```
+
+The input can also come from stdin or `--graph-json`. Use `--size 1200x630` to
+set the image size. Use `--zoom` to replace automatic zoom. `--padding` sets all
+four padding values. The `--padding-top`, `--padding-right`, `--padding-bottom`,
+and `--padding-left` options override individual values. Use `--node-classes` to
+select another static node class cache. Use `--chromium`, `CHROMIUM_PATH`,
+`CHROME_PATH`, or `CHROME_BIN` when Chromium is not on `PATH`.
+
+The tool only needs the normal panel build inputs and a Chromium-compatible
+executable. Thus, a web demo artifact job can run it after `npm ci`, without a
+daemon or display server.

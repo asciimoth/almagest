@@ -19,6 +19,20 @@ test("graph viewport caps zoom-in at the default scale but always fits large con
   assert.equal(fitGraphRectangles([[0, 0, 20_000, 20_000]], 1000, 600, 40, 1)?.scale, 0.026);
 });
 
+test("graph viewport supports individual padding and a fixed zoom", () => {
+  const viewport = fitGraphRectangles([[100, 50, 200, 100]], 800, 400, {
+    top: 20,
+    right: 100,
+    bottom: 60,
+    left: 40,
+  }, 1, 2);
+
+  assert.deepEqual(viewport, {
+    scale: 2,
+    offset: [-15, -10],
+  });
+});
+
 test("graph viewport ignores invalid rectangles and returns null without content", () => {
   assert.equal(fitGraphRectangles([], 1000, 600, 40, 10), null);
   assert.equal(fitGraphRectangles([[Number.NaN, 0, 20, 20]], 1000, 600, 40, 10), null);

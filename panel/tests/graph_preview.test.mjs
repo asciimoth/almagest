@@ -95,7 +95,7 @@ test("graph preview draws one inert centered frame and keeps hostile labels out 
   const dom = new JSDOM("<!doctype html><main></main>", { url: "https://panel.test/" });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
-  const calls = { options: null, draw: 0, detached: 0, stopped: 0, offsets: null, showInfo: null };
+  const calls = { options: null, draw: 0, detached: 0, stopped: 0, offsets: null, scale: null, size: null, showInfo: null };
 
   class FakeNode {
     constructor() {
@@ -117,12 +117,13 @@ test("graph preview draws one inert centered frame and keeps hostile labels out 
     stop() { calls.stopped += 1; }
   }
   class FakeCanvas {
-    constructor(_element, graph, options) {
+    constructor(element, graph, options) {
       calls.options = options;
+      calls.size = [element.width, element.height];
       this.graph = graph;
       this.ds = { scale: 1, offset: [0, 0] };
     }
-    draw() { calls.draw += 1; calls.offsets = [...this.ds.offset]; calls.showInfo = this.show_info; }
+    draw() { calls.draw += 1; calls.offsets = [...this.ds.offset]; calls.scale = this.ds.scale; calls.showInfo = this.show_info; }
     stopRendering() {}
     setGraph(value) { if (value === null) calls.detached += 1; }
   }
@@ -137,12 +138,19 @@ test("graph preview draws one inert centered frame and keeps hostile labels out 
 
   const host = document.querySelector("main");
   Object.defineProperty(host, "clientWidth", { value: 800 });
-  await renderGraphPreview(host, graphSource(), async (name) => classInfo(name, []));
+  await renderGraphPreview(host, graphSource(), async (name) => classInfo(name, []), {
+    width: 640,
+    height: 320,
+    zoom: 2,
+    padding: { top: 8, right: 16, bottom: 24, left: 32 },
+  });
 
   assert.deepEqual(calls.options, { skip_render: true, skip_events: true });
   assert.equal(calls.draw, 1);
   assert.equal(calls.detached, 1);
   assert.equal(calls.stopped, 1);
+  assert.deepEqual(calls.size, [640, 320]);
+  assert.equal(calls.scale, 2);
   assert.notDeepEqual(calls.offsets, [0, 0]);
   assert.equal(calls.showInfo, false);
   assert.equal(globalThis.LiteGraph.allow_scripts, false);
@@ -159,4 +167,17 @@ test("graph preview errors are plain text", async () => {
   await renderGraphPreview(host, '{"<img src=x>": {"Class": 4}}', async () => null);
   assert.match(host.textContent, /<img src=x>/);
   assert.equal(host.querySelector("img,script,svg"), null);
+});
+
+test("graph preview rejects invalid image options before LiteGraph starts", async () => {
+  const dom = new JSDOM("<!doctype html><main></main>");
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  const host = document.querySelector("main");
+  await renderGraphPreview(host, graphSource(), async (name) => classInfo(name, []), {
+    width: 0,
+    padding: { left: -1 },
+  });
+  assert.match(host.textContent, /width must be a positive number/);
+  assert.equal(host.querySelector("canvas"), null);
 });
