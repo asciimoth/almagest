@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     };
 
-    let connection = AdminConnection::connect(&endpoint)?;
+    let connection = AdminConnection::connect(&endpoint);
     tauri::Builder::default()
         .manage(connection)
         .setup(tray::setup)

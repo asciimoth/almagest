@@ -2,7 +2,7 @@ use std::{
     io::{BufRead, BufReader, ErrorKind, Read, Write},
     sync::{Arc, Mutex, mpsc},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use serde::Serialize;
@@ -17,6 +17,14 @@ const MAX_MESSAGE_BYTES: usize = (32_usize << 20).div_ceil(3) * 4 + (1 << 20);
 const MAX_MESSAGE_READ_BYTES: u64 = (32_u64 << 20).div_ceil(3) * 4 + (1 << 20) + 1;
 const WEB_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
+/// Match the panel's retry policy. A foreground window retries quickly. A
+/// background window reduces wakeups while the daemon is intentionally absent.
+const RETRY_POLICY: RetryPolicy = RetryPolicy {
+    connect_timeout: Duration::from_secs(3),
+    initial_delay: Duration::from_secs(1),
+    maximum_delay: Duration::from_secs(30),
+};
+
 #[derive(Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum FrontendEvent {
@@ -24,11 +32,18 @@ pub(crate) enum FrontendEvent {
     Message { message: String },
 }
 
-/// Owns the admin transport. The frontend can only send and receive API JSON;
-/// endpoint and transport details stay in this module.
+/// Owns the admin transport and its retry supervisor. The frontend can only
+/// send and receive validated API JSON. Endpoint, retry, and transport details
+/// stay in native code.
 pub(crate) struct AdminConnection {
-    outgoing: Outgoing,
+    outgoing: Arc<Mutex<Option<ActiveOutgoing>>>,
     frontend: Arc<Frontend>,
+    supervisor: mpsc::Sender<SupervisorEvent>,
+}
+
+struct ActiveOutgoing {
+    id: u64,
+    transport: Outgoing,
 }
 
 enum Outgoing {
@@ -37,6 +52,33 @@ enum Outgoing {
     #[cfg(windows)]
     Pipe(Mutex<std::fs::File>),
     Web(mpsc::SyncSender<String>),
+}
+
+enum PendingConnection {
+    #[cfg(unix)]
+    Unix {
+        reader: std::os::unix::net::UnixStream,
+        writer: std::os::unix::net::UnixStream,
+    },
+    #[cfg(windows)]
+    Pipe {
+        reader: std::fs::File,
+        writer: std::fs::File,
+    },
+    Web(Box<WebSocket<MaybeTlsStream<std::net::TcpStream>>>),
+}
+
+enum SupervisorEvent {
+    AttemptFinished {
+        id: u64,
+        result: Result<PendingConnection, String>,
+    },
+    Message {
+        id: u64,
+        message: String,
+    },
+    TransportClosed(u64),
+    Interactive(bool),
 }
 
 struct Frontend {
@@ -49,12 +91,31 @@ struct FrontendState {
     status_handler: Option<Arc<dyn Fn(bool) + Send + Sync>>,
 }
 
+#[derive(Clone, Copy)]
+struct RetryPolicy {
+    connect_timeout: Duration,
+    initial_delay: Duration,
+    maximum_delay: Duration,
+}
+
+impl RetryPolicy {
+    fn delay(self, attempt: u32, interactive: bool) -> Duration {
+        if interactive {
+            return self.initial_delay;
+        }
+        let multiplier = 1_u32.checked_shl(attempt.min(31)).unwrap_or(u32::MAX);
+        self.initial_delay
+            .saturating_mul(multiplier)
+            .min(self.maximum_delay)
+    }
+}
+
 impl Frontend {
     fn new() -> Self {
         Self {
             state: Mutex::new(FrontendState {
                 channel: None,
-                connected: true,
+                connected: false,
                 status_handler: None,
             }),
         }
@@ -102,22 +163,27 @@ impl Frontend {
         self.send(FrontendEvent::Message { message });
     }
 
+    fn connected(&self) {
+        self.set_connected(true);
+    }
+
     fn disconnected(&self) {
+        self.set_connected(false);
+    }
+
+    fn set_connected(&self, connected: bool) {
         let handler = if let Ok(mut state) = self.state.lock() {
-            if !state.connected {
+            if state.connected == connected {
                 return;
             }
-            state.connected = false;
-            Self::send_locked(
-                &mut state,
-                FrontendEvent::ConnectionStatus { connected: false },
-            );
+            state.connected = connected;
+            Self::send_locked(&mut state, FrontendEvent::ConnectionStatus { connected });
             state.status_handler.clone()
         } else {
             None
         };
         if let Some(handler) = handler {
-            handler(false);
+            handler(connected);
         }
     }
 
@@ -139,53 +205,29 @@ impl Frontend {
 }
 
 impl AdminConnection {
-    pub(crate) fn connect(endpoint: &Endpoint) -> Result<Self, String> {
+    /// Start the retry supervisor. Initial connection failures are reported as
+    /// disconnected state and do not prevent the desktop application startup.
+    pub(crate) fn connect(endpoint: &Endpoint) -> Self {
+        Self::connect_with_policy(endpoint, RETRY_POLICY)
+    }
+
+    fn connect_with_policy(endpoint: &Endpoint, policy: RetryPolicy) -> Self {
         let frontend = Arc::new(Frontend::new());
-        let outgoing = match endpoint {
-            #[cfg(unix)]
-            Endpoint::Unix(path) => {
-                let stream = std::os::unix::net::UnixStream::connect(path).map_err(|error| {
-                    format!("connect to Unix socket {}: {error}", path.display())
-                })?;
-                let writer = stream
-                    .try_clone()
-                    .map_err(|error| format!("clone Unix socket: {error}"))?;
-                spawn_stream_reader(stream, Arc::clone(&frontend));
-                Outgoing::Unix(Mutex::new(writer))
-            }
-            #[cfg(not(unix))]
-            Endpoint::Unix(path) => {
-                return Err(format!(
-                    "Unix sockets are not supported on this platform: {}",
-                    path.display()
-                ));
-            }
-            #[cfg(windows)]
-            Endpoint::Pipe { trust, name } => {
-                let stream =
-                    almagest_windows_pipe::connect(trust.as_str(), name).map_err(|error| {
-                        format!("connect to trusted {} pipe: {error}", trust.as_str())
-                    })?;
-                let writer = stream
-                    .try_clone()
-                    .map_err(|error| format!("clone Windows pipe: {error}"))?;
-                spawn_stream_reader(stream, Arc::clone(&frontend));
-                Outgoing::Pipe(Mutex::new(writer))
-            }
-            #[cfg(not(windows))]
-            Endpoint::Pipe { .. } => {
-                return Err("Windows named pipes are not supported on this platform".to_owned());
-            }
-            Endpoint::Web(url) => {
-                let (mut socket, _response) = tungstenite::connect(url.as_str())
-                    .map_err(|error| format!("connect to WebSocket {url}: {error}"))?;
-                set_web_nonblocking(&mut socket)?;
-                let (sender, receiver) = mpsc::sync_channel(64);
-                spawn_web_worker(socket, receiver, Arc::clone(&frontend));
-                Outgoing::Web(sender)
-            }
-        };
-        Ok(Self { outgoing, frontend })
+        let outgoing = Arc::new(Mutex::new(None));
+        let (supervisor, events) = mpsc::channel();
+        spawn_supervisor(
+            endpoint.clone(),
+            Arc::clone(&outgoing),
+            Arc::clone(&frontend),
+            events,
+            supervisor.clone(),
+            policy,
+        );
+        Self {
+            outgoing,
+            frontend,
+            supervisor,
+        }
     }
 
     pub(crate) fn register(&self, channel: Channel<FrontendEvent>) -> Result<(), String> {
@@ -199,24 +241,242 @@ impl AdminConnection {
         self.frontend.set_status_handler(handler)
     }
 
+    /// Select the retry rate from trusted Tauri window state. This setting is
+    /// not exposed through frontend IPC.
+    pub(crate) fn set_interactive(&self, interactive: bool) {
+        let _ = self
+            .supervisor
+            .send(SupervisorEvent::Interactive(interactive));
+    }
+
     pub(crate) fn send(&self, message: String) -> Result<(), String> {
         validate_request(&message)?;
         if !self.frontend.is_connected()? {
             return Err("admin API is disconnected".to_owned());
         }
-        let result = match &self.outgoing {
-            #[cfg(unix)]
-            Outgoing::Unix(stream) => write_stream(stream, &message),
-            #[cfg(windows)]
-            Outgoing::Pipe(stream) => write_stream(stream, &message),
-            Outgoing::Web(sender) => sender
-                .try_send(message)
-                .map_err(|error| format!("queue admin API message: {error}")),
+        let (id, result) = {
+            let active = self
+                .outgoing
+                .lock()
+                .map_err(|_| "admin API connection lock is poisoned")?;
+            let active = active
+                .as_ref()
+                .ok_or_else(|| "admin API is disconnected".to_owned())?;
+            let result = match &active.transport {
+                #[cfg(unix)]
+                Outgoing::Unix(stream) => write_stream(stream, &message),
+                #[cfg(windows)]
+                Outgoing::Pipe(stream) => write_stream(stream, &message),
+                Outgoing::Web(sender) => sender
+                    .try_send(message)
+                    .map_err(|error| format!("queue admin API message: {error}")),
+            };
+            (active.id, result)
         };
         if result.is_err() {
-            self.frontend.disconnected();
+            let _ = self.supervisor.send(SupervisorEvent::TransportClosed(id));
         }
         result
+    }
+}
+
+// Keep the state-machine transitions in one function so timeout, stale-result,
+// and active-transport rules can be reviewed together.
+#[allow(clippy::too_many_lines)]
+fn spawn_supervisor(
+    endpoint: Endpoint,
+    outgoing: Arc<Mutex<Option<ActiveOutgoing>>>,
+    frontend: Arc<Frontend>,
+    events: mpsc::Receiver<SupervisorEvent>,
+    sender: mpsc::Sender<SupervisorEvent>,
+    policy: RetryPolicy,
+) {
+    thread::spawn(move || {
+        let mut interactive = true;
+        let mut retry_attempt = 0;
+        let mut next_attempt = Instant::now();
+        let mut attempt: Option<(u64, Instant)> = None;
+        let mut active = None;
+        let mut next_id = 1_u64;
+
+        loop {
+            let deadline = attempt.map_or(next_attempt, |(_, deadline)| deadline);
+            let event = if active.is_some() {
+                events
+                    .recv()
+                    .map_err(|_| mpsc::RecvTimeoutError::Disconnected)
+            } else {
+                events.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            };
+
+            match event {
+                Ok(SupervisorEvent::Interactive(value)) => {
+                    let became_interactive = value && !interactive;
+                    interactive = value;
+                    if became_interactive && active.is_none() {
+                        // A blocked OS connection cannot always be cancelled.
+                        // Invalidate it so its late result is ignored, then let
+                        // the next loop start a new foreground attempt.
+                        attempt = None;
+                        retry_attempt = 0;
+                        next_attempt = Instant::now();
+                    }
+                }
+                Ok(SupervisorEvent::AttemptFinished { id, result }) => {
+                    if attempt.is_none_or(|(current, _)| current != id) {
+                        continue;
+                    }
+                    attempt = None;
+                    match result {
+                        Ok(connection) => {
+                            let transport =
+                                match activate_connection(connection, id, sender.clone()) {
+                                    Ok(transport) => transport,
+                                    Err(error) => {
+                                        eprintln!("connect to admin API: {error}");
+                                        schedule_retry(
+                                            &mut next_attempt,
+                                            &mut retry_attempt,
+                                            interactive,
+                                            policy,
+                                        );
+                                        continue;
+                                    }
+                                };
+                            if let Ok(mut slot) = outgoing.lock() {
+                                *slot = Some(ActiveOutgoing { id, transport });
+                                active = Some(id);
+                                retry_attempt = 0;
+                                frontend.connected();
+                            } else {
+                                break;
+                            }
+                        }
+                        Err(error) => {
+                            eprintln!("connect to admin API: {error}");
+                            schedule_retry(
+                                &mut next_attempt,
+                                &mut retry_attempt,
+                                interactive,
+                                policy,
+                            );
+                        }
+                    }
+                }
+                Ok(SupervisorEvent::Message { id, message }) => {
+                    if active == Some(id) {
+                        frontend.message(message);
+                    }
+                }
+                Ok(SupervisorEvent::TransportClosed(id)) => {
+                    if active != Some(id) {
+                        continue;
+                    }
+                    if let Ok(mut slot) = outgoing.lock() {
+                        if slot.as_ref().is_some_and(|current| current.id == id) {
+                            *slot = None;
+                        }
+                    } else {
+                        break;
+                    }
+                    active = None;
+                    frontend.disconnected();
+                    schedule_retry(&mut next_attempt, &mut retry_attempt, interactive, policy);
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if attempt.take().is_some() {
+                        eprintln!("connect to admin API: attempt timed out");
+                        schedule_retry(&mut next_attempt, &mut retry_attempt, interactive, policy);
+                    } else {
+                        let id = next_id;
+                        next_id = next_id.wrapping_add(1);
+                        spawn_connection_attempt(endpoint.clone(), id, sender.clone());
+                        attempt = Some((id, Instant::now() + policy.connect_timeout));
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+    });
+}
+
+fn schedule_retry(
+    next_attempt: &mut Instant,
+    retry_attempt: &mut u32,
+    interactive: bool,
+    policy: RetryPolicy,
+) {
+    *next_attempt = Instant::now() + policy.delay(*retry_attempt, interactive);
+    *retry_attempt = retry_attempt.saturating_add(1);
+}
+
+fn spawn_connection_attempt(endpoint: Endpoint, id: u64, sender: mpsc::Sender<SupervisorEvent>) {
+    thread::spawn(move || {
+        let result = connect_endpoint(&endpoint);
+        let _ = sender.send(SupervisorEvent::AttemptFinished { id, result });
+    });
+}
+
+fn connect_endpoint(endpoint: &Endpoint) -> Result<PendingConnection, String> {
+    match endpoint {
+        #[cfg(unix)]
+        Endpoint::Unix(path) => {
+            let reader = std::os::unix::net::UnixStream::connect(path)
+                .map_err(|error| format!("connect to Unix socket {}: {error}", path.display()))?;
+            let writer = reader
+                .try_clone()
+                .map_err(|error| format!("clone Unix socket: {error}"))?;
+            Ok(PendingConnection::Unix { reader, writer })
+        }
+        #[cfg(not(unix))]
+        Endpoint::Unix(path) => Err(format!(
+            "Unix sockets are not supported on this platform: {}",
+            path.display()
+        )),
+        #[cfg(windows)]
+        Endpoint::Pipe { trust, name } => {
+            let reader = almagest_windows_pipe::connect(trust.as_str(), name)
+                .map_err(|error| format!("connect to trusted {} pipe: {error}", trust.as_str()))?;
+            let writer = reader
+                .try_clone()
+                .map_err(|error| format!("clone Windows pipe: {error}"))?;
+            Ok(PendingConnection::Pipe { reader, writer })
+        }
+        #[cfg(not(windows))]
+        Endpoint::Pipe { .. } => {
+            Err("Windows named pipes are not supported on this platform".to_owned())
+        }
+        Endpoint::Web(url) => {
+            let (socket, _response) = tungstenite::connect(url.as_str())
+                .map_err(|error| format!("connect to WebSocket {url}: {error}"))?;
+            Ok(PendingConnection::Web(Box::new(socket)))
+        }
+    }
+}
+
+fn activate_connection(
+    connection: PendingConnection,
+    id: u64,
+    supervisor: mpsc::Sender<SupervisorEvent>,
+) -> Result<Outgoing, String> {
+    match connection {
+        #[cfg(unix)]
+        PendingConnection::Unix { reader, writer } => {
+            spawn_stream_reader(reader, id, supervisor);
+            Ok(Outgoing::Unix(Mutex::new(writer)))
+        }
+        #[cfg(windows)]
+        PendingConnection::Pipe { reader, writer } => {
+            spawn_stream_reader(reader, id, supervisor);
+            Ok(Outgoing::Pipe(Mutex::new(writer)))
+        }
+        PendingConnection::Web(mut socket) => {
+            // The handshake is complete before nonblocking polling starts.
+            set_web_nonblocking(&mut socket)?;
+            let (sender, receiver) = mpsc::sync_channel(64);
+            spawn_web_worker(*socket, receiver, id, supervisor);
+            Ok(Outgoing::Web(sender))
+        }
     }
 }
 
@@ -260,7 +520,11 @@ fn write_stream<W: Write>(stream: &Mutex<W>, message: &str) -> Result<(), String
         .map_err(|error| format!("write admin API message: {error}"))
 }
 
-fn spawn_stream_reader<R: Read + Send + 'static>(stream: R, frontend: Arc<Frontend>) {
+fn spawn_stream_reader<R: Read + Send + 'static>(
+    stream: R,
+    id: u64,
+    supervisor: mpsc::Sender<SupervisorEvent>,
+) {
     thread::spawn(move || {
         let mut reader = BufReader::new(stream);
         loop {
@@ -278,11 +542,16 @@ fn spawn_stream_reader<R: Read + Send + 'static>(stream: R, frontend: Arc<Fronte
                     while message.ends_with(['\n', '\r']) {
                         message.pop();
                     }
-                    frontend.message(message);
+                    if supervisor
+                        .send(SupervisorEvent::Message { id, message })
+                        .is_err()
+                    {
+                        return;
+                    }
                 }
             }
         }
-        frontend.disconnected();
+        let _ = supervisor.send(SupervisorEvent::TransportClosed(id));
     });
 }
 
@@ -300,10 +569,11 @@ fn set_web_nonblocking(
 fn spawn_web_worker(
     mut socket: WebSocket<MaybeTlsStream<std::net::TcpStream>>,
     outgoing: mpsc::Receiver<String>,
-    frontend: Arc<Frontend>,
+    id: u64,
+    supervisor: mpsc::Sender<SupervisorEvent>,
 ) {
     thread::spawn(move || {
-        loop {
+        'connection: loop {
             match outgoing.recv_timeout(WEB_POLL_INTERVAL) {
                 Ok(message) => {
                     if let Err(error) = socket.send(Message::Text(message.into()))
@@ -317,21 +587,25 @@ fn spawn_web_worker(
             }
             loop {
                 match socket.read() {
-                    Ok(Message::Text(message)) => frontend.message(message.to_string()),
-                    Ok(Message::Close(_)) => {
-                        frontend.disconnected();
-                        return;
+                    Ok(Message::Text(message)) => {
+                        if supervisor
+                            .send(SupervisorEvent::Message {
+                                id,
+                                message: message.to_string(),
+                            })
+                            .is_err()
+                        {
+                            return;
+                        }
                     }
+                    Ok(Message::Close(_)) => break 'connection,
                     Ok(_) => {}
                     Err(tungstenite::Error::Io(error))
                         if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) =>
                     {
                         break;
                     }
-                    Err(_) => {
-                        frontend.disconnected();
-                        return;
-                    }
+                    Err(_) => break 'connection,
                 }
             }
             if let Err(error) = socket.flush()
@@ -340,7 +614,7 @@ fn spawn_web_worker(
                 break;
             }
         }
-        frontend.disconnected();
+        let _ = supervisor.send(SupervisorEvent::TransportClosed(id));
     });
 }
 
@@ -354,7 +628,7 @@ fn is_transient_web_error(error: &tungstenite::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{AdminConnection, Frontend, validate_request};
+    use super::{AdminConnection, Frontend, RetryPolicy, validate_request};
     use crate::endpoint::Endpoint;
     use std::{
         io::{BufRead, BufReader},
@@ -365,6 +639,11 @@ mod tests {
     use tungstenite::Message;
 
     const REQUEST: &str = r#"{"version":"v1","kind":"request","id":"1","surface":"admin","method":"ping","payload":{}}"#;
+    const TEST_POLICY: RetryPolicy = RetryPolicy {
+        connect_timeout: Duration::from_millis(100),
+        initial_delay: Duration::from_millis(10),
+        maximum_delay: Duration::from_millis(40),
+    };
 
     #[test]
     fn accepts_only_api_requests() {
@@ -379,6 +658,24 @@ mod tests {
     }
 
     #[test]
+    fn retry_delay_matches_panel_policy() {
+        let policy = RetryPolicy {
+            connect_timeout: Duration::ZERO,
+            initial_delay: Duration::from_secs(1),
+            maximum_delay: Duration::from_secs(30),
+        };
+        for attempt in 0..8 {
+            assert_eq!(policy.delay(attempt, true), Duration::from_secs(1));
+        }
+        assert_eq!(
+            (0..7)
+                .map(|attempt| policy.delay(attempt, false))
+                .collect::<Vec<_>>(),
+            [1, 2, 4, 8, 16, 30, 30].map(Duration::from_secs)
+        );
+    }
+
+    #[test]
     fn reports_connection_status_to_rust_handler() {
         let frontend = Frontend::new();
         let (sender, receiver) = mpsc::channel();
@@ -386,7 +683,9 @@ mod tests {
             .set_status_handler(move |connected| sender.send(connected).expect("report status"))
             .expect("set status handler");
 
-        assert!(receiver.recv().expect("initial status"));
+        assert!(!receiver.recv().expect("initial status"));
+        frontend.connected();
+        assert!(receiver.recv().expect("connected status"));
         frontend.disconnected();
         assert!(!receiver.recv().expect("disconnected status"));
         frontend.disconnected();
@@ -395,16 +694,20 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn relays_request_to_unix_stream() {
-        let directory = std::env::temp_dir();
-        let path = directory.join(format!(
-            "almagest-app-test-{}-{}.sock",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                .expect("system clock must be after Unix epoch")
-                .as_nanos()
-        ));
+    fn reconnects_when_unix_socket_appears_after_startup() {
+        let path = temporary_socket_path();
+        let connection =
+            AdminConnection::connect_with_policy(&Endpoint::Unix(path.clone()), TEST_POLICY);
+        let (status_sender, status_receiver) = mpsc::channel();
+        connection
+            .set_status_handler(move |connected| {
+                status_sender.send(connected).expect("report status");
+            })
+            .expect("set status handler");
+        assert!(!status_receiver.recv().expect("initial status"));
+
+        // The first attempt fails because the listener does not exist yet.
+        thread::sleep(Duration::from_millis(30));
         let listener = std::os::unix::net::UnixListener::bind(&path).expect("bind Unix socket");
         let (message_sender, message_receiver) = mpsc::channel();
         let server = thread::spawn(move || {
@@ -416,8 +719,11 @@ mod tests {
             message_sender.send(message).expect("report request");
         });
 
-        let connection =
-            AdminConnection::connect(&Endpoint::Unix(path.clone())).expect("connect Unix socket");
+        assert!(
+            status_receiver
+                .recv_timeout(Duration::from_secs(2))
+                .expect("app did not reconnect")
+        );
         connection.send(REQUEST.to_owned()).expect("send request");
         assert_eq!(
             message_receiver
@@ -427,6 +733,103 @@ mod tests {
         );
         server.join().expect("server thread");
         std::fs::remove_file(path).expect("remove Unix socket");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reconnects_after_unix_transport_closes() {
+        let path = temporary_socket_path();
+        let first_listener =
+            std::os::unix::net::UnixListener::bind(&path).expect("bind first Unix socket");
+        let (close_sender, close_receiver) = mpsc::channel();
+        let first_server = thread::spawn(move || {
+            let (stream, _) = first_listener.accept().expect("accept first connection");
+            close_receiver.recv().expect("wait for close request");
+            drop(stream);
+        });
+
+        let connection =
+            AdminConnection::connect_with_policy(&Endpoint::Unix(path.clone()), TEST_POLICY);
+        let (status_sender, status_receiver) = mpsc::channel();
+        connection
+            .set_status_handler(move |connected| {
+                status_sender.send(connected).expect("report status");
+            })
+            .expect("set status handler");
+        assert!(!status_receiver.recv().expect("initial status"));
+        assert!(
+            status_receiver
+                .recv_timeout(Duration::from_secs(2))
+                .expect("app did not make the first connection")
+        );
+
+        close_sender.send(()).expect("request first close");
+        first_server.join().expect("first server thread");
+        assert!(
+            !status_receiver
+                .recv_timeout(Duration::from_secs(2))
+                .expect("app did not detect the closed transport")
+        );
+        std::fs::remove_file(&path).expect("remove first Unix socket");
+
+        let second_listener =
+            std::os::unix::net::UnixListener::bind(&path).expect("bind second Unix socket");
+        let (message_sender, message_receiver) = mpsc::channel();
+        let second_server = thread::spawn(move || {
+            let (stream, _) = second_listener.accept().expect("accept second connection");
+            let mut message = String::new();
+            BufReader::new(stream)
+                .read_line(&mut message)
+                .expect("read request");
+            message_sender.send(message).expect("report request");
+        });
+
+        assert!(
+            status_receiver
+                .recv_timeout(Duration::from_secs(2))
+                .expect("app did not reconnect after transport loss")
+        );
+        connection.send(REQUEST.to_owned()).expect("send request");
+        assert_eq!(
+            message_receiver
+                .recv_timeout(Duration::from_secs(2))
+                .expect("second server did not receive request"),
+            format!("{REQUEST}\n")
+        );
+        second_server.join().expect("second server thread");
+        std::fs::remove_file(path).expect("remove second Unix socket");
+    }
+
+    #[test]
+    fn retries_after_websocket_handshake_timeout() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind TCP listener");
+        let address = listener.local_addr().expect("listener address");
+        let (accepted_sender, accepted_receiver) = mpsc::channel();
+        let server = thread::spawn(move || {
+            // Keep both TCP connections open without completing either
+            // WebSocket handshake. The second accept proves that the timed-out
+            // first attempt did not stop the retry supervisor.
+            let (first, _) = listener.accept().expect("accept first TCP connection");
+            accepted_sender.send(()).expect("report first connection");
+            let (second, _) = listener.accept().expect("accept second TCP connection");
+            accepted_sender.send(()).expect("report second connection");
+            drop((first, second));
+        });
+        let Endpoint::Web(endpoint) =
+            crate::endpoint::parse(&format!("web://{address}")).expect("parse WebSocket endpoint")
+        else {
+            panic!("wrong endpoint kind");
+        };
+
+        let _connection =
+            AdminConnection::connect_with_policy(&Endpoint::Web(endpoint), TEST_POLICY);
+        accepted_receiver
+            .recv_timeout(Duration::from_secs(2))
+            .expect("app did not make the first connection attempt");
+        accepted_receiver
+            .recv_timeout(Duration::from_secs(2))
+            .expect("app did not retry the timed-out connection attempt");
+        server.join().expect("server thread");
     }
 
     #[test]
@@ -447,7 +850,8 @@ mod tests {
             panic!("wrong endpoint kind");
         };
         let connection =
-            AdminConnection::connect(&Endpoint::Web(endpoint)).expect("connect WebSocket");
+            AdminConnection::connect_with_policy(&Endpoint::Web(endpoint), TEST_POLICY);
+        wait_until_connected(&connection);
         connection.send(REQUEST.to_owned()).expect("send request");
         assert_eq!(
             message_receiver
@@ -456,5 +860,31 @@ mod tests {
             Message::Text(REQUEST.into())
         );
         server.join().expect("server thread");
+    }
+
+    fn wait_until_connected(connection: &AdminConnection) {
+        let (sender, receiver) = mpsc::channel();
+        connection
+            .set_status_handler(move |connected| sender.send(connected).expect("report status"))
+            .expect("set status handler");
+        if !receiver.recv().expect("initial status") {
+            assert!(
+                receiver
+                    .recv_timeout(Duration::from_secs(2))
+                    .expect("app did not connect")
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    fn temporary_socket_path() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "almagest-app-test-{}-{}.sock",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .expect("system clock must be after Unix epoch")
+                .as_nanos()
+        ))
     }
 }

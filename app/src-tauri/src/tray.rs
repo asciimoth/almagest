@@ -14,7 +14,7 @@ pub(crate) fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let status_item = MenuItem::with_id(
         app,
         "connection-status",
-        status_text(true),
+        status_text(false),
         false,
         None::<&str>,
     )?;
@@ -25,7 +25,7 @@ pub(crate) fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let mut builder = TrayIconBuilder::new()
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .tooltip(tooltip_text(true))
+        .tooltip(tooltip_text(false))
         .on_menu_event(|app, event| match event.id().as_ref() {
             SHOW_MENU_ID => show_main_window(app),
             QUIT_MENU_ID => app.exit(0),
@@ -58,6 +58,9 @@ pub(crate) fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .map_err(std::io::Error::other)?;
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        update_webview_retry_priority(&window);
+    }
     Ok(())
 }
 
@@ -73,6 +76,7 @@ pub(crate) fn handle_window_event(window: &Window, event: &WindowEvent) {
         WindowEvent::Resized(_) if window.is_minimized().unwrap_or(false) => hide_window(window),
         _ => {}
     }
+    update_window_retry_priority(window);
 }
 
 fn hide_window<R: Runtime>(window: &Window<R>) {
@@ -86,6 +90,7 @@ fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
         return;
     };
     restore_window(&window);
+    update_webview_retry_priority(&window);
 }
 
 fn restore_window<R: Runtime>(window: &WebviewWindow<R>) {
@@ -98,6 +103,22 @@ fn restore_window<R: Runtime>(window: &WebviewWindow<R>) {
     if let Err(error) = window.set_focus() {
         eprintln!("focus main window: {error}");
     }
+}
+
+/// Use native window state to select the retry rate. No visibility or focus
+/// information is added to the frontend IPC surface.
+fn update_window_retry_priority<R: Runtime>(window: &Window<R>) {
+    let interactive = window.is_visible().unwrap_or(false) && window.is_focused().unwrap_or(false);
+    window
+        .state::<AdminConnection>()
+        .set_interactive(interactive);
+}
+
+fn update_webview_retry_priority<R: Runtime>(window: &WebviewWindow<R>) {
+    let interactive = window.is_visible().unwrap_or(false) && window.is_focused().unwrap_or(false);
+    window
+        .state::<AdminConnection>()
+        .set_interactive(interactive);
 }
 
 fn status_text(connected: bool) -> &'static str {
