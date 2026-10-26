@@ -1,5 +1,6 @@
-Tries connected DNS services in ascending slot order. Slot 1 has the highest
-priority. Empty slots are skipped.
+Tries connected DNS services in ascending slot order.
+[slot 1](@port/right/slot%201) has the highest priority. Empty slots are
+skipped.
 
 The node returns the first response with the `NOERROR` status. It tries the next
 connected slot when a service returns an error, returns no response, exceeds the
@@ -18,7 +19,8 @@ a shorter timeout to the complete query.
 Each slot accepts one DNS connection. The node supports slots 1 through 16 and
 keeps one unused slot available while you add connections. When you disconnect a
 service, extra empty slots are removed. Connected slots keep their numbers, so a
-sparse layout such as slots 2 and 5 keeps that priority order.
+sparse layout such as [slot 2](@port/right/slot%202) and
+[slot 5](@port/right/slot%205) keeps that priority order.
 
 You can connect, disconnect, or replace services while the node is in use. New
 queries use the current slot layout. If a change affects the service that an

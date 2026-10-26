@@ -1,7 +1,7 @@
 Provides a Network that sends supported TCP and UDP operations through a SOCKS
-proxy. Connect the network used to reach the proxy to [out](@port/left/out).
-Connect clients or tunnel nodes to the [Network](@port/right/Network) output.
-The node does not bypass the proxy for loopback or local addresses.
+proxy. Connect the network used to reach the proxy to [out](@port/right/out).
+Connect clients or tunnel nodes to the [Network](@port/left/Network) output. The
+node does not bypass the proxy for loopback or local addresses.
 
 ## Use with a GOST server
 
@@ -13,17 +13,19 @@ Start a GOST SOCKS5-over-WebSocket server:
 gost -L "socks5+ws://user:pass@:8080?notls=true"
 ```
 
-Set this node's **Proxy URL** to:
+Set this node's [Proxy URL](@port/left/Proxy%20URL) to:
 
 ```text
 socks5+ws://user:pass@gost.example:8080/ws
 ```
 
-Connect a Network that can reach `gost.example` to [out](@port/left/out). GOST
+Connect a Network that can reach `gost.example` to [out](@port/right/out). GOST
 and this client both use `/ws` as their default WebSocket path. If the GOST
-listener uses another path, put the same path after the port in **Proxy URL**.
+listener uses another path, put the same path after the port in
+[Proxy URL](@port/left/Proxy%20URL).
 
-For secure WebSocket, start GOST and set **Proxy URL** as follows:
+For secure WebSocket, start GOST and set [Proxy URL](@port/left/Proxy%20URL) as
+follows:
 
 ```sh
 gost -L "socks5+wss://user:pass@:8443?notls=true"
@@ -45,17 +47,18 @@ Start a plain GOST SOCKS5 server:
 gost -L "socks5://user:pass@:1080?notls=true"
 ```
 
-Set **Proxy URL** to `socks5://user:pass@gost.example:1080`. Remove `user:pass@`
-from both values to use the server without authentication. Add `?gost` to the
-Almagest URL when you need the GOST UDP-over-TCP or multiplexed BIND extensions.
-Standard CONNECT, BIND, and UDP ASSOCIATE do not require this option. See the
+Set [Proxy URL](@port/left/Proxy%20URL) to
+`socks5://user:pass@gost.example:1080`. Remove `user:pass@` from both values to
+use the server without authentication. Add `?gost` to the Almagest URL when you
+need the GOST UDP-over-TCP or multiplexed BIND extensions. Standard CONNECT,
+BIND, and UDP ASSOCIATE do not require this option. See the
 [GOST SOCKS documentation](https://gost.run/en/tutorials/protocols/socks/) for
 the corresponding GOST server options.
 
-## Proxy URL
+## [Proxy URL](@port/left/Proxy%20URL)
 
-The default **Proxy URL** is `socks5://127.0.0.1:1080`. If the URL does not
-contain a port, port 1080 is used. These schemes are supported:
+The default [Proxy URL](@port/left/Proxy%20URL) is `socks5://127.0.0.1:1080`. If
+the URL does not contain a port, port 1080 is used. These schemes are supported:
 
 - `socks5://`, `socks://`, and `socks5h://` select SOCKS5.
 - `socks4://` selects SOCKS4.
@@ -83,17 +86,17 @@ effect when the URL has no username.
 For `+tls` and `+wss`, **TLS config** selects the certificate authorities,
 server name, client certificate, and other TLS policy. The default TLS config is
 used when no other config is selected. An invalid TLS config prevents the
-encrypted [Network](@port/right/Network) output, but does not prevent a plain
+encrypted [Network](@port/left/Network) output, but does not prevent a plain
 SOCKS connection. The `secure` URL option does not replace the selected TLS
 config.
 
 ## DNS
 
-The network connected to [out](@port/left/out) resolves the proxy server name.
+The network connected to [out](@port/right/out) resolves the proxy server name.
 SOCKS5 and SOCKS4a send target hostnames to the proxy, so the proxy resolves
 them. SOCKS4 resolves target hostnames with the local process resolver before it
 sends the request. It does not use graph DNS or the resolver from
-[out](@port/left/out) for this step.
+[out](@port/right/out) for this step.
 
 Explicit forward and reverse lookups are disabled by default. Add `?tor` to use
 the Tor `RESOLVE` and `RESOLVE_PTR` extensions through a compatible SOCKS5
@@ -122,8 +125,9 @@ node always sends supported destination operations through the proxy.
 
 ## Dynamic URL input
 
-An optional **Proxy URL** connection can change the URL at run time. While it is
-connected, the **Proxy URL** field is read-only. An empty value restores the
-default URL. The [Network](@port/right/Network) output is available only when
-[out](@port/left/out) is ready and the URL and applicable **TLS config** are
+An optional [Proxy URL](@port/left/Proxy%20URL) connection can change the URL at
+run time. While it is connected, the [Proxy URL](@port/left/Proxy%20URL) field
+is read-only. An empty value restores the default URL. The
+[Network](@port/left/Network) output is available only when
+[out](@port/right/out) is ready and the URL and applicable **TLS config** are
 valid.

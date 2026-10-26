@@ -29,17 +29,18 @@ The node supplies the configured default if the path is missing, contains
 type. Configure a separate default for each String, Integer, Float, or Boolean
 output. An Object output always uses `null` as its default.
 
-If the input is not connected, all outputs supply their defaults. Disconnecting
-the input also resets all outputs to their defaults.
+If the [input](@port/left/input) is not connected, all outputs supply their
+defaults. Disconnecting the [input](@port/left/input) also resets all outputs to
+their defaults.
 
 ## Updates and validation
 
-ObjectUnpacker requests the current Object when its input connects. It checks
-all paths when the Object or output configuration changes. If at least one
-result changed, it sends the current values from all outputs. It sends nothing
-when all results stay equal. A newly connected consumer receives the current
-value immediately. A current-value request also returns that output's current
-value.
+ObjectUnpacker requests the current Object when its [input](@port/left/input)
+connects. It checks all paths when the Object or output configuration changes.
+If at least one result changed, it sends the current values from all outputs. It
+sends nothing when all results stay equal. A newly connected consumer receives
+the current value immediately. A current-value request also returns that
+output's current value.
 
 If any output has an invalid type or path, the node rejects the complete menu
 change and keeps the previous outputs. Output definitions and their order are

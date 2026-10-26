@@ -1,10 +1,10 @@
 TlsWrapper adds TLS to both client and server TCP operations on a Network. Place
-it between a Network consumer and the Network that supplies the actual
-connections.
+it between a [Network](@port/left/Network) consumer and the
+[Network](@port/right/Network) that supplies the actual connections.
 
 - For a TCP dial, TlsWrapper connects to the requested destination and completes
   a TLS client handshake. The consumer uses a normal plaintext stream, while the
-  underlying Network carries TLS-encrypted data.
+  underlying [Network](@port/right/Network) carries TLS-encrypted data.
 - For a TCP listener, TlsWrapper accepts TLS from each remote client and gives
   the decrypted connection to the listening consumer as a normal TCP stream.
 
@@ -75,12 +75,13 @@ UDP, packet connections, DNS lookups, interface queries, and other non-TCP
 operations pass through without TLS. This means TlsWrapper does not encrypt UDP
 or QUIC.
 
-The node supplies its Network only when the connected Network, selected client
-TLS config, local CA, server name, and leaf TTL are valid. Both client-side and
-server-side settings must be valid even if the consumer uses only dials or only
-listeners.
+The node supplies its [Network](@port/left/Network) only when the connected
+[Network](@port/right/Network), selected client TLS config, local CA, server
+name, and leaf TTL are valid. Both client-side and server-side settings must be
+valid even if the consumer uses only dials or only listeners.
 
-Changing the connected Network, TLS config, local CA, or a menu setting replaces
-the supplied Network. Active connections through the previous configuration can
-close. TlsWrapper has no operating-system-specific network integration; platform
-behavior comes from the connected Network.
+Changing the connected [Network](@port/right/Network), TLS config, local CA, or
+a menu setting replaces the supplied [Network](@port/left/Network). Active
+connections through the previous configuration can close. TlsWrapper has no
+operating-system-specific network integration; platform behavior comes from the
+connected [Network](@port/right/Network).

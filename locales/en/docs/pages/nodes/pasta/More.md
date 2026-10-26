@@ -1,5 +1,6 @@
-Outputs `true` when **input 1** is greater than **input 2**. Each input accepts
-one connection. The Boolean output can supply multiple consumers.
+Outputs `true` when [input 1](@port/left/input%201) is greater than
+[input 2](@port/left/input%202). Each input accepts one connection. The Boolean
+[output](@port/right/output) can supply multiple consumers.
 
 More supports these standard values:
 

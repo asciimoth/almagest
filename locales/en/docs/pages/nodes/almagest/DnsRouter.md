@@ -7,8 +7,9 @@ request to the specified slot. `DROP` rejects the request with a `no upstream`
 error. The node supports slots 1 through 16, and each slot accepts one DNS
 connection.
 
-This example rejects one name, sends A queries for an internal domain to slot 2,
-and sends all other queries to slot 1:
+This example rejects one name, sends A queries for an internal domain to
+[slot 2](@port/right/slot%202), and sends all other queries to
+[slot 1](@port/right/slot%201):
 
 ```rulev1
 ADDR_S blocked.example.
@@ -36,9 +37,9 @@ Write combined conditions in postfix order: put both predicates first, and then
 put `AND` or `OR` after them. `NOT` reverses the condition before it. Blank
 lines and lines that start with `#` are ignored.
 
-Empty or comment-only rules send all requests to slot 1. A nonempty rule set has
-no automatic fallback. Add these lines at the end if unmatched requests must use
-a default service:
+Empty or comment-only rules send all requests to [slot 1](@port/right/slot%201).
+A nonempty rule set has no automatic fallback. Add these lines at the end if
+unmatched requests must use a default service:
 
 ```text
 TRUE
@@ -53,5 +54,5 @@ need ordered retries.
 Applying rules creates the slots that they reference. A referenced slot stays
 visible without a connection. A connected slot stays visible after rules stop
 referencing it, and disappears after you disconnect it. If no rule or connection
-needs a slot, only slot 1 remains. An invalid rule edit is not applied, so the
-last valid rules continue to route requests.
+needs a slot, only [slot 1](@port/right/slot%201) remains. An invalid rule edit
+is not applied, so the last valid rules continue to route requests.

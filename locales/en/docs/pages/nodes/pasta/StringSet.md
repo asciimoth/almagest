@@ -1,12 +1,14 @@
 Stages a String value and writes it to a named variable when triggered. Use the
-**Trigger** output to continue a sequence after the write is complete.
+[Trigger](@port/right/Trigger) output to continue a sequence after the write is
+complete.
 
 ## Staged value
 
-**Value** accepts one String connection. Each received value replaces the staged
-value, but it does not change the named variable. If no value is connected, the
-node uses **Value** from its menu. The default is an empty string. Disconnecting
-the Value connection resets the staged value to an empty string.
+[Value](@port/left/Value) accepts one String connection. Each received value
+replaces the staged value, but it does not change the named variable. If no
+value is connected, the node uses **Value** from its menu. The default is an
+empty string. Disconnecting the [Value](@port/left/Value) connection resets the
+staged value to an empty string.
 
 Apply **Name** and **Value** in the menu to change the variable name and staged
 value. This action does not write the variable or send a trigger. An empty name
@@ -19,13 +21,15 @@ When StringSet receives a trigger, or when you trigger it manually, it does
 these actions in order:
 
 1. It writes the staged value to the named String variable.
-1. It sends a trigger to all consumers connected to **Trigger**.
+1. It sends a trigger to all consumers connected to
+   [Trigger](@port/right/Trigger).
 
-This order lets you connect the Trigger output to a
+This order lets you connect the [Trigger](@port/right/Trigger) output to a
 [StringGet](@docs/node/pasta/StringGet) node with the same name.
 [StringGet](@docs/node/pasta/StringGet) then reads the value that StringSet has
-written. Value updates do not send triggers. The Trigger input can accept
-multiple trigger sources, and the Trigger output can supply multiple consumers.
+written. [Value](@port/left/Value) updates do not send triggers. The
+[Trigger](@port/left/Trigger) input can accept multiple trigger sources, and the
+[Trigger](@port/right/Trigger) output can supply multiple consumers.
 
 ## Scope and persistence
 

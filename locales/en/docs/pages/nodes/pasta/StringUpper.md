@@ -1,6 +1,6 @@
-StringUpper converts letters in **input 1** to uppercase and leaves other
-characters unchanged. It uses Unicode uppercase mappings, so it is not limited
-to ASCII. For example, `äbc 12` becomes `ÄBC 12`.
+StringUpper converts letters in [input 1](@port/left/input%201) to uppercase and
+leaves other characters unchanged. It uses Unicode uppercase mappings, so it is
+not limited to ASCII. For example, `äbc 12` becomes `ÄBC 12`.
 
 The conversion is not language- or locale-specific. It maps each character to at
 most one uppercase character, so it does not apply expansions that require

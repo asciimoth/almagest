@@ -1,6 +1,6 @@
-Creates a regular TUN interface on the daemon host and supplies it to one TUN
-consumer. Use it when a node such as WireGuard must read and write IP packets
-through a host interface.
+Creates a regular TUN interface on the daemon host and supplies it through
+[Tun](@port/right/Tun) to one TUN consumer. Use it when a node such as WireGuard
+must read and write IP packets through a host interface.
 
 This node does not automatically make the interface the system default route.
 Add only the routes that must use the interface. Use
@@ -61,9 +61,9 @@ needs different source addresses for different destinations.
 
 When the platform supports a live change, the node updates the existing
 interface. Otherwise, it closes the interface and creates a replacement. Traffic
-can stop briefly, and the connected consumer receives the replacement TUN.
-Changing the requested name can require replacement on platforms that do not
-support live rename.
+can stop briefly, and the connected consumer receives the replacement
+[Tun](@port/right/Tun). Changing the requested name can require replacement on
+platforms that do not support live rename.
 
 The node keeps the current configuration when a menu edit fails validation. Its
 label changes to `invalid config`. If interface creation or replacement fails,

@@ -1,13 +1,15 @@
 Stages a Boolean value and writes it to a named variable when triggered. Use the
-**Trigger** output to continue a sequence after the write is complete.
+[Trigger](@port/right/Trigger) output to continue a sequence after the write is
+complete.
 
 ## Staged value
 
-**Value** accepts one Boolean connection. Each received value replaces the
-staged value, but it does not change the named variable yet. If no value is
-connected, the node uses the value in its menu. The default is `false`, and a
-saved workspace restores the last configured or received value. Disconnecting
-the Value connection resets the staged value to `false`.
+[Value](@port/left/Value) accepts one Boolean connection. Each received value
+replaces the staged value, but it does not change the named variable yet. If no
+value is connected, the node uses the value in its menu. The default is `false`,
+and a saved workspace restores the last configured or received value.
+Disconnecting the [Value](@port/left/Value) connection resets the staged value
+to `false`.
 
 You can also edit **Name** and **Value** in the menu. Applying these fields
 changes the variable name and staged value. It does not write the variable. An
@@ -19,13 +21,15 @@ When the node receives a trigger, or when you trigger it manually, it does these
 actions in order:
 
 1. It writes the staged value to the named Boolean variable.
-1. It sends a trigger to all consumers connected to **Trigger**.
+1. It sends a trigger to all consumers connected to
+   [Trigger](@port/right/Trigger).
 
-This order lets you connect the Trigger output to a
+This order lets you connect the [Trigger](@port/right/Trigger) output to a
 [BoolGet](@docs/node/pasta/BoolGet) node with the same name.
 [BoolGet](@docs/node/pasta/BoolGet) then reads the value that BoolSet has
-written. Value updates do not send triggers. The Trigger input can accept
-multiple trigger sources, and the Trigger output can supply multiple consumers.
+written. [Value](@port/left/Value) updates do not send triggers. The
+[Trigger](@port/left/Trigger) input can accept multiple trigger sources, and the
+[Trigger](@port/right/Trigger) output can supply multiple consumers.
 
 ## Variable scope
 

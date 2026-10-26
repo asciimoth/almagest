@@ -1,6 +1,7 @@
-Passes a TUN between one provider and one consumer, but blocks all TUN
-configuration suggestions. Place it in a TUN path when the provider's interface
-settings must remain independent of the connected consumer.
+Passes a TUN between one provider connected to [Tun](@port/right/Tun) and one
+consumer connected to [Tun](@port/left/Tun), but blocks all TUN configuration
+suggestions. Place it in a TUN path when the provider's interface settings must
+remain independent of the connected consumer.
 
 The node blocks the complete configuration suggestion in either direction. This
 includes:
@@ -20,9 +21,9 @@ modification. The node does not filter, route, inspect, or copy packet data. It
 changes only configuration messages.
 
 TUN availability and replacement changes pass from the provider to the consumer.
-If the provider disconnects or withdraws its TUN, the consumer also loses access
-to that TUN. When the provider supplies a replacement, the node supplies the
-replacement to the consumer.
+If the provider disconnects or withdraws its [Tun](@port/right/Tun), the
+consumer also loses access to [Tun](@port/left/Tun). When the provider supplies
+a replacement, the node supplies the replacement to the consumer.
 
 Requests for the current TUN pass through the node. This lets either side
 request current state after a connection or reconnection. Other

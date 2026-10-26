@@ -83,7 +83,7 @@ this option only when peers can establish a direct path.
 Direct endpoints supplied by the control server can still be used. DERP can
 still carry traffic unless you also disable DERP.
 
-## DNS output
+## [DNS](@port/left/DNS) output
 
 The [DNS](@port/left/DNS) output serves the current MagicDNS records received
 from the control server. It supports `A`, `AAAA`, `CNAME`, `PTR`, `NS`, `MX`,
@@ -101,11 +101,12 @@ The DNS output follows control-server updates. When TailscaleCtrl is disabled,
 disconnected, or in an error state, the output stays connected but has no
 records.
 
-## Firewall output
+## [Firewall](@port/right/Firewall) output
 
-The **Firewall** output converts the current tailnet packet filter to an
-incoming allow policy for [NetworkFirewall](@docs/node/almagest/NetworkFirewall)
-or [TunFirewall](@docs/node/almagest/TunFirewall). Rules can match the remote
+The [Firewall](@port/right/Firewall) output converts the current tailnet packet
+filter to an incoming allow policy for
+[NetworkFirewall](@docs/node/almagest/NetworkFirewall) or
+[TunFirewall](@docs/node/almagest/TunFirewall). Rules can match the remote
 source, local destination, protocol, and destination port. The policy does not
 restrict outgoing traffic. Tailscale capability grants are not included because
 they do not have an equivalent firewall rule.

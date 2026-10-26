@@ -1,6 +1,6 @@
-Caches DNS responses from an optional upstream DNS service. On a cache hit, the
-node returns the stored response. On a cache miss, it queries the upstream
-service and stores a successful response.
+Caches DNS responses from an optional upstream [DNS](@port/right/DNS) service.
+On a cache hit, the node returns the stored response. On a cache miss, it
+queries the upstream service and stores a successful response.
 
 **CacheStorage name** selects the shared cache. An empty name uses `default`.
 DnsCache nodes that use the same name read and write the same entries. Other
@@ -24,10 +24,12 @@ mode, every query goes to the upstream service, even when the storage already
 has a matching response. Successful responses are still stored, so another
 DnsCache node with **Write only** disabled can serve them.
 
-The upstream DNS connection is optional in normal mode. If you disconnect it,
-connected consumers can continue to receive cached responses. A cache miss fails
-until an upstream service is connected again. In write-only mode, all queries
-need the upstream service, so they fail while it is disconnected.
+The upstream [DNS](@port/right/DNS) connection is optional in normal mode. If
+you disconnect it, connected consumers can continue to receive cached responses.
+A cache miss fails until an upstream service is connected again. In write-only
+mode, all queries need the upstream service, so they fail while it is
+disconnected.
 
-Changing the storage name or either option replaces the DNS service supplied to
-connected consumers. The stored entries remain in their named storage.
+Changing the storage name or either option replaces the [DNS](@port/left/DNS)
+service supplied to connected consumers. The stored entries remain in their
+named storage.

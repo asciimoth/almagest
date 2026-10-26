@@ -1,4 +1,5 @@
-Filters IP packets between one TUN provider and one TUN consumer.
+Filters IP packets between one TUN provider on [Tun](@port/right/Tun) and one
+TUN consumer on [Tun](@port/left/Tun).
 
 The default policy is stateful and has these actions:
 
@@ -86,11 +87,12 @@ reply entry created for fragmented outgoing traffic.
 
 ## Combine policies
 
-You can connect multiple **Object** values to **Config**. Each Object uses the
-same JSON format. The effective policy is the union of the menu policy and all
-valid connected Objects. The node combines all `exclude` and `include` rules. If
-policies specify different `responseTTL` values, the longest effective duration
-is used. An omitted duration counts as the two-minute default.
+You can connect multiple **Object** values to [Config](@port/left/Config). Each
+Object uses the same JSON format. The effective policy is the union of the menu
+policy and all valid connected Objects. The node combines all `exclude` and
+`include` rules. If policies specify different `responseTTL` values, the longest
+effective duration is used. An omitted duration counts as the two-minute
+default.
 
 **Effective config** shows the combined and normalized policy. Object changes
 apply to an active TUN without replacing it. Disconnecting an Object removes
@@ -102,8 +104,8 @@ previous policy from that Object is removed, and the label changes to
 `invalid object config`.
 
 The firewall passes complete TUN configuration suggestions, including addresses,
-routes, source routes, MTU, and DNS, back to the TUN provider. It does not use
-these suggestions as firewall rules.
+routes, source routes, MTU, and DNS, back to the [Tun](@port/right/Tun)
+provider. It does not use these suggestions as firewall rules.
 
 The label is `waiting for TUN` until the input is available. During normal
 operation, it shows the number of effective rules after normalization.

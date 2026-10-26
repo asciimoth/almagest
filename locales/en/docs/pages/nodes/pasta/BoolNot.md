@@ -1,11 +1,11 @@
-Outputs the opposite of **input 1**. A `true` input produces `false`, and a
-`false` input produces `true`.
+Outputs the opposite of [input 1](@port/left/input%201). A `true` input produces
+`false`, and a `false` input produces `true`.
 
 A disconnected input, or a connected input that has not supplied a value, counts
-as `false`. The output is therefore `true` until the input supplies `true`.
-Disconnecting the input changes it back to `false`, so the output changes back
-to `true`. The input accepts one connection. The output can supply multiple
-consumers.
+as `false`. The [output](@port/right/output) is therefore `true` until the input
+supplies `true`. Disconnecting the input changes it back to `false`, so the
+[output](@port/right/output) changes back to `true`. The input accepts one
+connection. The [output](@port/right/output) can supply multiple consumers.
 
 The node requests the current value when the input connects. It recalculates the
 result after each input update or disconnection. When the result changes, it

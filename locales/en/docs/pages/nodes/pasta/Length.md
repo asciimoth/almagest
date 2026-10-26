@@ -1,6 +1,6 @@
 Measures the top-level size of one **Object** value and supplies the result as
-an integer. The input accepts one connection. The output can supply multiple
-consumers.
+an integer. The [input](@port/left/input) accepts one connection. The
+[output](@port/right/output) can supply multiple consumers.
 
 Length uses these rules:
 
@@ -17,10 +17,12 @@ string `é` has a length of `2`. Standard Object editors accept an object, an
 array, or `null`, but Length can also measure a top-level string supplied by a
 compatible Object source.
 
-The result starts at `0`. It also returns to `0` when the input disconnects.
-When an input connects, Length requests its current value. Each later input
-update recalculates the result. The node sends an update to existing consumers
-only when the numeric result changes, so two different values with the same
-length do not cause a second output event. A consumer that connects later, or
-requests the current value, receives the current result. The node label and the
-read-only **Value** field show the same result.
+The result starts at `0`. It also returns to `0` when the
+[input](@port/left/input) disconnects. When an [input](@port/left/input)
+connects, Length requests its current value. Each later
+[input](@port/left/input) update recalculates the result. The node sends an
+update to existing consumers only when the numeric result changes, so two
+different values with the same length do not cause a second
+[output](@port/right/output) event. A consumer that connects later, or requests
+the current value, receives the current result. The node label and the read-only
+**Value** field show the same result.

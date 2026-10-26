@@ -1,8 +1,8 @@
 LocalProxy provides a SOCKS proxy to applications on the daemon host. Client
 connections use the system-local network. The requested connections, name
-lookups, and remote listeners use the connected [Network](@port/right/Network).
-Use this node to give a local application access to a VPN, tunnel, proxy chain,
-or test network from an ordinary SOCKS client.
+lookups, and remote listeners use the connected [proxy](@port/right/proxy). Use
+this node to give a local application access to a VPN, tunnel, proxy chain, or
+test network from an ordinary SOCKS client.
 
 The plain SOCKS listener supports SOCKS4, SOCKS4a, and SOCKS5. Its default
 address is `127.0.0.1:1080`. An empty host also uses `127.0.0.1`. Set the port
@@ -68,8 +68,10 @@ LocalProxy cannot provide a LAN-facing listener on Windows.
 All command checkboxes are enabled by default. Disable commands that clients do
 not need:
 
-- **CONNECT** opens a TCP connection through the connected Network.
-- **BIND** opens a TCP listener through the connected Network.
+- **CONNECT** opens a TCP connection through the connected
+  [proxy](@port/right/proxy).
+- **BIND** opens a TCP listener through the connected
+  [proxy](@port/right/proxy).
 - **UDP ASSOC** relays SOCKS5 UDP traffic. The local UDP relay uses a port
   selected by the system; a client cannot request a fixed relay port.
 - **Tor RESOLVE** and **Tor RESOLVE_PTR** provide the Tor name-resolution
@@ -77,15 +79,15 @@ not need:
 - **Gost MBIND** and **Gost UDPTUN** provide the corresponding
   [Gost](https://gost.run/en/tutorials/protocols/socks/) extensions.
 
-For UDP operations, destination traffic uses the connected Network. The local
-UDP relay for **UDP ASSOC** stays on the system-local network. Use **Gost
-UDPTUN** when an application needs a stable, externally configured UDP port,
-such as a WireGuard peer with a fixed endpoint.
+For UDP operations, destination traffic uses the connected
+[proxy](@port/right/proxy). The local UDP relay for **UDP ASSOC** stays on the
+system-local network. Use **Gost UDPTUN** when an application needs a stable,
+externally configured UDP port, such as a WireGuard peer with a fixed endpoint.
 
-The proxy listeners can start without a connected Network, but all proxy
-requests then fail. Connecting, disconnecting, or replacing the Network restarts
-the listeners. Applying menu changes, including client rules, also restarts
-them. A restart closes active client sessions. If configured matchers cannot be
-built, the listener stays unavailable instead of starting without the requested
-filter. The **Worker** log shows the active listener addresses and startup
-errors.
+The proxy listeners can start without a connected [proxy](@port/right/proxy),
+but all proxy requests then fail. Connecting, disconnecting, or replacing the
+[proxy](@port/right/proxy) restarts the listeners. Applying menu changes,
+including client rules, also restarts them. A restart closes active client
+sessions. If configured matchers cannot be built, the listener stays unavailable
+instead of starting without the requested filter. The **Worker** log shows the
+active listener addresses and startup errors.

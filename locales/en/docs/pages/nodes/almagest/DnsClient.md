@@ -1,7 +1,8 @@
 Sends DNS requests to upstream servers through an attached Network. Connect the
 transport network to [Network](@port/right/Network) and connect DNS consumers to
-[DNS](@port/left/DNS). The DNS output becomes available when the Network is
-ready and at least one valid server is configured.
+[DNS](@port/left/DNS). The [DNS](@port/left/DNS) output becomes available when
+the [Network](@port/right/Network) is ready and at least one valid server is
+configured.
 
 ## DNS servers
 
@@ -26,7 +27,7 @@ It returns the first valid DNS response. A DNS response code such as `NXDOMAIN`
 or `SERVFAIL` is a valid response, so it does not cause the node to try the next
 server.
 
-## Bootstrap DNS
+## [Bootstrap DNS](@port/right/Bootstrap%20DNS)
 
 Connect [Bootstrap DNS](@port/right/Bootstrap%20DNS) when a server URL contains
 a hostname. The bootstrap resolver converts that hostname to IP addresses before
@@ -55,6 +56,8 @@ bootstrap resolution, attempts against the configured servers, connection setup,
 the TLS handshake, and network reads and writes. Set the value to `0` to use the
 default timeout of 5 seconds. Negative values are not valid.
 
-Changing the Network, Bootstrap DNS, server list, TLS config, or timeout closes
-the current DNS output and cancels requests that use it. The node supplies a new
-DNS output when the new configuration is ready.
+Changing the [Network](@port/right/Network),
+[Bootstrap DNS](@port/right/Bootstrap%20DNS), server list, TLS config, or
+timeout closes the current [DNS](@port/left/DNS) output and cancels requests
+that use it. The node supplies a new [DNS](@port/left/DNS) output when the new
+configuration is ready.

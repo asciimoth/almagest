@@ -1,11 +1,13 @@
 TlsTerminator accepts an outgoing TLS connection from a client, presents a
 locally generated certificate, and sends the decrypted TCP stream through the
-connected [Network](@port/left/Network). Place it between a Network consumer and
-the Network that leads to the plaintext service.
+connected [Network](@port/right/Network). Place it between a
+[Network](@port/left/Network) consumer and the [Network](@port/right/Network)
+that leads to the plaintext service.
 
 The client must trust Almagest's local TLS CA. TlsTerminator uses that CA to
 generate a certificate for the SNI hostname in each connection. It supplies its
-Network only when the outbound Network, local CA, and menu values are valid.
+[Network](@port/left/Network) only when the outbound
+[Network](@port/right/Network), local CA, and menu values are valid.
 
 The connection between TlsTerminator and the destination is plaintext. Use this
 node only when the destination expects plaintext, such as an HTTP service behind
@@ -89,10 +91,12 @@ SNI and ALPN patterns match the complete value. `*` matches any byte sequence,
 `?` matches one byte, and bracket expressions such as `[0-9]` match one byte
 from a set.
 
-Changing the outbound Network, local CA, or any setting replaces the supplied
-Network. Active connections through the previous configuration can close. An
-invalid negative value or malformed JSON changes the node label to
-`invalid config` and makes its Network unavailable. Other invalid remap values
-prevent the Network output and report an error. A missing local CA changes the
-label to `local TLS CA unavailable`. The label is `waiting for network` until an
-outbound Network is ready and `terminating TLS` during normal operation.
+Changing the outbound [Network](@port/right/Network), local CA, or any setting
+replaces the supplied [Network](@port/left/Network). Active connections through
+the previous configuration can close. An invalid negative value or malformed
+JSON changes the node label to `invalid config` and makes its Network
+unavailable. Other invalid remap values prevent the
+[Network](@port/left/Network) output and report an error. A missing local CA
+changes the label to `local TLS CA unavailable`. The label is
+`waiting for network` until an outbound [Network](@port/right/Network) is ready
+and `terminating TLS` during normal operation.

@@ -13,11 +13,11 @@ Nested values can contain objects, arrays, strings, numbers, Booleans, and
 `null`. A top-level string, number, or Boolean is not accepted.
 
 Edit **Value**, and then apply the form. A draft edit does not change the
-output. If the JSON is invalid or has an unsupported top-level form, the node
-rejects the edit, restores the previous text in the menu, and keeps supplying
-the previous value. A valid apply formats the menu value and sends it to all
-connected consumers. This send also occurs when the valid value is equal to the
-current value.
+[output](@port/right/output). If the JSON is invalid or has an unsupported
+top-level form, the node rejects the edit, restores the previous text in the
+menu, and keeps supplying the previous value. A valid apply formats the menu
+value and sends it to all connected consumers. This send also occurs when the
+valid value is equal to the current value.
 
 ## Copies and current value
 

@@ -1,7 +1,7 @@
-Resolves mesh-specific names. Connect the DNS output to applications or to
-another DNS node. The node can decode direct name formats without a Network.
-Connect a Network only when you must resolve a format that sends an authority
-DNS request.
+Resolves mesh-specific names. Connect the [DNS](@port/left/DNS) output to
+applications or to another DNS node. The node can decode direct name formats
+without a [Network](@port/right/Network). Connect [Network](@port/right/Network)
+only when you must resolve a format that sends an authority DNS request.
 
 The node supports these name formats:
 
@@ -24,28 +24,33 @@ the authority identified by `aiag7sesed2aaxgcgbnevruwpy`. The
 `aiag7sesed2aaxgcgbnevruwpy.meship` form returns that authority address
 directly.
 
-Authority requests use TCP port 53 through the connected Network. Make sure that
-the Network can reach the derived mesh IPv6 addresses. Without a Network,
-`.meshname` and `.ygg` requests fail. The direct `.meship`, `.pk.ygg`, and
-`.ipv6-literal.net` formats continue to work.
+Authority requests use TCP port 53 through the connected
+[Network](@port/right/Network). Make sure that the
+[Network](@port/right/Network) can reach the derived mesh IPv6 addresses.
+Without a [Network](@port/right/Network), `.meshname` and `.ygg` requests fail.
+The direct `.meship`, `.pk.ygg`, and `.ipv6-literal.net` formats continue to
+work.
 
-Connect **Fallback DNS** to resolve names that are not recognized as mesh names.
-Without this connection, these names return a not-found response. The node does
-not use a DNS resolver from the Network as an implicit fallback. Disconnecting
-**Fallback DNS** stops ordinary-name forwarding but keeps mesh-name resolution
-available. Disconnecting Network replaces the DNS output with a local-only
-resolver.
+Connect [Fallback DNS](@port/right/Fallback%20DNS) to resolve names that are not
+recognized as mesh names. Without this connection, these names return a
+not-found response. The node does not use a DNS resolver from the
+[Network](@port/right/Network) as an implicit fallback. Disconnecting
+[Fallback DNS](@port/right/Fallback%20DNS) stops ordinary-name forwarding but
+keeps mesh-name resolution available. Disconnecting
+[Network](@port/right/Network) replaces the [DNS](@port/left/DNS) output with a
+local-only resolver.
 
 The menu has one **Disable** control for each supported name format. All formats
 are enabled by default. A disabled format is treated as an unrecognized name.
-Thus, a disabled format goes to **Fallback DNS** when a fallback is connected,
-or returns a not-found response when no fallback is connected. The `.ygg` and
-`.pk.ygg` controls are independent.
+Thus, a disabled format goes to [Fallback DNS](@port/right/Fallback%20DNS) when
+a fallback is connected, or returns a not-found response when no fallback is
+connected. The `.ygg` and `.pk.ygg` controls are independent.
 
 **Request timeout (ms)** limits one DNS exchange with a mesh authority. A value
 of `0` uses the default timeout of 5 seconds. This timeout does not apply to
-direct address decoding or to **Fallback DNS** requests.
+direct address decoding or to [Fallback DNS](@port/right/Fallback%20DNS)
+requests.
 
-The DNS output supports A, AAAA, PTR, CNAME, TXT, MX, NS, and SRV questions.
-Successful answers have a TTL of 60 seconds. Unsupported DNS question types
-return a not-implemented response.
+The [DNS](@port/left/DNS) output supports A, AAAA, PTR, CNAME, TXT, MX, NS, and
+SRV questions. Successful answers have a TTL of 60 seconds. Unsupported DNS
+question types return a not-implemented response.

@@ -1,6 +1,6 @@
 Serves configured DNS records and optionally sends misses to one
-[Fallback](@port/right/Fallback) DNS service. The DNS output is available even
-when no records or fallback are configured.
+[Fallback](@port/right/Fallback) DNS service. The [DNS](@port/left/DNS) output
+is available even when no records or fallback are configured.
 
 Write one record on each line in this form:
 
@@ -44,15 +44,15 @@ does not follow CNAME records, synthesize other types, or use wildcard names.
 
 If no exact record matches, the node sends the complete request to
 [Fallback](@port/right/Fallback). For example, an AAAA question is a miss when
-only an A record exists for the name. Without Fallback, a miss returns NXDOMAIN.
-For a request with multiple questions, all questions must match static records.
-If one question misses, the complete request goes to
+only an A record exists for the name. Without [Fallback](@port/right/Fallback),
+a miss returns NXDOMAIN. For a request with multiple questions, all questions
+must match static records. If one question misses, the complete request goes to
 [Fallback](@port/right/Fallback) and static answers are not combined with the
 fallback response.
 
 **TTL** sets the lifetime, in seconds, for all static records. The default is
-60, and 0 is permitted. Fallback responses keep the TTL values supplied by the
-fallback service.
+60, and 0 is permitted. [Fallback](@port/right/Fallback) responses keep the TTL
+values supplied by the fallback service.
 
 **TTL** must be a nonnegative integer. An invalid record edit is not applied.
 The menu identifies the line that contains the invalid record, and the last

@@ -23,8 +23,8 @@ as [NetworkRouter](@docs/node/almagest/NetworkRouter) rules.
 
 `SNIFF_NONE` matches when none of the configured classifiers matches. This
 example blocks HTTP requests whose target starts with `/admin`, sends TLS
-connections that offer `h2` to slot 2, and sends other inspected traffic to slot
-1:
+connections that offer `h2` to [slot 2](@port/right/slot%202), and sends other
+inspected traffic to [slot 1](@port/right/slot%201):
 
 ```rulev1
 DIAL
@@ -108,10 +108,10 @@ The supported fields are `NETWORK`, `SRC`, `DST`, `SRC_ADDR`, `SRC_PORT`,
 
 Rules add the slot ports that they reference. A connected slot stays visible
 after rules stop referencing it, and disappears after you disconnect it. If no
-rule or connection needs a slot, slot 1 remains visible, but it is not an
-implicit route. Invalid rules are not applied. A valid rule change or a slot
-change can replace [Network](@port/left/Network), and existing connections
-through the previous Network can close.
+rule or connection needs a slot, [slot 1](@port/right/slot%201) remains visible,
+but it is not an implicit route. Invalid rules are not applied. A valid rule
+change or a slot change can replace [Network](@port/left/Network), and existing
+connections through the previous Network can close.
 
 ## Storage, logging, and sensitive data
 

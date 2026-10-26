@@ -38,7 +38,7 @@ invalid AWG profiles are rejected. A missing or inaccessible preshared-key
 secret is also rejected. The previous valid peer list stays active after a
 rejected edit.
 
-## Network and detach behavior
+## [Network](@port/right/Network) and detach behavior
 
 WGConfig creates one UDP transport for all peers in its list. This transport is
 separate from the WireGuard node's default UDP transport and from the transports
@@ -48,8 +48,9 @@ connected [Network](@port/right/Network).
 If [Network](@port/right/Network) is disconnected, WGConfig removes its UDP
 transport and removes fixed endpoints from its active peer settings. The peers
 stay installed on the WireGuard device, but their traffic is dropped. The label
-reports `network detached; peer traffic is dropped`. Reconnecting **Network**
-creates the transport again and restores the configured endpoints.
+reports `network detached; peer traffic is dropped`. Reconnecting
+[Network](@port/right/Network) creates the transport again and restores the
+configured endpoints.
 
 Disconnecting [WireGuard](@port/right/WireGuard) removes this WGConfig's peers
 and UDP transport from that WireGuard node. It does not remove menu peers,

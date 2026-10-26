@@ -31,18 +31,20 @@ attached DNS resolver. Set the value to `0` to use the default timeout of 5
 seconds. Negative values are not valid. If the resolver returns an error or the
 request times out, the server replies with `SERVFAIL`.
 
-The listener can stay open without a ready DNS input. In this state, the node
-shows `waiting for DNS` and replies to valid requests with `SERVFAIL`. Malformed
-DNS packets are ignored.
+The listener can stay open without a ready [DNS](@port/right/DNS) input. In this
+state, the node shows `waiting for DNS` and replies to valid requests with
+`SERVFAIL`. Malformed DNS packets are ignored.
 
 ## Listener changes and errors
 
-Changing the UDP family, host, port, timeout, or attached Network closes the
-current listener and starts a new listener. Requests can fail during this short
-restart. Changing only the attached DNS resolver keeps the listener open, but
-cancels requests that were waiting on the previous resolver.
+Changing the UDP family, host, port, timeout, or attached
+[Network](@port/right/Network) closes the current listener and starts a new
+listener. Requests can fail during this short restart. Changing only the
+attached [DNS](@port/right/DNS) resolver keeps the listener open, but cancels
+requests that were waiting on the previous resolver.
 
 If the node cannot bind the configured address, it shows **listen failed** and
 records the cause in its log. The node retries the bind once per second while
-the Network remains ready. When the listener and DNS input are ready, the node
-label shows the address on which it is listening.
+the [Network](@port/right/Network) remains ready. When the listener and
+[DNS](@port/right/DNS) input are ready, the node label shows the address on
+which it is listening.

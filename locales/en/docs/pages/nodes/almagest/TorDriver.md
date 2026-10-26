@@ -2,17 +2,17 @@ TorDriver starts a separate [Tor](https://www.torproject.org/) client and
 supplies one or more Tor-backed Networks. Use these Networks for outgoing TCP
 connections, or add a v3 onion service for incoming TCP connections.
 
-Connect a working Network to **out**. Tor uses this Network for its relay and
-control connections. It does not use a direct host connection as a fallback.
-Without this connection, the node waits for a Network and does not supply a
-ready Tor Network. Avoid a routing loop in which **out** depends on a Network
-from the same TorDriver.
+Connect a working Network to [out](@port/right/out). Tor uses this Network for
+its relay and control connections. It does not use a direct host connection as a
+fallback. Without this connection, the node waits for a Network and does not
+supply a ready Tor Network. Avoid a routing loop in which [out](@port/right/out)
+depends on a Network from the same TorDriver.
 
 The default configuration is enabled and has one client Network named `default`.
-It supplies this Network as **Network default**. Each additional client Network
-adds a port named **Network _name_**. Each onion service adds a port named
-**Onion _name_**. Network and service names are not case-sensitive and must be
-unique.
+It supplies this Network as [Network default](@port/left/Network%20default).
+Each additional client Network adds a port named **Network _name_**. Each onion
+service adds a port named **Onion _name_**. Network and service names are not
+case-sensitive and must be unique.
 
 ## Client Networks
 
@@ -104,9 +104,10 @@ choices instead of treating them as preferences.
 Relay restrictions and disabled padding can reduce privacy or make Tor unable to
 connect. Use these settings only when the network policy requires them.
 
-**Outbound failure policy** controls an error from the Network on **out**.
-`default` and `retry` retry recoverable failures. `latch` keeps the node
-unavailable after a failure until you replace or reconnect that Network.
+**Outbound failure policy** controls an error from the Network on
+[out](@port/right/out). `default` and `retry` retry recoverable failures.
+`latch` keeps the node unavailable after a failure until you replace or
+reconnect that Network.
 
 ## Process security and platform support
 
@@ -132,10 +133,11 @@ TorDriver with sensitive traffic.
 
 The Tor exit relay can read unencrypted traffic to ordinary Internet
 destinations. Use end-to-end TLS where possible. The Network connected to
-**out** can observe Tor relay connections and traffic patterns. Tor reduces
-direct destination exposure, but it does not prevent all traffic analysis.
+[out](@port/right/out) can observe Tor relay connections and traffic patterns.
+Tor reduces direct destination exposure, but it does not prevent all traffic
+analysis.
 
 Changing accepted configuration restarts the Tor client and can close active
-connections and listeners. Detaching **out** makes the node unavailable.
-Reconnect it to restore Tor connectivity. Use **Restart Tor** in the menu to
-restart the current configuration explicitly.
+connections and listeners. Detaching [out](@port/right/out) makes the node
+unavailable. Reconnect it to restore Tor connectivity. Use **Restart Tor** in
+the menu to restart the current configuration explicitly.

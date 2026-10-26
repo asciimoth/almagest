@@ -1,6 +1,5 @@
-Filters TCP and UDP traffic on a connected [Network](@port/left/Network).
-Connect the source Network to this node, and connect clients or servers to its
-filtered Network.
+Filters TCP and UDP traffic from a source [Network](@port/right/Network).
+Connect clients or servers to its filtered [Network](@port/left/Network).
 
 The default policy has these actions:
 
@@ -63,12 +62,12 @@ reply after an allowed outgoing write. The value is a positive duration such as
 
 ## Combine policies
 
-You can connect multiple **Object** values to **Config**. Each Object must use
-the same policy format. The effective policy is the union of the menu rules and
-all valid connected Objects. All `exclude` rules and all `include` rules remain
-active. If policies specify different `responseTTL` values, the longest
-effective duration is used. An omitted duration counts as the two-minute
-default.
+You can connect multiple **Object** values to [Config](@port/left/Config). Each
+Object must use the same policy format. The effective policy is the union of the
+menu rules and all valid connected Objects. All `exclude` rules and all
+`include` rules remain active. If policies specify different `responseTTL`
+values, the longest effective duration is used. An omitted duration counts as
+the two-minute default.
 
 **Effective config** shows the combined policy. A change to the menu policy or a
 connected Object applies immediately. Disconnecting an Object removes only its
@@ -78,5 +77,6 @@ An invalid menu edit is rejected, and the current policy stays active. An
 invalid connected Object is omitted from the effective policy, and the node
 reports `invalid object config`.
 
-The node label is `waiting for network` until its Network is available. When it
-is active, the label shows the number of effective rules.
+The node label is `waiting for network` until its source
+[Network](@port/right/Network) is available. When it is active, the label shows
+the number of effective rules.

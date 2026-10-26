@@ -9,14 +9,16 @@ uses this network for the complete connection, including name resolution.
 
 Set these request values:
 
-- **URL**: The destination URL. Use an `http://` or `https://` URL. The default
-  is `http://127.0.0.1:8080/`.
-- **Method**: The HTTP method. The node removes surrounding spaces and changes
-  the value to uppercase. An empty value becomes `GET`.
-- **Body**: The request body. The node sends this text without changes.
+- [URL](@port/left/URL): The destination URL. Use an `http://` or `https://`
+  URL. The default is `http://127.0.0.1:8080/`.
+- [Method](@port/left/Method): The HTTP method. The node removes surrounding
+  spaces and changes the value to uppercase. An empty value becomes `GET`.
+- [Body](@port/left/Body): The request body. The node sends this text without
+  changes.
 
-You can connect String values to **URL**, **Method**, and **Body**. A connected
-value replaces the value in the menu, and the related field becomes read-only.
+You can connect String values to [URL](@port/left/URL),
+[Method](@port/left/Method), and [Body](@port/left/Body). A connected value
+replaces the value in the menu, and the related field becomes read-only.
 
 This node does not let you set request headers yet. Select **Send request** to
 start the request. Only one request can run at a time. Each request has a fixed

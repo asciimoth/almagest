@@ -5,7 +5,7 @@ tunnel DNS.
 Connect a TUN provider to [Tun](@port/left/Tun) and an outgoing network to
 [Network](@port/right/Network). The node uses the outgoing network for Amnezia
 API requests, profile pre-connect traffic, and WireGuard UDP traffic. Connect
-DNS consumers to [DNS](@port/right/DNS) if they must resolve names through the
+DNS consumers to [DNS](@port/left/DNS) if they must resolve names through the
 VPN.
 
 ## Connection configuration
@@ -53,9 +53,9 @@ network does not report a UDP payload limit, the node uses the profile MTU and
 logs a warning. The node rejects an IPv6 profile if the calculated safe MTU is
 less than the IPv6 minimum.
 
-## Tunnel DNS
+## Tunnel [DNS](@port/left/DNS)
 
-The [DNS](@port/right/DNS) output is available while the VPN is up. It sends UDP
+The [DNS](@port/left/DNS) output is available while the VPN is up. It sends UDP
 DNS requests through the WireGuard tunnel. The node tries usable profile DNS
 servers in profile order. A DNS server is usable only when the profile has a
 tunnel address of the same IP family and an allowed-IP route to that server.

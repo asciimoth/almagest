@@ -1,12 +1,14 @@
 IntSet stages an integer for a named variable. Supply the integer through
-**Value**, or set **Value** in the node menu. The initial staged value is `0`.
-Receiving a new value changes the staged value but does not change the shared
-variable. Removing the **Value** connection resets the staged value to `0`.
+[Value](@port/left/Value), or set **Value** in the node menu. The initial staged
+value is `0`. Receiving a new value changes the staged value but does not change
+the shared variable. Removing the [Value](@port/left/Value) connection resets
+the staged value to `0`.
 
-IntSet writes the staged value only when it receives **Trigger** or when you
-trigger the node manually. For each trigger, it first updates the variable and
-then sends **Trigger**. An [IntGet](@docs/node/pasta/IntGet) node triggered next
-can therefore read the new value.
+IntSet writes the staged value only when it receives
+[Trigger](@port/left/Trigger) or when you trigger the node manually. For each
+trigger, it first updates the variable and then sends
+[Trigger](@port/right/Trigger). An [IntGet](@docs/node/pasta/IntGet) node
+triggered next can therefore read the new value.
 
 Set **Name** to the variable to update. If **Name** is empty, the node uses
 `var`. [IntGet](@docs/node/pasta/IntGet) and IntSet nodes with the same **Name**

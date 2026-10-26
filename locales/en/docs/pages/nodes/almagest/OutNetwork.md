@@ -1,6 +1,7 @@
-Provides the daemon's direct operating-system network as a Network output. Use
-OutNetwork as the final network for clients, proxies, and tunnel transports.
-Network servers can also use it to open TCP or UDP listeners.
+Provides the daemon's direct operating-system network as a
+[Network](@port/left/Network) output. Use OutNetwork as the final network for
+clients, proxies, and tunnel transports. Network servers can also use it to open
+TCP or UDP listeners.
 
 Connections created through OutNetwork bypass
 [DefaultTun](@docs/node/almagest/DefaultTun) and use the original outbound path.

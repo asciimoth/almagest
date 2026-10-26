@@ -1,13 +1,14 @@
 Stages a floating-point value and writes it to a named variable when triggered.
-Use the **Trigger** output to continue a sequence after the write is complete.
+Use the [Trigger](@port/right/Trigger) output to continue a sequence after the
+write is complete.
 
 ## Staged value
 
-**Value** accepts one Float connection. Each received value replaces the staged
-value, but it does not change the named variable yet. If no value is connected,
-the node uses the value in its menu. The default is `0`, and a saved workspace
-restores the last configured or received value. Disconnecting the Value
-connection resets the staged value to `0`.
+[Value](@port/left/Value) accepts one Float connection. Each received value
+replaces the staged value, but it does not change the named variable yet. If no
+value is connected, the node uses the value in its menu. The default is `0`, and
+a saved workspace restores the last configured or received value. Disconnecting
+the Value connection resets the staged value to `0`.
 
 You can also edit **Name** and **Value** in the menu. Applying these fields
 changes the variable name and staged value. It does not write the variable. An
@@ -20,13 +21,15 @@ When the node receives a trigger, or when you trigger it manually, it does these
 actions in order:
 
 1. It writes the staged value to the named Float variable.
-1. It sends a trigger to all consumers connected to **Trigger**.
+1. It sends a trigger to all consumers connected to
+   [Trigger](@port/right/Trigger).
 
-This order lets you connect the Trigger output to a
+This order lets you connect the [Trigger](@port/right/Trigger) output to a
 [FloatGet](@docs/node/pasta/FloatGet) node with the same name.
 [FloatGet](@docs/node/pasta/FloatGet) then reads the value that FloatSet has
-written. Value updates do not send triggers. The Trigger input can accept
-multiple trigger sources, and the Trigger output can supply multiple consumers.
+written. [Value](@port/left/Value) updates do not send triggers. The
+[Trigger](@port/left/Trigger) input can accept multiple trigger sources, and the
+[Trigger](@port/right/Trigger) output can supply multiple consumers.
 
 ## Variable scope
 

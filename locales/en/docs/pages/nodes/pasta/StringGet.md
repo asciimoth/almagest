@@ -6,8 +6,9 @@ the node starts, when a consumer connects, or when you change the name.
 For each received trigger, StringGet does these actions in order:
 
 1. It reads the current value of the named String variable.
-1. It sends that value to all consumers connected to **Value**.
-1. It sends a trigger to all consumers connected to **Trigger**.
+1. It sends that value to all consumers connected to [Value](@port/right/Value).
+1. It sends a trigger to all consumers connected to
+   [Trigger](@port/right/Trigger).
 
 This order lets the next nodes use the new value before they process the Trigger
 output. Until the first trigger, StringGet has no delivered value. A value

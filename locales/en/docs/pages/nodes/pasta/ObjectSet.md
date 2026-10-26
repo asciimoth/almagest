@@ -1,13 +1,14 @@
 Stages an Object value and writes it to a named variable when triggered. Use the
-**Trigger** output to continue a sequence after the write is complete.
+[Trigger](@port/right/Trigger) output to continue a sequence after the write is
+complete.
 
 ## Staged value
 
-**Value** accepts one Object connection. Each received value replaces the staged
-value, but it does not change the named variable yet. If no value is connected,
-the node uses the JSON value in its menu. The default is `null`, and a saved
-workspace restores the last configured or received value. Disconnecting Value
-resets the staged value to `null`.
+[Value](@port/left/Value) accepts one Object connection. Each received value
+replaces the staged value, but it does not change the named variable yet. If no
+value is connected, the node uses the JSON value in its menu. The default is
+`null`, and a saved workspace restores the last configured or received value.
+Disconnecting Value resets the staged value to `null`.
 
 The menu value must be a valid JSON object, array, or `null`. A top-level
 string, number, or Boolean is not accepted. Applying invalid JSON restores the
@@ -22,13 +23,15 @@ When the node receives a trigger, or when you trigger it manually, it does these
 actions in order:
 
 1. It writes the staged Object to the named Object variable.
-1. It sends a trigger to all consumers connected to **Trigger**.
+1. It sends a trigger to all consumers connected to
+   [Trigger](@port/right/Trigger).
 
-This order lets you connect the Trigger output to an
+This order lets you connect the [Trigger](@port/right/Trigger) output to an
 [ObjectGet](@docs/node/pasta/ObjectGet) node with the same name.
 [ObjectGet](@docs/node/pasta/ObjectGet) then reads the Object that ObjectSet has
-written. Value updates do not send triggers. The Trigger input can accept
-multiple trigger sources, and the Trigger output can supply multiple consumers.
+written. [Value](@port/left/Value) updates do not send triggers. The
+[Trigger](@port/left/Trigger) input can accept multiple trigger sources, and the
+[Trigger](@port/right/Trigger) output can supply multiple consumers.
 
 ## Variable name, scope, and copies
 

@@ -1,5 +1,6 @@
-Rewrites connection and listener addresses on a connected
-[Network](@port/right/Network). Use it to redirect a client to a different
+Rewrites connection and listener addresses from a connected
+[Network](@port/right/Network) and supplies the result through
+[Network](@port/left/Network). Use it to redirect a client to a different
 service or to change the address on which a server listens.
 
 An empty **Remap rules** field makes no changes. DNS lookup operations also pass
@@ -95,5 +96,6 @@ address, or subnet predicate, an incomplete action, and a predicate that does
 not produce one result. Invalid rules are not applied, and the node label
 becomes `invalid config`.
 
-The label is `waiting for network` until the source Network is available. With
-one or more valid rules, the label shows the number of configured rules.
+The label is `waiting for network` until the source
+[Network](@port/right/Network) is available. With one or more valid rules, the
+label shows the number of configured rules.

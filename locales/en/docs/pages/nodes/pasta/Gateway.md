@@ -11,11 +11,12 @@ settings.
 
 Gateway stores the latest data value for each side and connection type. It does
 not forward a stored value until triggered. For each trigger, it first sends
-values received through **In** to **Out**. It then sends values received through
-**Out** to **In**. A trigger does not clear the stored values, so a later
-trigger sends them again. A newer value replaces the earlier value.
+values received through [In](@port/left/In) to [Out](@port/right/Out). It then
+sends values received through [Out](@port/right/Out) to [In](@port/left/In). A
+trigger does not clear the stored values, so a later trigger sends them again. A
+newer value replaces the earlier value.
 
 A request for the current value passes to the other side immediately; it does
-not wait for **Trigger**. Gateway does not answer the request from its stored
-value. A value returned in response is stored and remains blocked until the next
-trigger.
+not wait for [Trigger](@port/left/Trigger). Gateway does not answer the request
+from its stored value. A value returned in response is stored and remains
+blocked until the next trigger.

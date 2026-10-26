@@ -1,17 +1,19 @@
-WireGuard connects a TUN packet path to an encrypted UDP tunnel. Connect the
-local IP stack or system TUN to [Tun](@port/right/Tun). Connect a UDP-capable
-Network to [Network](@port/right/Network). The node uses that Network for the
-listen socket and for the endpoints of peers configured in the menu or through
-**Peers**.
+WireGuard connects a [Tun](@port/left/Tun) packet path to an encrypted UDP
+tunnel. Connect the local IP stack or system TUN to [Tun](@port/left/Tun).
+Connect a UDP-capable Network to [Network](@port/right/Network). The node uses
+that [Network](@port/right/Network) for the listen socket and for the endpoints
+of peers configured in the menu or through [Peers](@port/left/Peers).
 
 Both connections are required for the `up` state. The node does not open its UDP
 socket when only [Network](@port/right/Network) is ready. If
-[Tun](@port/right/Tun) disconnects after startup, the node keeps its peer
+[Tun](@port/left/Tun) disconnects after startup, the node keeps its peer
 configuration and UDP transport, shows `waiting for TUN`, and resumes when a
-replacement TUN connects. [Network](@port/right/Network) accepts one connection.
+replacement [Tun](@port/left/Tun) connects. [Network](@port/right/Network)
+accepts one connection.
 
-**Listen port** accepts values from 0 through 65535. Zero lets the Network
-select a port. The **Status** section shows the actual active port.
+**Listen port** accepts values from 0 through 65535. Zero lets the
+[Network](@port/right/Network) select a port. The **Status** section shows the
+actual active port.
 
 ## Interface key and addresses
 
@@ -28,17 +30,18 @@ contain a raw private key are moved to secret storage when they are loaded.
 
 Enter the interface address prefixes in **Owned IPs**. A bare IP address becomes
 a host prefix, such as `/32` for IPv4 or `/128` for IPv6. Duplicate prefixes are
-removed. These values are sent to the connected TUN provider as address
-suggestions. They do not assign an address to the UDP Network.
+removed. These values are sent to the connected [Tun](@port/left/Tun) provider
+as address suggestions. They do not assign an address to the UDP
+[Network](@port/right/Network).
 
 Controllers connected to [WGCtrl](@port/left/WGCtrl) can also suggest owned IPs.
 Menu values come first, followed by controller values in stable graph order.
 Disconnecting a controller removes only its suggestions. Controller values are
 not saved in this node's configuration.
 
-## Peers
+## [Peers](@port/left/Peers)
 
-Add static peers in the **Peers** section. Each peer supports:
+Add static peers in the [Peers](@port/left/Peers) section. Each peer supports:
 
 - **Public key**, which is required and identifies the peer.
 - **Preshared key secret**, which optionally adds a second shared key.
@@ -48,18 +51,19 @@ Add static peers in the **Peers** section. Each peer supports:
 - **Keepalive**, in seconds. Zero disables persistent keepalive.
 
 Allowed IPs accept prefixes or bare addresses. They are both WireGuard
-crypto-routing rules and route suggestions for the connected TUN provider. Do
-not give two peers overlapping destination ranges unless the resulting
-longest-prefix selection is intentional.
+crypto-routing rules and route suggestions for the connected
+[Tun](@port/left/Tun) provider. Do not give two peers overlapping destination
+ranges unless the resulting longest-prefix selection is intentional.
 
 The preshared key value stays in secret storage. A missing, inaccessible, or
 invalid preshared key secret makes the configuration invalid; WireGuard does not
 silently remove that protection. Old raw preshared keys are moved to secret
 storage when they are loaded.
 
-**Peers** also accepts multiple peer-list objects from other nodes. Each object
-must contain a `peers` array with the same peer fields. WireGuard uses the
-latest list from each connected source. A public key identifies conflicts:
+[Peers](@port/left/Peers) also accepts multiple peer-list objects from other
+nodes. Each object must contain a `peers` array with the same peer fields.
+WireGuard uses the latest list from each connected source. A public key
+identifies conflicts:
 
 - A peer in this node's menu has priority over the same public key from an
   object.
@@ -75,12 +79,13 @@ peers and transports that it owns; later menu changes do not delete them.
 
 ## Routes, DNS, and MTU
 
-WireGuard sends one combined configuration to the TUN provider:
+WireGuard sends one combined configuration to the [Tun](@port/left/Tun)
+provider:
 
 - Addresses come from **Owned IPs** and controller address suggestions.
 - Routes come from the Allowed IPs of menu and object peers, followed by
   controller route suggestions.
-- DNS comes from [DNS](@port/left/DNS) or from a controller.
+- DNS comes from **DNS** or from a controller.
 - MTU comes from controller ceilings and the UDP carrier limit when available.
 
 Exact duplicate addresses and routes are removed. A controller can withdraw its
@@ -97,10 +102,10 @@ For peers that use [Network](@port/right/Network), WireGuard asks the carrier
 for its safe maximum UDP payload and subtracts WireGuard overhead and effective
 AWG transport padding. It then selects the smallest positive result and
 controller MTU ceiling. The result is the **Effective MTU** suggestion for the
-TUN provider. If the carrier cannot report a limit and no controller supplies
-one, the MTU suggestion is zero and the TUN provider chooses its fallback. An
-IPv6-capable configuration reports an error if the calculated inner MTU is less
-than 1280.
+[Tun](@port/left/Tun) provider. If the carrier cannot report a limit and no
+controller supplies one, the MTU suggestion is zero and the
+[Tun](@port/left/Tun) provider chooses its fallback. An IPv6-capable
+configuration reports an error if the calculated inner MTU is less than 1280.
 
 The status shows **Carrier UDP payload**, **Carrier MTU cap**, **MTU source**,
 and **MTU calculation error**. An unknown carrier limit can produce a

@@ -1,5 +1,5 @@
-Converts one Object input to a JSON String. Use it when a String node or an
-external service needs the JSON representation of an Object.
+Converts one Object [input](@port/left/input) to a JSON String. Use it when a
+String node or an external service needs the JSON representation of an Object.
 
 ## Format options
 
@@ -16,21 +16,22 @@ step. The selected options are saved with the workspace. The read-only
 **Result** field shows the current formatted String. The node label stays empty
 so that long JSON text does not fill the graph.
 
-## Input and updates
+## [input](@port/left/input) and updates
 
-A disconnected input, or an input that has not supplied an Object, has the value
-`null`. Disconnecting the input changes the result back to `null`. The input
-accepts one connection.
+A disconnected [input](@port/left/input), or an [input](@port/left/input) that
+has not supplied an Object, has the value `null`. Disconnecting the
+[input](@port/left/input) changes the result back to `null`. The
+[input](@port/left/input) accepts one connection.
 
-The node requests the current Object when the input connects. It recalculates
-the String after each accepted Object update, input disconnection, or format
-option change. When the formatted String changes, it sends the new value to all
-connected consumers. It does not send a duplicate update when the result stays
-the same.
+The node requests the current Object when the [input](@port/left/input)
+connects. It recalculates the String after each accepted Object update,
+[input](@port/left/input) disconnection, or format option change. When the
+formatted String changes, it sends the new value to all connected consumers. It
+does not send a duplicate update when the result stays the same.
 
-The output can supply multiple consumers. A new consumer receives the current
-String immediately. The node also returns the current String when a connected
-consumer requests it.
+The [output](@port/right/output) can supply multiple consumers. A new consumer
+receives the current String immediately. The node also returns the current
+String when a connected consumer requests it.
 
 ObjectToString normally receives JSON-compatible objects. If an Object contains
 a value that JSON cannot encode, such as a non-finite number or a map key that

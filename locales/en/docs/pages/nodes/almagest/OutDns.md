@@ -1,5 +1,5 @@
-Provides the daemon's outbound DNS service as a DNS output. Use OutDns as the
-normal upstream for [DnsCache](@docs/node/almagest/DnsCache),
+Provides the daemon's outbound DNS service as a [DNS](@port/left/DNS) output.
+Use OutDns as the normal upstream for [DnsCache](@docs/node/almagest/DnsCache),
 [DnsRouter](@docs/node/almagest/DnsRouter),
 [DnsFallback](@docs/node/almagest/DnsFallback), or
 [DefaultTun](@docs/node/almagest/DefaultTun).
@@ -18,5 +18,5 @@ resolvconf integrations keep the upstream servers that they read at startup.
 
 On Windows, OutDns uses the numeric DNS servers from the selected physical
 network. It sends UDP and TCP requests through sockets bound to that network.
-The output is unavailable when there is no selected network or no usable DNS
-server.
+The [DNS](@port/left/DNS) output is unavailable when there is no selected
+network or no usable DNS server.

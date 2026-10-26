@@ -11,7 +11,8 @@ Applications on [Network](@port/left/Network) can use TCP, UDP, listeners, and
 DNS through this stack. Their outgoing IP packets go through
 [Tun](@port/right/Tun). Packets that return through the TUN path enter the same
 stack and reach the applicable connection or listener. Multiple applications can
-use **Network**, but **Tun** accepts one connection.
+use [Network](@port/left/Network), but [Tun](@port/right/Tun) accepts one
+connection.
 
 VTun creates its stack only while at least one of these ports is connected. The
 default name is `vtun`. The **Effective** section shows the active local

@@ -18,8 +18,9 @@ if the selected slot is not connected, or if the packet is not a valid IPv4 or
 IPv6 packet. Empty or comment-only rules therefore drop all packets. Add a final
 `TRUE` segment when you need a default path.
 
-This example sends traffic for the Tailscale IPv4 range to slot 2 and sends all
-other valid packets to slot 1:
+This example sends traffic for the Tailscale IPv4 range to
+[slot 2](@port/right/slot%202) and sends all other valid packets to
+[slot 1](@port/right/slot%201):
 
 ```rulev1
 SNET4 100.64.0.0/10

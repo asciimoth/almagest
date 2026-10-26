@@ -1,5 +1,6 @@
-Outputs `true` when **input 1** and **input 2** are not equal. The output is
-always a Boolean value.
+Outputs `true` when [input 1](@port/left/input%201) and
+[input 2](@port/left/input%202) are not equal. The [output](@port/right/output)
+is always a Boolean value.
 
 Use Integer, Float, or String inputs. Integer and Float values can compare with
 each other, so Integer `3` and Float `3.0` produce `false`. Numeric comparison
@@ -13,8 +14,8 @@ A disconnected input, or a connected input that has not supplied an accepted
 value, counts as Integer `0`. Both missing inputs therefore produce `false`. A
 missing input and numeric zero also produce `false`. A missing input and any
 String, including an empty String, produce `true`. Disconnecting an input
-changes it back to Integer `0`. Each input accepts one connection. The output
-can supply multiple consumers.
+changes it back to Integer `0`. Each input accepts one connection. The
+[output](@port/right/output) can supply multiple consumers.
 
 The node requests the current value when an input connects. It recalculates the
 result after each accepted input update or disconnection. When the result

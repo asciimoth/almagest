@@ -19,9 +19,9 @@ SLOT 1
 
 Rules add the slots that they reference. A connected slot stays visible after
 rules stop referencing it, and disappears after you disconnect it. If no rule or
-connection needs a slot, slot 1 remains visible, but it is not an implicit
-route. Invalid rule text is not applied, so the last valid rules continue to
-operate.
+connection needs a slot, [slot 1](@port/right/slot%201) remains visible, but it
+is not an implicit route. Invalid rule text is not applied, so the last valid
+rules continue to operate.
 
 ## Rule predicates
 
@@ -47,8 +47,9 @@ non-IP host text; it does not require a trailing dot. Use `TRUE`, `FALSE`,
 `NOT`, `AND`, and `OR` to combine conditions. Combined conditions use postfix
 order: put the values first, and then put the operator after them.
 
-This example sends TCP dials for `internal.example` and its subdomains to slot
-2\. It sends all other operations to slot 1:
+This example sends TCP dials for `internal.example` and its subdomains to
+[slot 2](@port/right/slot%202). It sends all other operations to
+[slot 1](@port/right/slot%201):
 
 ```rulev1
 DIAL
@@ -65,7 +66,7 @@ SLOT 1
 Operation names are not case-sensitive. Blank lines and lines that start with
 `#` are ignored. A `#` after an operation is not an inline comment.
 
-## DNS behavior
+## [DNS](@port/right/DNS) behavior
 
 Without a connection to [DNS](@port/right/DNS), `LOOKUP` rules select the
 backend that handles each name lookup. Hostname dials keep their original host

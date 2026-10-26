@@ -16,8 +16,8 @@ supply an endpoint before there is a complete packet path. The node shows
 state. The `copying` label confirms that both endpoints are present. It does not
 test end-to-end reachability.
 
-TunA and TunB have the same packet behavior. The names do not set a client,
-server, upstream, or downstream role.
+[TunA](@port/left/TunA) and [TunB](@port/left/TunB) have the same packet
+behavior. The names do not set a client, server, upstream, or downstream role.
 
 TunCopy does not inspect or change IP packets. It preserves the packet bytes and
 supports all packet protocols that the attached TUN endpoints can carry.
