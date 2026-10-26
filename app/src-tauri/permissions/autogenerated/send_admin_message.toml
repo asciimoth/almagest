@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-send-admin-message"
+description = "Enables the send_admin_message command without any pre-configured scope."
+commands.allow = ["send_admin_message"]
+
+[[permission]]
+identifier = "deny-send-admin-message"
+description = "Denies the send_admin_message command without any pre-configured scope."
+commands.deny = ["send_admin_message"]

@@ -9,7 +9,23 @@
   </head>
   <body>
     <main>
-      <img src="./logo-light.svg" alt="Almagest" />
+      <header>
+        <img src="./logo-light.svg" alt="Almagest" />
+        <div>
+          <h1>Almagest admin</h1>
+          <p id="status" class="status disconnected">Waiting for Rust</p>
+        </div>
+      </header>
+      <section class="controls" aria-label="Admin API examples">
+        <button id="hello" type="button" disabled>Send hello</button>
+        <button id="ping" type="button" disabled>Send ping</button>
+        <button id="clear" type="button">Clear log</button>
+      </section>
+      <section class="activity" aria-labelledby="activity-title">
+        <h2 id="activity-title">Activity</h2>
+        <ol id="log" aria-live="polite"></ol>
+      </section>
     </main>
+    <script src="./app.js" type="module"></script>
   </body>
 </html>

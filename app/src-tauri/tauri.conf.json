@@ -26,6 +26,7 @@
         "default-src": "'none'",
         "connect-src": "ipc: http://ipc.localhost",
         "img-src": "'self'",
+        "script-src": "'self'",
         "style-src": "'self'"
       },
       "dangerousDisableAssetCspModification": false,

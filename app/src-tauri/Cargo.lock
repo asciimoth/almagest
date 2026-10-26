@@ -75,6 +75,8 @@ dependencies = [
  "ico",
  "percent-encoding",
  "resvg",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tungstenite",

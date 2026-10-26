@@ -1,22 +1,103 @@
 :root {
   color-scheme: dark;
   background: #11111b;
+  color: #cdd6f4;
+  font: 16px/1.5 system-ui, sans-serif;
 }
 
-html,
-body,
-main {
-  width: 100%;
-  height: 100%;
+* {
+  box-sizing: border-box;
+}
+
+body {
   margin: 0;
 }
 
 main {
-  display: grid;
-  place-items: center;
+  width: min(54rem, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 2rem 0;
 }
 
-img {
-  width: min(40vmin, 16rem);
-  height: auto;
+header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+header img {
+  width: 4rem;
+  height: 4rem;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 1.6rem;
+}
+
+h2 {
+  font-size: 1rem;
+}
+
+.status {
+  color: #a6e3a1;
+}
+
+.status.disconnected {
+  color: #f38ba8;
+}
+
+.controls {
+  display: flex;
+  gap: 0.75rem;
+  margin: 2rem 0 1rem;
+}
+
+button {
+  border: 1px solid #585b70;
+  border-radius: 0.4rem;
+  background: #313244;
+  color: inherit;
+  padding: 0.55rem 0.9rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.activity {
+  border: 1px solid #313244;
+  border-radius: 0.5rem;
+  background: #181825;
+  padding: 1rem;
+}
+
+#log {
+  min-height: 15rem;
+  max-height: calc(100vh - 15rem);
+  margin: 0.75rem 0 0;
+  padding-left: 2.25rem;
+  overflow: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+#log li {
+  padding: 0.2rem 0;
+}
+
+#log .error {
+  color: #f38ba8;
+}
+
+#log .receive {
+  color: #89dceb;
 }

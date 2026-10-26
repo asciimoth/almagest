@@ -4,8 +4,26 @@ mod connection;
 mod endpoint;
 mod options;
 
-use connection::AdminConnection;
+use connection::{AdminConnection, FrontendEvent};
 use options::Options;
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn listen_admin(
+    connection: tauri::State<'_, AdminConnection>,
+    channel: tauri::ipc::Channel<FrontendEvent>,
+) -> Result<(), String> {
+    connection.register(channel)
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn send_admin_message(
+    connection: tauri::State<'_, AdminConnection>,
+    message: String,
+) -> Result<(), String> {
+    connection.send(message)
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = options::parse(
@@ -20,6 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let connection = AdminConnection::connect(&endpoint)?;
     tauri::Builder::default()
         .manage(connection)
+        .invoke_handler(tauri::generate_handler![listen_admin, send_admin_message])
         .run(tauri::generate_context!())?;
     Ok(())
 }

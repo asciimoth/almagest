@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-listen-admin"
+description = "Enables the listen_admin command without any pre-configured scope."
+commands.allow = ["listen_admin"]
+
+[[permission]]
+identifier = "deny-listen-admin"
+description = "Denies the listen_admin command without any pre-configured scope."
+commands.deny = ["listen_admin"]
