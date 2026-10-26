@@ -8,7 +8,7 @@ const transport = await readFile(new URL("../src/admin_transport.ts", import.met
 const webdemo = await readFile(new URL("../src/webdemo.ts", import.meta.url), "utf8");
 const wasmTransport = await readFile(new URL("../src/wasm_transport.ts", import.meta.url), "utf8");
 
-const { WebSocketAdminTransport, configureAdminTransport, createAdminTransport } = await import(
+const { ADMIN_API_CONNECT_TIMEOUT_MS, WebSocketAdminTransport, configureAdminTransport, createAdminTransport } = await import(
   "../public/build/admin_transport.js"
 );
 const { loadWebDemoColorMap, WASMAdminTransport } = await import("../public/build/wasm_transport.js");
@@ -100,12 +100,15 @@ test("WebSocket transport connects to the daemon API and forwards messages", asy
   assert.equal(closes, 1);
 });
 
-test("WebSocket transport supports HTTP and a configured subpath", () => {
+test("WebSocket transport supports HTTP and a configured subpath", async () => {
   installBrowser("http://example.test/almagest/demo/", "../");
   const transport = new WebSocketAdminTransport();
-  void transport.connect({ message() {}, close() {} });
+  const connected = transport.connect({ message() {}, close() {} });
 
   assert.equal(MockWebSocket.instances[0]?.url, "ws://example.test/almagest/api/ws");
+  MockWebSocket.instances[0]?.open();
+  await connected;
+  transport.close();
 });
 
 test("Wasm transport imports the in-process API and forwards messages", async () => {
@@ -213,6 +216,20 @@ test("WebSocket transport cancels a pending connection immediately", async () =>
   await assert.rejects(connection, /WebSocket connection closed/);
   assert.equal(transport.connected, false);
   assert.equal(closes, 1);
+});
+
+test("WebSocket transport cancels a stuck connection after a short timeout", async () => {
+  installBrowser("http://panel.test/");
+  let closes = 0;
+  const transport = new WebSocketAdminTransport(5);
+  const connection = transport.connect({ message() {}, close: () => closes += 1 });
+  const socket = MockWebSocket.instances[0];
+
+  await assert.rejects(connection, /WebSocket connection timed out/);
+  assert.equal(socket?.readyState, MockWebSocket.CLOSED);
+  assert.equal(transport.connected, false);
+  assert.equal(closes, 1);
+  assert.equal(ADMIN_API_CONNECT_TIMEOUT_MS, 3_000);
 });
 
 test("WebSocket transport ignores close events from a replaced socket", async () => {

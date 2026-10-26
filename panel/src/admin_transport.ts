@@ -13,6 +13,8 @@ export interface AdminTransport {
 
 export type AdminTransportFactory = () => AdminTransport;
 
+export const ADMIN_API_CONNECT_TIMEOUT_MS = 3_000;
+
 let transportFactory: AdminTransportFactory = () => new WebSocketAdminTransport();
 
 export function configureAdminTransport(factory: AdminTransportFactory): void {
@@ -26,7 +28,9 @@ export function createAdminTransport(): AdminTransport {
 export class WebSocketAdminTransport implements AdminTransport {
   readonly reconnect = true;
   #socket: WebSocket | null = null;
-  #closeCurrent: (() => void) | null = null;
+  #closeCurrent: ((error?: Error) => void) | null = null;
+
+  constructor(private readonly connectTimeoutMs = ADMIN_API_CONNECT_TIMEOUT_MS) {}
 
   get connected(): boolean {
     return this.#socket?.readyState === WebSocket.OPEN;
@@ -39,23 +43,39 @@ export class WebSocketAdminTransport implements AdminTransport {
       apiURL.protocol = protocol;
       const socket = new WebSocket(apiURL);
       this.#socket = socket;
-      socket.addEventListener("open", () => resolve(), { once: true });
-      socket.addEventListener("error", () => reject(new Error("WebSocket connection failed")), { once: true });
-      socket.addEventListener("message", (event) => handlers.message(String(event.data)));
-      const finishClose = () => {
-        reject(new Error("WebSocket connection closed"));
+      let connectTimer = 0;
+      const finishClose = (error = new Error("WebSocket connection closed")) => {
+        window.clearTimeout(connectTimer);
+        reject(error);
         if (this.#socket !== socket) return;
         this.#socket = null;
         this.#closeCurrent = null;
         handlers.close();
       };
-      socket.addEventListener("close", finishClose);
-      this.#closeCurrent = () => {
+      const closeSocket = (error?: Error) => {
+        // Finish first because a test transport or browser can dispatch the
+        // close event synchronously. A later native close event is ignored.
+        finishClose(error);
         socket.close();
+      };
+      socket.addEventListener("open", () => {
+        window.clearTimeout(connectTimer);
+        resolve();
+      }, { once: true });
+      socket.addEventListener("error", () => {
+        closeSocket(new Error("WebSocket connection failed"));
+      }, { once: true });
+      socket.addEventListener("message", (event) => handlers.message(String(event.data)));
+      socket.addEventListener("close", () => finishClose());
+      this.#closeCurrent = (error?: Error) => {
         // Do not wait for the browser to dispatch a close event. In particular,
         // a WebSocket in CONNECTING can take seconds to finish closing.
-        finishClose();
+        closeSocket(error);
       };
+      connectTimer = window.setTimeout(() => {
+        if (this.#socket !== socket || socket.readyState !== WebSocket.CONNECTING) return;
+        closeSocket(new Error("WebSocket connection timed out"));
+      }, this.connectTimeoutMs);
     });
   }
 
