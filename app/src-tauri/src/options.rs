@@ -6,7 +6,7 @@ pub(crate) const API_URL_ENV: &str = "ALMAGEST_API_URL";
 
 pub(crate) const HELP: &str = "\
 Usage:
-  almagest-app [--url ENDPOINT]
+  almagest-app [--background] [--url ENDPOINT]
 
 Endpoint URLs:
   unix://run/almagest/admin.sock   Unix socket at /run/almagest/admin.sock (Unix default)
@@ -16,6 +16,7 @@ Endpoint URLs:
   web://127.0.0.1:8090             WebSocket API at ws://127.0.0.1:8090/api/ws
 
 Options:
+      --background     start with the main window hidden when the tray is available
   -u, --url ENDPOINT   admin API endpoint URL
   -h, --help           show help
 
@@ -25,7 +26,10 @@ Environment:
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum Options {
-    Connect(Endpoint),
+    Connect {
+        endpoint: Endpoint,
+        background: bool,
+    },
     Help,
 }
 
@@ -36,12 +40,14 @@ pub(crate) fn parse(
 ) -> Result<Options, String> {
     let mut args = args.into_iter();
     let mut raw_endpoint = None;
+    let mut background = false;
     while let Some(argument) = args.next() {
         let argument = argument
             .into_string()
             .map_err(|_| "command-line arguments must be valid UTF-8".to_owned())?;
         match argument.as_str() {
             "-h" | "--help" => return Ok(Options::Help),
+            "--background" => background = true,
             "-u" | "--url" => {
                 let value = args
                     .next()
@@ -73,7 +79,10 @@ pub(crate) fn parse(
         })
         .transpose()?
         .unwrap_or_default();
-    endpoint::parse(&raw_endpoint).map(Options::Connect)
+    endpoint::parse(&raw_endpoint).map(|endpoint| Options::Connect {
+        endpoint,
+        background,
+    })
 }
 
 #[cfg(test)]
@@ -91,14 +100,18 @@ mod tests {
         for flag in ["-u", "--url"] {
             assert_eq!(
                 parse(args(&[flag, "unix:///tmp/admin.sock"]), None),
-                Ok(Options::Connect(Endpoint::Unix(PathBuf::from(
-                    "/tmp/admin.sock"
-                ))))
+                Ok(Options::Connect {
+                    endpoint: Endpoint::Unix(PathBuf::from("/tmp/admin.sock")),
+                    background: false,
+                })
             );
         }
         assert!(matches!(
             parse(args(&["--url=web://127.0.0.1:8090"]), None),
-            Ok(Options::Connect(Endpoint::Web(_)))
+            Ok(Options::Connect {
+                endpoint: Endpoint::Web(_),
+                background: false,
+            })
         ));
     }
 
@@ -116,7 +129,10 @@ mod tests {
                 args(&[]),
                 Some(OsString::from("web://127.0.0.1:8091"))
             ),
-            Ok(Options::Connect(Endpoint::Web(url)))
+            Ok(Options::Connect {
+                endpoint: Endpoint::Web(url),
+                background: false,
+            })
                 if url.as_str() == "ws://127.0.0.1:8091/api/ws"
         ));
     }
@@ -128,8 +144,22 @@ mod tests {
                 args(&["--url", "web://127.0.0.1:8092"]),
                 Some(OsString::from("web://127.0.0.1:8091"))
             ),
-            Ok(Options::Connect(Endpoint::Web(url)))
+            Ok(Options::Connect {
+                endpoint: Endpoint::Web(url),
+                background: false,
+            })
                 if url.as_str() == "ws://127.0.0.1:8092/api/ws"
+        ));
+    }
+
+    #[test]
+    fn accepts_background_mode() {
+        assert!(matches!(
+            parse(args(&["--background"]), None),
+            Ok(Options::Connect {
+                background: true,
+                ..
+            })
         ));
     }
 }

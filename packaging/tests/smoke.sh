@@ -83,6 +83,7 @@ if [[ -n "$app_package" ]]; then
 	esac
 	test -x /usr/bin/almagest-app
 	test -f /usr/share/applications/almagest-app.desktop
+	test -f /etc/xdg/autostart/almagest-app.desktop
 	test -f /usr/share/icons/hicolor/128x128/apps/almagest.png
 	app_package_lists_path() {
 		local path="$1"
@@ -93,8 +94,10 @@ if [[ -n "$app_package" ]]; then
 		esac
 	}
 	app_package_lists_path /usr/bin/almagest-app
+	app_package_lists_path /etc/xdg/autostart/almagest-app.desktop
 	app_package_lists_path /usr/share/licenses/almagest-app/LICENSE
-	/usr/bin/almagest-app --help | grep -F -- 'almagest-app [--url ENDPOINT]' >/dev/null
+	/usr/bin/almagest-app --help | grep -F -- \
+		'almagest-app [--background] [--url ENDPOINT]' >/dev/null
 fi
 
 test -x /usr/bin/almagest-cli

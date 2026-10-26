@@ -86,6 +86,7 @@ done
 app_listing="$(tar -tzf "$app_archive")"
 grep -E '(^|/)almagest-app$' <<<"$app_listing" >/dev/null
 grep -E '(^|/)share/applications/almagest-app.desktop$' <<<"$app_listing" >/dev/null
+grep -E '(^|/)etc/xdg/autostart/almagest-app.desktop$' <<<"$app_listing" >/dev/null
 grep -E '(^|/)share/icons/hicolor/128x128/apps/almagest.png$' <<<"$app_listing" >/dev/null
 grep -E '(^|/)share/licenses/almagest-app/LICENSE$' <<<"$app_listing" >/dev/null
 grep -E '(^|/)PACKAGE_CONTENTS\.md$' <<<"$app_listing" >/dev/null

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Almagest
+Comment=Manage the Almagest network graph
+Exec=almagest-app --background
+TryExec=almagest-app
+Terminal=false

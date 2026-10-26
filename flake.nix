@@ -222,6 +222,8 @@
         postInstall = ''
           install -Dm0644 ${./packaging/linux/almagest-app.desktop} \
             "$out/share/applications/almagest-app.desktop"
+          install -Dm0644 ${./packaging/linux/almagest-app-autostart.desktop} \
+            "$out/etc/xdg/autostart/almagest-app.desktop"
           install -Dm0644 app/src-tauri/icons/128x128.png \
             "$out/share/icons/hicolor/128x128/apps/almagest.png"
           install -Dm0644 ${./packaging/linux/app-README.md} \
@@ -234,6 +236,7 @@
           runHook preInstallCheck
           test -x "$out/bin/almagest-app"
           test -f "$out/share/applications/almagest-app.desktop"
+          test -f "$out/etc/xdg/autostart/almagest-app.desktop"
           "$out/bin/almagest-app" --help >/dev/null
           runHook postInstallCheck
         '';

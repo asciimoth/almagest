@@ -32,7 +32,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::args_os().skip(1),
         std::env::var_os(options::API_URL_ENV),
     )?;
-    let Options::Connect(endpoint) = options else {
+    let Options::Connect {
+        endpoint,
+        background,
+    } = options
+    else {
         print!("{}", options::HELP);
         return Ok(());
     };
@@ -44,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .plugin(tauri_plugin_opener::init())
         .plugin(navigation::plugin())
         .manage(connection)
-        .setup(tray::setup)
+        .setup(move |app| tray::setup(app, background))
         .on_window_event(tray::handle_window_event)
         .invoke_handler(tauri::generate_handler![listen_admin, send_admin_message])
         .run(tauri::generate_context!())?;

@@ -12,7 +12,7 @@ const QUIT_MENU_ID: &str = "quit";
 
 struct TrayAvailability(bool);
 
-pub(crate) fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn setup(app: &mut App, background: bool) -> Result<(), Box<dyn std::error::Error>> {
     let status_item = MenuItem::with_id(
         app,
         "connection-status",
@@ -70,6 +70,9 @@ pub(crate) fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             .map_err(std::io::Error::other)?;
     }
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        if !background || !app.state::<TrayAvailability>().0 {
+            restore_window(&window);
+        }
         update_webview_retry_priority(&window);
     }
     Ok(())
