@@ -80,20 +80,20 @@ for config, storage, generated secrets, and temporary state.
 
 ## Local administration
 
-The default CLI endpoint is `pipe://user`. An interactive daemon uses a pipe
-named for the current user SID:
+The default CLI and desktop app endpoint is `pipe://machine`, which matches the
+packaged Local System service. An interactive daemon uses a separate pipe named
+for the current user SID:
 
 ```text
 \\.\pipe\almagest-admin-user-<SID>
 ```
 
-The pipe permits the current identity and Local System. The CLI requires the
-current identity to own it.
+The pipe permits the current identity and Local System. Use `pipe://user` to
+connect to it. The clients require the current identity to own it.
 
 A Local System service uses `\\.\pipe\almagest-admin`. Its ACL permits Local
-System and elevated administrators. Connect from an elevated CLI with
-`pipe://machine`; the CLI requires Local System to own the pipe. User and
-machine defaults are separate.
+System and elevated administrators. The clients require Local System to own the
+pipe. The user and machine endpoints are separate.
 
 Set `Admin.Pipe`, `--pipe`, or `ALMAGEST_PIPE_ADMIN` to a complete local pipe
 path to change the daemon endpoint. An empty value disables the pipe. Use

@@ -768,8 +768,10 @@ func printTopHelp(w io.Writer) {
   almagest-cli [--url ENDPOINT] raw --surface SURFACE --method METHOD --payload JSON
 
 Endpoint URLs:
-  unix://run/almagest/admin.sock   Unix socket at /run/almagest/admin.sock (default)
+  unix://run/almagest/admin.sock   Unix socket at /run/almagest/admin.sock (Unix default)
   unix:///absolute/path.sock       Unix socket at an explicit absolute path
+  pipe://machine                   trusted machine administration pipe (Windows default)
+  pipe://user                      trusted current-user pipe
   web://127.0.0.1:8090             Web admin API via ws://127.0.0.1:8090/api/ws
 
 Surfaces:

@@ -2,4 +2,4 @@
 
 package main
 
-const defaultEndpoint = "pipe://user"
+const defaultEndpoint = "pipe://machine"

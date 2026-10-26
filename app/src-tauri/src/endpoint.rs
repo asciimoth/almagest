@@ -47,7 +47,7 @@ const fn default_url() -> &'static str {
 
 #[cfg(windows)]
 const fn default_url() -> &'static str {
-    "pipe://user"
+    "pipe://machine"
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -158,7 +158,7 @@ mod tests {
         assert_eq!(
             endpoint,
             Endpoint::Pipe {
-                trust: PipeTrust::User,
+                trust: PipeTrust::Machine,
                 name: String::new()
             }
         );

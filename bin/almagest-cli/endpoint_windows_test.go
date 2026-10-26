@@ -8,13 +8,13 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func TestParseEndpointDefaultWindowsUserPipe(t *testing.T) {
+func TestParseEndpointDefaultWindowsMachinePipe(t *testing.T) {
 	ep, err := parseEndpoint("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ep.kind != endpointPipe || ep.pipeTrust != pipeTrustUser || ep.pipeName != "" {
-		t.Fatalf("default endpoint = %#v, want current-user pipe", ep)
+	if ep.kind != endpointPipe || ep.pipeTrust != pipeTrustMachine || ep.pipeName != "" {
+		t.Fatalf("default endpoint = %#v, want machine pipe", ep)
 	}
 }
 

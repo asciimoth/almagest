@@ -9,10 +9,10 @@ Usage:
   almagest-app [--url ENDPOINT]
 
 Endpoint URLs:
-  unix://run/almagest/admin.sock   Unix socket at /run/almagest/admin.sock (default)
+  unix://run/almagest/admin.sock   Unix socket at /run/almagest/admin.sock (Unix default)
   unix:///absolute/path.sock       Unix socket at an explicit absolute path
-  pipe://user                      trusted current-user pipe (Windows default)
-  pipe://machine                   trusted machine administration pipe
+  pipe://machine                   trusted machine administration pipe (Windows default)
+  pipe://user                      trusted current-user pipe
   web://127.0.0.1:8090             WebSocket API at ws://127.0.0.1:8090/api/ws
 
 Options:
