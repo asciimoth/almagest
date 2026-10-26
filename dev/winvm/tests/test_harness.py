@@ -45,10 +45,14 @@ class HarnessTests(unittest.TestCase):
         lock = json.loads((ROOT / 'image-lock.json').read_text())
         self.assertEqual(lock['dotnet']['version'], '6.0.36')
         self.assertEqual({lock[name]['version'] for name in
-                          ('wix', 'wixUtil', 'wixDifxApp', 'wixDtf')}, {'4.0.6'})
+                          ('wix', 'wixUtil', 'wixDifxApp', 'wixDtf', 'wixUi')}, {'4.0.6'})
+        self.assertEqual(lock['rust']['version'], '1.90.0')
+        self.assertEqual(lock['python']['version'], '3.13.1')
+        self.assertEqual(lock['llvmMingw']['version'], '20261020')
         common = (ROOT / 'common.sh').read_text()
         builder = (ROOT / 'build-image.sh').read_text()
-        for name in ('dotnet', 'wix', 'wixUtil', 'wixDifxApp', 'wixDtf'):
+        for name in ('dotnet', 'python', 'rust', 'llvmMingw', 'wix', 'wixUtil',
+                     'wixDifxApp', 'wixDtf', 'wixUi'):
             self.assertIn(name, common)
             self.assertIn(name, builder)
         self.assertIn('$lock_file', common)
@@ -213,10 +217,10 @@ require_vm_space "$winvm_cache_dir" 10 test
                       provision)
         self.assertIn("$driverSource = $media", provision)
         self.assertIn("Join-Path $media '@@TOR_FILE@@'", provision)
-        self.assertIn("$torRoot;$dotnetRoot;$wixRoot;$machinePath", provision)
+        self.assertIn("C:\\Rust\\bin;C:\\llvm-mingw\\bin;$pythonRoot;$sshRoot;$torRoot;$dotnetRoot;$wixRoot;$machinePath", provision)
         self.assertIn("& tor.exe --version", provision)
         self.assertIn('cp "$(package_path "$section")"', builder)
-        self.assertIn('go openssh tor dotnet wix wixUtil wixDifxApp wixDtf', builder)
+        self.assertIn('go openssh tor dotnet python rust llvmMingw wix wixUtil wixDifxApp wixDtf wixUi', builder)
         self.assertIn("$(locked_value .tor.file)", builder)
 
     def test_native_runner_keeps_go_stderr_out_of_json_events(self):

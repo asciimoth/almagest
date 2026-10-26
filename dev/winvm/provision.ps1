@@ -55,14 +55,51 @@ $torRoot = Join-Path $torInstallRoot 'tor'
 if (-not (Test-Path -LiteralPath (Join-Path $torRoot 'tor.exe') -PathType Leaf)) { throw 'Tor executable is absent after extraction' }
 $dotnetRoot = 'C:\Program Files\dotnet'
 Expand-Archive (Join-Path $media '@@DOTNET_FILE@@') $dotnetRoot -Force
+$pythonRoot = Join-Path $root 'python'
+Expand-Archive (Join-Path $media '@@PYTHON_FILE@@') $pythonRoot -Force
+$rustStaging = Join-Path $root 'rust-install'
+New-Item -ItemType Directory -Force -Path $rustStaging | Out-Null
+& (Join-Path $pythonRoot 'python.exe') -c `
+    "import sys,tarfile; tarfile.open(sys.argv[1], 'r:xz').extractall(sys.argv[2], filter='data')" `
+    (Join-Path $media '@@RUST_FILE@@') $rustStaging
+if ($LASTEXITCODE -ne 0) { throw "Rust extraction failed: $LASTEXITCODE" }
+$rustPackage = Get-ChildItem $rustStaging -Directory | Select-Object -First 1
+if (-not $rustPackage) { throw 'Rust package root is absent' }
+$rustRoot = 'C:\Rust'
+New-Item -ItemType Directory -Force -Path $rustRoot | Out-Null
+foreach ($component in @('cargo', 'rustc', 'rust-std-x86_64-pc-windows-gnu',
+        'rust-mingw')) {
+    $componentRoot = Join-Path $rustPackage.FullName $component
+    if (-not (Test-Path -LiteralPath $componentRoot -PathType Container)) {
+        throw "Rust component is absent: $component"
+    }
+    Copy-Item (Join-Path $componentRoot '*') $rustRoot -Recurse -Force
+}
+$llvmMingwStaging = Join-Path $root 'llvm-mingw-install'
+Expand-Archive (Join-Path $media '@@LLVM_MINGW_FILE@@') $llvmMingwStaging -Force
+$llvmMingwPackage = Get-ChildItem $llvmMingwStaging -Directory | Select-Object -First 1
+if (-not $llvmMingwPackage) { throw 'LLVM-MinGW package root is absent' }
+$llvmMingwRoot = 'C:\llvm-mingw'
+New-Item -ItemType Directory -Force -Path $llvmMingwRoot | Out-Null
+Copy-Item (Join-Path $llvmMingwPackage.FullName '*') $llvmMingwRoot -Recurse -Force
+$llvmAssembler = Join-Path $llvmMingwRoot 'bin\x86_64-w64-mingw32-as.exe'
+if (-not (Test-Path -LiteralPath $llvmAssembler -PathType Leaf)) {
+    throw 'LLVM-MinGW assembler driver is absent'
+}
+Copy-Item $llvmAssembler `
+    (Join-Path $rustRoot 'lib\rustlib\x86_64-pc-windows-gnu\bin\self-contained\as.exe') -Force
+Remove-Item $llvmMingwStaging -Recurse -Force
+Remove-Item $rustStaging -Recurse -Force
 $wixPackage = Join-Path $root 'wix-package'
 $wixUtilPackage = Join-Path $root 'wix-util-package'
 $wixDifxPackage = Join-Path $root 'wix-difxapp-package'
 $wixDtfPackage = Join-Path $root 'wix-dtf-package'
+$wixUiPackage = Join-Path $root 'wix-ui-package'
 Expand-WithTar (Join-Path $media '@@WIX_FILE@@') $wixPackage
 Expand-WithTar (Join-Path $media '@@WIX_UTIL_FILE@@') $wixUtilPackage
 Expand-WithTar (Join-Path $media '@@WIX_DIFXAPP_FILE@@') $wixDifxPackage
 Expand-WithTar (Join-Path $media '@@WIX_DTF_FILE@@') $wixDtfPackage
+Expand-WithTar (Join-Path $media '@@WIX_UI_FILE@@') $wixUiPackage
 $wixRoot = Join-Path $root 'wix'
 $wixExtensionRoot = Join-Path $root 'wixext'
 New-Item -ItemType Directory -Force -Path $wixRoot, $wixExtensionRoot | Out-Null
@@ -71,11 +108,12 @@ Copy-Item (Join-Path $wixUtilPackage 'wixext4\WixToolset.Util.wixext.dll') $wixE
 Copy-Item (Join-Path $wixDifxPackage 'wixext4\WixToolset.DifxApp.wixext.dll') $wixExtensionRoot
 Copy-Item (Join-Path $wixDifxPackage 'wixext4\difxapp_x64.wixlib') $wixExtensionRoot
 Copy-Item (Join-Path $wixDtfPackage 'lib\netstandard2.0\WixToolset.Dtf.WindowsInstaller.dll') $wixRoot
-Remove-Item $wixPackage, $wixUtilPackage, $wixDifxPackage, $wixDtfPackage -Recurse -Force
+Copy-Item (Join-Path $wixUiPackage 'wixext4\WixToolset.UI.wixext.dll') $wixExtensionRoot
+Remove-Item $wixPackage, $wixUtilPackage, $wixDifxPackage, $wixDtfPackage, $wixUiPackage -Recurse -Force
 $machinePath = [Environment]::GetEnvironmentVariable('Path','Machine')
 [Environment]::SetEnvironmentVariable('DOTNET_ROOT', $dotnetRoot, 'Machine')
 $env:DOTNET_ROOT = $dotnetRoot
-[Environment]::SetEnvironmentVariable('Path', "C:\go\bin;$sshRoot;$torRoot;$dotnetRoot;$wixRoot;$machinePath", 'Machine'); $env:Path = "C:\go\bin;$sshRoot;$torRoot;$dotnetRoot;$wixRoot;$env:Path"
+[Environment]::SetEnvironmentVariable('Path', "C:\go\bin;C:\Rust\bin;C:\llvm-mingw\bin;$pythonRoot;$sshRoot;$torRoot;$dotnetRoot;$wixRoot;$machinePath", 'Machine'); $env:Path = "C:\go\bin;C:\Rust\bin;C:\llvm-mingw\bin;$pythonRoot;$sshRoot;$torRoot;$dotnetRoot;$wixRoot;$env:Path"
 & "$sshRoot\install-sshd.ps1"; & "$sshRoot\ssh-keygen.exe" -A
 @'
 HostKey C:/ProgramData/ssh/ssh_host_ed25519_key
@@ -175,6 +213,10 @@ $dotnetRuntimes = @(& dotnet.exe --list-runtimes)
 if ($LASTEXITCODE -ne 0 -or $dotnetRuntimes -notmatch '^Microsoft\.NETCore\.App 6\.0\.36 ') { throw 'Unexpected .NET runtime' }
 $wixVersion = (& wix.exe --version | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or $wixVersion -notmatch '^4\.0\.6(?:\+.*)?$') { throw "Unexpected WiX version: $wixVersion" }
+$rustVersion = (& rustc.exe --version | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or $rustVersion -notmatch '^rustc 1\.90\.0 ') { throw "Unexpected Rust version: $rustVersion" }
+$pythonVersion = (& python.exe --version | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or $pythonVersion -notmatch '^Python 3\.13\.1$') { throw "Unexpected Python version: $pythonVersion" }
 $qgaVersion = (Get-Item 'C:\Program Files\qemu-ga\qemu-ga.exe').VersionInfo.FileVersion
 $driverService = Get-CimInstance Win32_SystemDriver -Filter "Name='$driverServiceName'" -ErrorAction SilentlyContinue
 if ($installRuntimeDependencies -and
@@ -187,8 +229,9 @@ if (-not $installRuntimeDependencies -and $driverService) {
 $manifest = [ordered]@{
     imageVariant=$imageVariant; runtimeDependenciesInstalled=$installRuntimeDependencies
     windowsBuild=[Environment]::OSVersion.Version.ToString(); architecture=$env:PROCESSOR_ARCHITECTURE
-    goVersion=$goVersion; torVersion=$torVersion; dotnetRuntimes=$dotnetRuntimes
-    wixVersion=$wixVersion; wixExtensions=@('WixToolset.Util.wixext 4.0.6', 'WixToolset.DifxApp.wixext 4.0.6')
+    goVersion=$goVersion; rustVersion=$rustVersion; pythonVersion=$pythonVersion
+    torVersion=$torVersion; dotnetRuntimes=$dotnetRuntimes
+    wixVersion=$wixVersion; wixExtensions=@('WixToolset.Util.wixext 4.0.6', 'WixToolset.DifxApp.wixext 4.0.6', 'WixToolset.UI.wixext 4.0.6')
     qemuGuestAgentVersion=$qgaVersion; provisionedAt=(Get-Date).ToUniversalTime().ToString('o')
     driverService=$driverServiceName
 }

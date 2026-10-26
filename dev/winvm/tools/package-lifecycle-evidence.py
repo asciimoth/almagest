@@ -62,7 +62,11 @@ def main() -> None:
         assert lifecycle["downgrade"]["exitCode"] not in (0, 3010)
         assert lifecycle["uninstall"]["programDataRetained"]
         assert lifecycle["uninstall"]["driverRemoved"]
+        assert lifecycle["featureSelection"]["passed"]
+        assert lifecycle["featureSelection"]["appRetained"]
+        assert lifecycle["featureSelection"]["autoStartRemoved"]
         assert lifecycle["reinstall"]["retainedStateUsable"]
+        assert lifecycle["reinstall"]["serviceOnly"]
         assert all(lifecycle["retained"].values())
 
         args.output.mkdir(parents=True, exist_ok=True)

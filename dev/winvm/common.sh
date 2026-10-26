@@ -94,7 +94,7 @@ download_packages() {
     ensure_cache_dir
     mkdir -p -- "$winvm_cache_dir/inputs" "$winvm_cache_dir/locks"
     local section path partial expected
-    for section in go openssh tor dotnet wix wixUtil wixDifxApp wixDtf; do
+    for section in go openssh tor dotnet python rust llvmMingw wix wixUtil wixDifxApp wixDtf wixUi; do
         path=$(package_path "$section")
         expected=$(locked_value ".${section}.sha256")
         [[ -f $path && $(sha256_file "$path") == "$expected" ]] && continue

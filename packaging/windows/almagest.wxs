@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:difx="http://wixtoolset.org/schemas/v4/wxs/difxapp"
-     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <Package Name="Almagest"
            Manufacturer="Almagest contributors"
            Version="$(var.Version)"
@@ -18,17 +19,34 @@
                   Schedule="afterInstallInitialize" />
 
     <util:QueryWindowsWellKnownSIDs />
-    <Feature Id="AlmagestFeature" Title="Almagest" Level="1">
-      <ComponentRef Id="DaemonServiceComponent" />
-      <ComponentRef Id="CliComponent" />
-      <ComponentRef Id="WintunComponent" />
-      <ComponentRef Id="PackageDocumentationComponent" />
-      <ComponentRef Id="MullvadDriverComponent" />
-      <ComponentRef Id="MullvadDriverServiceComponent" />
-      <ComponentRef Id="ProgramDataAclComponent" />
-      <ComponentGroupRef Id="LocalesComponents" />
-      <ComponentGroupRef Id="ExamplesComponents" />
+    <Feature Id="AlmagestFeature" Title="Almagest" Description="Almagest service and desktop app"
+             Level="1" AllowAbsent="no">
+      <Feature Id="BackendFeature" Title="Almagest service"
+               Description="Install the required network daemon service and command-line tools."
+               Level="1" AllowAbsent="no">
+        <ComponentRef Id="DaemonServiceComponent" />
+        <ComponentRef Id="CliComponent" />
+        <ComponentRef Id="WintunComponent" />
+        <ComponentRef Id="PackageDocumentationComponent" />
+        <ComponentRef Id="MullvadDriverComponent" />
+        <ComponentRef Id="MullvadDriverServiceComponent" />
+        <ComponentRef Id="ProgramDataAclComponent" />
+        <ComponentGroupRef Id="LocalesComponents" />
+        <ComponentGroupRef Id="ExamplesComponents" />
+      </Feature>
+      <Feature Id="DesktopAppFeature" Title="Desktop app"
+               Description="Install the Almagest desktop and tray app."
+               Level="1">
+        <ComponentRef Id="DesktopAppComponent" />
+        <Feature Id="DesktopAppAutoStartFeature" Title="Start app when users sign in"
+                 Description="Start the desktop app in the notification area when a user signs in."
+                 Level="1">
+          <ComponentRef Id="DesktopAppAutoStartComponent" />
+        </Feature>
+      </Feature>
     </Feature>
+    <ui:WixUI Id="WixUI_FeatureTree" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.SourceDir)\LICENSE" />
     <CustomActionRef Id="RollbackAlmagestServiceRecovery" />
     <CustomActionRef Id="ConfigureAlmagestServiceRecovery" />
     <CustomActionRef Id="RollbackMullvadDriverService" />
@@ -89,6 +107,21 @@
                Guid="D0351CF1-25F6-423B-ABCE-9C7F57FFD162" Bitness="always64">
       <File Id="CliExecutable" Source="$(var.PayloadDir)\almagest-cli.exe"
             KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopAppComponent" Directory="INSTALLFOLDER"
+               Guid="C3E680A8-1629-4788-8A31-765AF7D06C6A" Bitness="always64">
+      <File Id="DesktopAppExecutable" Source="$(var.PayloadDir)\almagest-app.exe"
+            KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopAppAutoStartComponent" Directory="INSTALLFOLDER"
+               Guid="CE97A2C4-E435-497A-BD0E-8211A38CF6B9" Bitness="always64">
+      <RegistryValue Root="HKLM"
+                     Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                     Name="Almagest"
+                     Value="&quot;[#DesktopAppExecutable]&quot; --background"
+                     Type="string" KeyPath="yes" />
     </Component>
 
     <Component Id="WintunComponent" Directory="INSTALLFOLDER"

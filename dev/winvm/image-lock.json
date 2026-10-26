@@ -35,6 +35,24 @@
     "source": "https://builds.dotnet.microsoft.com/dotnet/Runtime/6.0.36/dotnet-runtime-6.0.36-win-x64.zip",
     "sha256": "c077ccc342c5571ceb7a3c06d1dfbc99b989ed5a6e0f3a0b0b450531c1259615"
   },
+  "python": {
+    "version": "3.13.1",
+    "file": "python-3.13.1-embed-amd64.zip",
+    "source": "https://www.python.org/ftp/python/3.13.1/python-3.13.1-embed-amd64.zip",
+    "sha256": "7b7923ff0183a8b8fca90f6047184b419b108cb437f75fc1c002f9d2f8bcec16"
+  },
+  "rust": {
+    "version": "1.90.0",
+    "file": "rust-1.90.0-x86_64-pc-windows-gnu.tar.xz",
+    "source": "https://static.rust-lang.org/dist/2025-09-18/rust-1.90.0-x86_64-pc-windows-gnu.tar.xz",
+    "sha256": "9a78b7cdc0386078440a8ea0e9aac756d9045188f048bd0b26b68dba90bd34e0"
+  },
+  "llvmMingw": {
+    "version": "20261020",
+    "file": "llvm-mingw-20261020-ucrt-x86_64.zip",
+    "source": "https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/llvm-mingw-20261020-ucrt-x86_64.zip",
+    "sha256": "fd5462b7f5d93b2ff981fcd3f9c7e427e47f3203c64ea91c27bcc444eebd74cd"
+  },
   "wix": {
     "version": "4.0.6",
     "file": "wix.4.0.6.nupkg",
@@ -58,5 +76,11 @@
     "file": "wixtoolset.dtf.windowsinstaller.4.0.6.nupkg",
     "source": "https://api.nuget.org/v3-flatcontainer/wixtoolset.dtf.windowsinstaller/4.0.6/wixtoolset.dtf.windowsinstaller.4.0.6.nupkg",
     "sha256": "bf013d52f9386fab124f0caf227fd70768b3eb15f93267de43beb36b21f95af6"
+  },
+  "wixUi": {
+    "version": "4.0.6",
+    "file": "wixtoolset.ui.wixext.4.0.6.nupkg",
+    "source": "https://api.nuget.org/v3-flatcontainer/wixtoolset.ui.wixext/4.0.6/wixtoolset.ui.wixext.4.0.6.nupkg",
+    "sha256": "e92c4ddac5d17f5360291ab856c676e19fd92af14daffb5d5d4b8e1e9c716b47"
   }
 }

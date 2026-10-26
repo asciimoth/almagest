@@ -44,6 +44,10 @@ class PackageSmokeEvidenceTests(unittest.TestCase):
                 "preconditions": {"clean": True},
                 "service": {"state": "Running"},
                 "elevatedCli": "passed",
+                "desktopApp": {
+                    "installed": True, "autoStart": True,
+                    "autoStartCommand": '"C:\\Program Files\\Almagest\\almagest-app.exe" --background',
+                },
                 "administrationGroup": {
                     "initialMemberCount": 0, "pipeAccess": "passed"},
                 "package": "almagest_1.2.3_windows_amd64.msi",

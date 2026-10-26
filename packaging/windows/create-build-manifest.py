@@ -33,12 +33,13 @@ def main() -> None:
     paths = [
         args.root / "dev/winvm/almagestd.exe",
         args.root / "dev/winvm/almagest-cli.exe",
+        args.root / "dev/winvm/almagest-app.exe",
         args.root / "LICENSE",
         args.root / "packaging/windows/README.md",
     ]
     for directory in ("locales", "examples", "dev/winvm/package-inputs"):
         paths.extend(path for path in (args.root / directory).rglob("*") if path.is_file())
-    for path in sorted(paths):
+    for path in sorted(path for path in paths if path.is_file()):
         included.append({
             "path": path.relative_to(args.root).as_posix(),
             "sha256": sha256(path),

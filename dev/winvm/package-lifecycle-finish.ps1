@@ -72,6 +72,18 @@ $registrationAfterDowngrade = Get-ItemProperty (Join-Path $uninstallKey "{$($upg
 Assert-True ($registrationAfterDowngrade.DisplayVersion -eq $upgrade.version) 'Downgrade damaged product registration'
 Assert-LifecycleState $cli $programData
 
+$featureChangeLog = Join-Path $ArtifactDir 'msiexec-feature-change.log'
+$featureChangeExit = Invoke-MSI @(
+    '/i', ('"{0}"' -f $upgradeMsi),
+    'ADDLOCAL=AlmagestFeature,BackendFeature,DesktopAppFeature',
+    'REMOVE=DesktopAppAutoStartFeature',
+    '/qn', '/norestart', '/l*v', ('"{0}"' -f $featureChangeLog)
+) 'Disable desktop app autostart'
+Assert-True (Test-Path -LiteralPath (Join-Path $programFiles 'almagest-app.exe')) `
+    'Disabling autostart removed the desktop app'
+Assert-True (-not (Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run' `
+    -Name Almagest -ErrorAction SilentlyContinue)) 'Desktop app autostart remains after feature removal'
+
 $uninstallLog = Join-Path $ArtifactDir 'msiexec-uninstall.log'
 $uninstallExit = Invoke-MSI @(
     '/x', ('"{0}"' -f $upgradeMsi), '/qn', '/norestart', '/l*v', ('"{0}"' -f $uninstallLog)
@@ -95,12 +107,17 @@ Assert-True ($retainedAdministrators.Name -contains $prepare.administrationGroup
 
 $reinstallLog = Join-Path $ArtifactDir 'msiexec-reinstall.log'
 $reinstallExit = Invoke-MSI @(
-    '/i', ('"{0}"' -f $upgradeMsi), '/qn', '/norestart', '/l*v', ('"{0}"' -f $reinstallLog)
-) 'Reinstall'
+    '/i', ('"{0}"' -f $upgradeMsi), 'ADDLOCAL=AlmagestFeature,BackendFeature',
+    '/qn', '/norestart', '/l*v', ('"{0}"' -f $reinstallLog)
+) 'Service-only reinstall'
 $afterReinstall = Wait-AlmagestService
 Assert-LifecycleState $cli $programData
 Assert-True ([bool](Get-Service $driverName -ErrorAction SilentlyContinue)) 'Driver service is absent after reinstall'
 Assert-True (Test-Path -LiteralPath $driverSystemPath) 'System driver is absent after reinstall'
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $programFiles 'almagest-app.exe'))) `
+    'Service-only reinstall installed the desktop app'
+Assert-True (-not (Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run' `
+    -Name Almagest -ErrorAction SilentlyContinue)) 'Service-only reinstall created desktop app autostart'
 
 Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'; StartTime=(Get-Date).AddMinutes(-30)} `
     -ErrorAction SilentlyContinue | Format-List TimeCreated, Id, LevelDisplayName, Message |
@@ -118,11 +135,17 @@ Copy-Item (Join-Path $programData 'logs\almagestd.log') `
     repair = [ordered]@{ passed = $true; exitCode = $repairExit }
     upgrade = [ordered]@{ passed = $true; exitCode = $upgradeExit; processIdBefore = $beforeUpgradePid; processIdAfter = $afterUpgrade.ProcessId }
     downgrade = [ordered]@{ rejected = $true; exitCode = $downgrade.ExitCode }
+    featureSelection = [ordered]@{
+        passed = $true; exitCode = $featureChangeExit; appRetained = $true; autoStartRemoved = $true
+    }
     uninstall = [ordered]@{
         passed = $true; exitCode = $uninstallExit; programDataRetained = $true
         driverRemoved = $true; administrationGroupRetained = $true
     }
-    reinstall = [ordered]@{ passed = $true; exitCode = $reinstallExit; retainedStateUsable = $true; serviceProcessId = $afterReinstall.ProcessId }
+    reinstall = [ordered]@{
+        passed = $true; exitCode = $reinstallExit; retainedStateUsable = $true
+        serviceProcessId = $afterReinstall.ProcessId; serviceOnly = $true
+    }
     retained = [ordered]@{ config = $true; protectedConfig = $true; kv = $true; secret = $true; snapshot = $true; graph = $true }
 } | ConvertTo-Json -Depth 8 | Set-Content `
     (Join-Path $ArtifactDir 'package-lifecycle.json') -Encoding utf8

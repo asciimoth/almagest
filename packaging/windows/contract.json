@@ -22,6 +22,8 @@
   "components": {
     "daemonService": "C05707E1-C3A4-482D-B634-975B99A7F8AB",
     "cli": "D0351CF1-25F6-423B-ABCE-9C7F57FFD162",
+    "desktopApp": "C3E680A8-1629-4788-8A31-765AF7D06C6A",
+    "desktopAppAutoStart": "CE97A2C4-E435-497A-BD0E-8211A38CF6B9",
     "wintun": "E029577A-A19D-4F4D-B5C3-666186CF4BE5",
     "packageDocumentation": "1DA725CA-0E69-41D5-96D3-8803C5BDC55D",
     "mullvadDriverPackage": "55D3B355-7A66-430A-9925-652983A9F03A",
@@ -35,6 +37,7 @@
     "programFiles": "%ProgramFiles%\\Almagest",
     "daemon": "%ProgramFiles%\\Almagest\\almagestd.exe",
     "cli": "%ProgramFiles%\\Almagest\\almagest-cli.exe",
+    "desktopApp": "%ProgramFiles%\\Almagest\\almagest-app.exe",
     "wintun": "%ProgramFiles%\\Almagest\\wintun.dll",
     "locales": "%ProgramFiles%\\Almagest\\locales",
     "examples": "%ProgramFiles%\\Almagest\\examples",
@@ -75,6 +78,14 @@
       "onNonCrashFailure": true,
       "reboot": false
     }
+  },
+  "desktopApp": {
+    "installedByDefault": true,
+    "optionalFeature": "DesktopAppFeature",
+    "autoStartByDefault": true,
+    "autoStartOptionalFeature": "DesktopAppAutoStartFeature",
+    "autoStartCommand": "\"%ProgramFiles%\\Almagest\\almagest-app.exe\" --background",
+    "serviceOnlyInstallSupported": true
   },
   "authorization": {
     "localGroup": "Almagest Administrators",

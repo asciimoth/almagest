@@ -13,9 +13,32 @@ in `contracts/windows/` controls support status.
 ## Installed files and retained data
 
 The MSI installs immutable files below `%ProgramFiles%\Almagest`. These files
-include `almagestd.exe`, `almagest-cli.exe`, the official amd64 `wintun.dll`,
-locales, examples, package documentation, and a staging directory for the
-complete Mullvad split-tunnel driver package.
+include `almagestd.exe`, `almagest-cli.exe`, the optional `almagest-app.exe`,
+the official amd64 `wintun.dll`, locales, examples, package documentation, and a
+staging directory for the complete Mullvad split-tunnel driver package.
+
+## Desktop app installer choices
+
+An interactive install selects the desktop app and its sign-in autostart entry
+by default. The feature tree lets the user disable autostart, or disable the
+desktop app and install only the required daemon service and command-line tools.
+The default autostart command is:
+
+```text
+"%ProgramFiles%\Almagest\almagest-app.exe" --background
+```
+
+This command starts the app with its window hidden and keeps it available in the
+notification area. For a silent service-only install, select only the root and
+backend features:
+
+```powershell
+msiexec.exe /i almagest_VERSION_windows_amd64.msi /qn `
+  ADDLOCAL=AlmagestFeature,BackendFeature
+```
+
+To install the app without autostart, include `DesktopAppFeature` and omit
+`DesktopAppAutoStartFeature` from `ADDLOCAL`.
 
 The daemon uses these mutable paths:
 
@@ -158,6 +181,12 @@ record, image lock, and complete package input list. After WiX links the MSI,
 the build uses the pinned WiX DTF library to set the PackageCode and fixed
 summary creation/save times. It also fixes payload CAB timestamps and compound
 file root-storage timestamps, which otherwise use the time of the build.
+
+The host stages the locked Cargo dependencies in the isolated payload. The WinVM
+uses its pinned Rust 1.90 GNU toolchain to build `almagest-app.exe` offline
+before it creates the final input manifest and MSI. The same MSI contains the
+daemon and optional desktop app; Windows does not use a separate desktop-app
+package.
 
 Build and harvest the real package with the locked Windows VM:
 

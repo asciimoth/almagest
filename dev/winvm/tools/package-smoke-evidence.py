@@ -35,6 +35,11 @@ def main() -> None:
         assert all(smoke["preconditions"].values())
         assert smoke["service"]["state"] == "Running"
         assert smoke["elevatedCli"] == "passed"
+        assert smoke["desktopApp"]["installed"]
+        assert smoke["desktopApp"]["autoStart"]
+        assert smoke["desktopApp"]["autoStartCommand"].endswith(
+            'almagest-app.exe" --background'
+        )
         assert smoke["administrationGroup"]["initialMemberCount"] == 0
         assert smoke["administrationGroup"]["pipeAccess"] == "passed"
         assert user["suite"] == "windows-msi-package-smoke-user"

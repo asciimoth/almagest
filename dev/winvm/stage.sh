@@ -17,6 +17,8 @@ if [[ $mode == manual || $mode == package || $mode == package-smoke || $mode == 
         -trimpath -o ../dev/winvm/almagestd.exe ./almagestd
     GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin build \
         -trimpath -o ../dev/winvm/almagest-cli.exe ./almagest-cli
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin build \
+        -trimpath -o ../dev/winvm/llvm-as-wrapper.exe ./cmd/winvm-llvm-as-wrapper
 fi
 if [[ $mode == manual || $mode == test || $mode == ordinary || $mode == privileged ]]; then
     GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin build \
@@ -36,9 +38,10 @@ if [[ $mode == package || $mode == package-smoke || $mode == package-lifecycle |
     cp "$MULLVAD_SPLIT_TUNNEL_DRIVER_DIR/amd64/"* "$dependency_root/split-driver/amd64/"
     cp "$MULLVAD_SPLIT_TUNNEL_DRIVER_DIR/licenses/mullvad-LICENSE-MPL.txt" \
         "$dependency_root/split-driver/licenses/"
+    cp "$run_dir/source.json" dev/winvm/source.json
     python3 packaging/windows/create-build-manifest.py \
         --version "$package_version" --root "$PWD" \
-        --source-record "$run_dir/source.json" --image-lock dev/winvm/image-lock.json \
+        --source-record dev/winvm/source.json --image-lock dev/winvm/image-lock.json \
         --output dev/winvm/package-manifest.json
     if [[ $mode == package-lifecycle ]]; then
         IFS=. read -r version_major version_minor version_patch <<<"$package_version"
@@ -54,9 +57,13 @@ if [[ $mode == package || $mode == package-smoke || $mode == package-lifecycle |
         fi
         python3 packaging/windows/create-build-manifest.py \
             --version "$upgrade_version" --root "$PWD" \
-            --source-record "$run_dir/source.json" --image-lock dev/winvm/image-lock.json \
+            --source-record dev/winvm/source.json --image-lock dev/winvm/image-lock.json \
             --output dev/winvm/package-upgrade-manifest.json
     fi
+    mkdir .cargo
+    cargo vendor --locked --versioned-dirs \
+        --manifest-path app/src-tauri/Cargo.toml dev/winvm/cargo-vendor \
+        >.cargo/config.toml
 fi
 if [[ $mode == test || $mode == ordinary || $mode == privileged ]]; then
     GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C bin test -c \
@@ -68,6 +75,7 @@ fi
     go version
     node --version
     npm --version
+    cargo --version
 } >"$run_dir/generator-versions.txt"
 generated=(certcat/catalog_gen.go bin/almagestd/static)
 [[ $mode != package && $mode != package-smoke && $mode != package-lifecycle && $mode != package-integration ]] || generated+=(dev/winvm/package-manifest.json)

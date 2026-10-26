@@ -10,6 +10,40 @@ New-Item -ItemType Directory -Force $ArtifactDir | Out-Null
 
 $manifestPath = Join-Path (Join-Path $SourceDir 'dev\winvm') $ManifestName
 $manifest = Get-Content -Raw $manifestPath | ConvertFrom-Json
+$cargo = 'C:\Rust\bin\cargo.exe'
+$rustTools = 'C:\Rust\lib\rustlib\x86_64-pc-windows-gnu\bin\self-contained'
+$buildTools = Join-Path $SourceDir 'dev\winvm\rust-build-tools'
+New-Item -ItemType Directory -Force $buildTools | Out-Null
+Copy-Item (Join-Path $rustTools 'dlltool.exe') $buildTools -Force
+Copy-Item (Join-Path $SourceDir 'dev\winvm\llvm-as-wrapper.exe') `
+    (Join-Path $buildTools 'as.exe') -Force
+Copy-Item (Join-Path $rustTools 'libwinpthread-1.dll') $buildTools -Force
+Copy-Item 'C:\llvm-mingw\bin\clang-23.exe' $buildTools -Force
+Copy-Item 'C:\llvm-mingw\bin\*.dll' $buildTools -Force
+$env:Path = "$buildTools;C:\Rust\bin;$rustTools;C:\llvm-mingw\bin;$env:Path"
+$env:CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER = `
+    'C:\llvm-mingw\bin\x86_64-w64-mingw32-clang.exe'
+$env:LIBRARY_PATH = 'C:\Rust\lib\rustlib\x86_64-pc-windows-gnu\lib\self-contained'
+$cargoHome = Join-Path $SourceDir 'dev\winvm\cargo-home'
+$env:CARGO_HOME = $cargoHome
+$env:RUSTFLAGS = "--remap-path-prefix=$SourceDir=."
+Push-Location $SourceDir
+try {
+    & $cargo build --release --locked --offline --manifest-path app\src-tauri\Cargo.toml
+    if ($LASTEXITCODE -ne 0) { throw "Desktop app build failed: $LASTEXITCODE" }
+} finally {
+    Pop-Location
+}
+$appSource = Join-Path $SourceDir 'app\src-tauri\target\release\almagest-app.exe'
+$appPayload = Join-Path $SourceDir 'dev\winvm\almagest-app.exe'
+Copy-Item -LiteralPath $appSource -Destination $appPayload -Force
+& python.exe (Join-Path $SourceDir 'packaging\windows\create-build-manifest.py') `
+    --version $manifest.version --root $SourceDir `
+    --source-record (Join-Path $SourceDir 'dev\winvm\source.json') `
+    --image-lock (Join-Path $SourceDir 'dev\winvm\image-lock.json') `
+    --output $manifestPath
+if ($LASTEXITCODE -ne 0) { throw "Package manifest refresh failed: $LASTEXITCODE" }
+$manifest = Get-Content -Raw $manifestPath | ConvertFrom-Json
 $inputs = Join-Path $SourceDir 'dev\winvm\package-inputs'
 $wintun = Join-Path $inputs 'wintun\amd64'
 $mullvad = Join-Path $inputs 'split-driver\amd64'
@@ -35,6 +69,7 @@ $arguments = @(
     '-arch', 'x64',
     '-ext', (Join-Path $extensions 'WixToolset.Util.wixext.dll'),
     '-ext', (Join-Path $extensions 'WixToolset.DifxApp.wixext.dll'),
+    '-ext', (Join-Path $extensions 'WixToolset.UI.wixext.dll'),
     '-d', "Version=$($manifest.version)",
     '-d', "ProductCode=$($manifest.productCode)",
     '-d', "SourceDir=$SourceDir",

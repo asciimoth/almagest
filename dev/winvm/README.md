@@ -162,8 +162,11 @@ toolchain, and artifact retrieval. It records `testExecution: not-run`: **this
 is not the Windows test-suite gate or a support qualification.**
 
 `just winvm-package VERSION` builds the real unsigned amd64 MSI with the locked
-.NET 6.0.36 runtime, WiX 4.0.6, and WiX Util and DifxApp 4.0.6 extensions. The
-build does not use the network. The host validates and extracts the MSI, its
+Rust 1.90 GNU toolchain, Python 3.13.1, .NET 6.0.36 runtime, WiX 4.0.6, and WiX
+Util, DifxApp, and UI 4.0.6 extensions. Rust builds the desktop app from staged
+Cargo dependencies inside the WinVM. The build does not use the network. The MSI
+includes the desktop app as a default optional feature and includes its default
+optional sign-in autostart entry. The host validates and extracts the MSI, its
 SHA-256 file, and `package-build.json` below the run directory's `package/`
 directory. The evidence records the source, hashed MSI inputs, deterministic
 package identities, and tool versions. The version must use the MSI `x.y.z`

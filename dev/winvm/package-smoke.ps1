@@ -74,16 +74,31 @@ Assert-True ($installer.ExitCode -in @(0, 3010)) "MSI install failed: $($install
 $deadline = [DateTime]::UtcNow.AddMinutes(2)
 do {
     $service = Get-CimInstance Win32_Service -Filter "Name='almagestd'" -ErrorAction SilentlyContinue
-    if ($service -and $service.State -eq 'Running' -and (Test-Path -LiteralPath $pipePath)) { break }
+    if ($service -and $service.State -eq 'Running') { break }
     Start-Sleep -Seconds 1
 } while ([DateTime]::UtcNow -lt $deadline)
 Assert-True ($service -and $service.State -eq 'Running') 'almagestd did not reach Running'
-Assert-True (Test-Path -LiteralPath $pipePath) 'Machine administration pipe is absent'
 $adminGroup = Get-LocalGroup -Name $adminGroupName
 Assert-True ([bool]$adminGroup) 'Almagest administration group is absent'
 $adminGroupMembers = @(Get-LocalGroupMember -Group $adminGroupName)
 Assert-True ($adminGroupMembers.Count -eq 0) 'Silent install inferred an administration group member'
-$pipeAcl = Get-Acl -LiteralPath $pipePath
+$pipeAcl = $null
+$pipeAclDeadline = [DateTime]::UtcNow.AddMinutes(2)
+do {
+    $pipeClient = $null
+    try {
+        $pipeClient = New-Object System.IO.Pipes.NamedPipeClientStream(
+            '.', 'almagest-admin', [System.IO.Pipes.PipeDirection]::InOut,
+            [System.IO.Pipes.PipeOptions]::None)
+        $pipeClient.Connect(1000)
+        $pipeAcl = $pipeClient.GetAccessControl()
+    } catch {
+        Start-Sleep -Milliseconds 100
+    } finally {
+        if ($pipeClient) { $pipeClient.Dispose() }
+    }
+} while (-not $pipeAcl -and [DateTime]::UtcNow -lt $pipeAclDeadline)
+Assert-True ([bool]$pipeAcl) 'Machine administration pipe ACL is unavailable'
 Assert-True ($pipeAcl.Sddl -match [regex]::Escape($adminGroup.SID.Value)) `
     'Machine administration pipe does not grant the Almagest administration group'
 
@@ -92,6 +107,7 @@ foreach ($inputFile in $manifest.inputs.files) { $inputHashes[$inputFile.path] =
 $expected = [ordered]@{
     'almagestd.exe' = $inputHashes['dev/winvm/almagestd.exe']
     'almagest-cli.exe' = $inputHashes['dev/winvm/almagest-cli.exe']
+    'almagest-app.exe' = $inputHashes['dev/winvm/almagest-app.exe']
     'wintun.dll' = $inputHashes['dev/winvm/package-inputs/wintun/amd64/wintun.dll']
     'LICENSE.txt' = $inputHashes['LICENSE']
     'PACKAGE-README.md' = $inputHashes['packaging/windows/README.md']
@@ -126,6 +142,12 @@ $actualFiles = @(Get-ChildItem -LiteralPath $programFiles -File -Recurse | ForEa
 })
 Assert-True ($actualFiles.Count -eq $expected.Count) 'Program Files contains an unexpected file count'
 foreach ($path in $actualFiles) { Assert-True $expected.Contains($path) "Unexpected installed file: $path" }
+
+$appPath = Join-Path $programFiles 'almagest-app.exe'
+Assert-True ((Get-PEMachine $appPath) -eq '0x8664') 'Desktop app is not an amd64 PE executable'
+$autoStart = (Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run').Almagest
+$expectedAutoStart = '"{0}" --background' -f $appPath
+Assert-True ($autoStart -eq $expectedAutoStart) "Unexpected desktop app autostart command: $autoStart"
 
 $wintunPath = Join-Path $programFiles 'wintun.dll'
 Assert-True ((Get-PEMachine $wintunPath) -eq $contract.drivers.wintun.peMachine) 'Wintun architecture differs'
@@ -215,6 +237,9 @@ $evidence = [ordered]@{
     imageVariant = $image.imageVariant; preconditions = $preconditions
     installerExitCode = $installer.ExitCode; installedFileCount = $installedFiles.Count
     service = $serviceRecord; machinePipe = 'pipe://machine'; elevatedCli = 'passed'
+    desktopApp = [ordered]@{
+        installed = $true; autoStart = $true; autoStartCommand = $autoStart
+    }
     administrationGroup = [ordered]@{
         name = $adminGroup.Name; sid = $adminGroup.SID.Value
         initialMemberCount = $adminGroupMembers.Count; delegatedAdministrator = $delegatedAdministrator

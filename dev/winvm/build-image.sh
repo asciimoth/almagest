@@ -70,11 +70,15 @@ sed -i \
     -e "s|@@OPENSSH_FILE@@|$(locked_value .openssh.file)|g" \
     -e "s|@@TOR_FILE@@|$(locked_value .tor.file)|g" \
     -e "s|@@DOTNET_FILE@@|$(locked_value .dotnet.file)|g" \
+    -e "s|@@PYTHON_FILE@@|$(locked_value .python.file)|g" \
+    -e "s|@@RUST_FILE@@|$(locked_value .rust.file)|g" \
+    -e "s|@@LLVM_MINGW_FILE@@|$(locked_value .llvmMingw.file)|g" \
     -e "s|@@WIX_FILE@@|$(locked_value .wix.file)|g" \
     -e "s|@@WIX_UTIL_FILE@@|$(locked_value .wixUtil.file)|g" \
     -e "s|@@WIX_DIFXAPP_FILE@@|$(locked_value .wixDifxApp.file)|g" \
-    -e "s|@@WIX_DTF_FILE@@|$(locked_value .wixDtf.file)|g" "$work/provision.ps1"
-for section in go openssh tor dotnet wix wixUtil wixDifxApp wixDtf; do
+    -e "s|@@WIX_DTF_FILE@@|$(locked_value .wixDtf.file)|g" \
+    -e "s|@@WIX_UI_FILE@@|$(locked_value .wixUi.file)|g" "$work/provision.ps1"
+for section in go openssh tor dotnet python rust llvmMingw wix wixUtil wixDifxApp wixDtf wixUi; do
     cp "$(package_path "$section")" "$work/"
 done
 mkdir "$work/driver" "$work/wintun"
@@ -86,8 +90,11 @@ xorriso -as mkisofs -quiet -J -R -V WINVM_PROVISION -o "$work/provision.iso" \
     "$work/Autounattend.xml" "$work/provision.ps1" "$work/authorized_key.pub" \
     "$work/$(locked_value .go.file)" "$work/$(locked_value .openssh.file)" \
     "$work/$(locked_value .tor.file)" "$work/$(locked_value .dotnet.file)" \
+    "$work/$(locked_value .python.file)" "$work/$(locked_value .rust.file)" \
+    "$work/$(locked_value .llvmMingw.file)" \
     "$work/$(locked_value .wix.file)" "$work/$(locked_value .wixUtil.file)" \
     "$work/$(locked_value .wixDifxApp.file)" "$work/$(locked_value .wixDtf.file)" \
+    "$work/$(locked_value .wixUi.file)" \
     "$work/driver" "$work/wintun"
 qemu-img create -q -f qcow2 "$work/base.qcow2" "$(jq -r .machine.diskGiB "$config_file")G"
 cp "$(find_ovmf vars)" "$work/OVMF_VARS.fd"

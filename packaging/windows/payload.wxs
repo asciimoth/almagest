@@ -821,6 +821,22 @@
                Guid="DE3258D3-7DE1-5A68-A62C-05A4B3D539AE" Subdirectory="039-route-host-tun-egress">
       <File Id="File_9f018f26d069f57e6c43c649" Source="$(var.SourceDir)\examples\039-route-host-tun-egress\manifest.json" KeyPath="yes" />
     </Component>
+    <Component Id="Examples_cd517960bfe98edc3d71e3a8" Directory="EXAMPLESFOLDER"
+               Guid="C1430D3E-653D-57AE-B3BC-73D54C4259CF" Subdirectory="040-share-http-and-https-port">
+      <File Id="File_cd517960bfe98edc3d71e3a8" Source="$(var.SourceDir)\examples\040-share-http-and-https-port\config.hujson" KeyPath="yes" />
+    </Component>
+    <Component Id="Examples_d419a3aaca523c554bc5b4f1" Directory="EXAMPLESFOLDER"
+               Guid="26B257D9-43E9-55A9-AC7B-794AB006AD33" Subdirectory="040-share-http-and-https-port">
+      <File Id="File_d419a3aaca523c554bc5b4f1" Source="$(var.SourceDir)\examples\040-share-http-and-https-port\manifest.json" KeyPath="yes" />
+    </Component>
+    <Component Id="Examples_059ce53b730b104c227fd988" Directory="EXAMPLESFOLDER"
+               Guid="A8AD3922-72CA-5221-887B-247D927B8312" Subdirectory="041-route-protocols-to-separate-services">
+      <File Id="File_059ce53b730b104c227fd988" Source="$(var.SourceDir)\examples\041-route-protocols-to-separate-services\config.hujson" KeyPath="yes" />
+    </Component>
+    <Component Id="Examples_1d171477745e3f0eeeb89c5d" Directory="EXAMPLESFOLDER"
+               Guid="0F6D25ED-E017-56BB-8815-E34087DCA2BE" Subdirectory="041-route-protocols-to-separate-services">
+      <File Id="File_1d171477745e3f0eeeb89c5d" Source="$(var.SourceDir)\examples\041-route-protocols-to-separate-services\manifest.json" KeyPath="yes" />
+    </Component>
   </Fragment>
 
   <Fragment>
@@ -1035,6 +1051,10 @@
       <ComponentRef Id="Examples_d8e688b45ce43bd96b48efa9" />
       <ComponentRef Id="Examples_02ef7d31c97a2284d661b73d" />
       <ComponentRef Id="Examples_9f018f26d069f57e6c43c649" />
+      <ComponentRef Id="Examples_cd517960bfe98edc3d71e3a8" />
+      <ComponentRef Id="Examples_d419a3aaca523c554bc5b4f1" />
+      <ComponentRef Id="Examples_059ce53b730b104c227fd988" />
+      <ComponentRef Id="Examples_1d171477745e3f0eeeb89c5d" />
     </ComponentGroup>
   </Fragment>
 

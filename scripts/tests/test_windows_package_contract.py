@@ -19,6 +19,7 @@ PAYLOAD_WIX_PATH = ROOT / "packaging" / "windows" / "payload.wxs"
 FIXTURE_BUILD_PATH = ROOT / "packaging" / "windows" / "build-fixture.ps1"
 WIX = "{http://wixtoolset.org/schemas/v4/wxs}"
 DIFX = "{http://wixtoolset.org/schemas/v4/wxs/difxapp}"
+UI = "{http://wixtoolset.org/schemas/v4/wxs/ui}"
 
 
 def sri_to_hex(value):
@@ -216,6 +217,33 @@ class WindowsPackageContractTests(unittest.TestCase):
         })
         self.assertEqual(service.findall(f"{WIX}ServiceDependency"), [])
 
+    def test_desktop_app_features_match_contract(self):
+        policy = self.contract["desktopApp"]
+        self.assertTrue(policy["installedByDefault"])
+        self.assertTrue(policy["autoStartByDefault"])
+        self.assertTrue(policy["serviceOnlyInstallSupported"])
+
+        package = self.wix.find(f"{WIX}Package")
+        features = {feature.attrib["Id"]: feature for feature in
+                    package.findall(f".//{WIX}Feature")}
+        self.assertEqual(features["BackendFeature"].attrib["AllowAbsent"], "no")
+        self.assertEqual(features[policy["optionalFeature"]].attrib["Level"], "1")
+        self.assertEqual(features[policy["autoStartOptionalFeature"]].attrib["Level"], "1")
+        self.assertIsNotNone(package.find(f"{UI}WixUI[@Id='WixUI_FeatureTree']"))
+
+        app = self._component(self.wix, "DesktopAppComponent")
+        self.assertEqual(app.attrib["Guid"], self.contract["components"]["desktopApp"])
+        self.assertEqual(app.find(f"{WIX}File").attrib["Source"],
+                         r"$(var.PayloadDir)\almagest-app.exe")
+        auto_start = self._component(self.wix, "DesktopAppAutoStartComponent")
+        self.assertEqual(auto_start.attrib["Guid"],
+                         self.contract["components"]["desktopAppAutoStart"])
+        value = auto_start.find(f"{WIX}RegistryValue")
+        self.assertEqual(value.attrib["Root"], "HKLM")
+        self.assertEqual(value.attrib["Name"], "Almagest")
+        self.assertEqual(value.attrib["Value"],
+                         r'"[#DesktopAppExecutable]" --background')
+
     def test_wix_driver_policy_is_explicit(self):
         component = self._component(self.wix, "MullvadDriverComponent")
         files = {item.attrib["Source"].rsplit("\\", 1)[-1]
@@ -376,13 +404,19 @@ class WindowsPackageContractTests(unittest.TestCase):
     def test_reproducible_build_path_is_locked_and_records_evidence(self):
         lock = json.loads((ROOT / "dev/winvm/image-lock.json").read_text())
         self.assertEqual(lock["dotnet"]["version"], "6.0.36")
-        for name in ("wix", "wixUtil", "wixDifxApp", "wixDtf"):
+        self.assertEqual(lock["rust"]["version"], "1.90.0")
+        self.assertEqual(lock["python"]["version"], "3.13.1")
+        self.assertEqual(lock["llvmMingw"]["version"], "20261020")
+        for name in ("wix", "wixUtil", "wixDifxApp", "wixDtf", "wixUi"):
             self.assertEqual(lock[name]["version"], "4.0.6")
             self.assertRegex(lock[name]["sha256"], r"^[0-9a-f]{64}$")
 
         provision = (ROOT / "dev/winvm/provision.ps1").read_text()
-        for token in ("@@DOTNET_FILE@@", "@@WIX_FILE@@", "@@WIX_UTIL_FILE@@",
-                      "@@WIX_DIFXAPP_FILE@@", "@@WIX_DTF_FILE@@"):
+        for token in ("@@DOTNET_FILE@@", "@@PYTHON_FILE@@", "@@RUST_FILE@@",
+                      "@@LLVM_MINGW_FILE@@",
+                      "@@WIX_FILE@@", "@@WIX_UTIL_FILE@@",
+                      "@@WIX_DIFXAPP_FILE@@", "@@WIX_DTF_FILE@@",
+                      "@@WIX_UI_FILE@@"):
             self.assertIn(token, provision)
         self.assertIn("difxapp_x64.wixlib", provision)
         package = (ROOT / "dev/winvm/package.ps1").read_text()
@@ -391,6 +425,7 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertIn("Get-FileHash -Algorithm SHA256", package)
         self.assertIn("WixToolset.Util.wixext.dll", package)
         self.assertIn("WixToolset.DifxApp.wixext.dll", package)
+        self.assertIn("WixToolset.UI.wixext.dll", package)
         self.assertIn("WixToolset.Dtf.WindowsInstaller.dll", package)
         self.assertIn("$summary.RevisionNumber", package)
         self.assertIn("$summary.CreateTime", package)
@@ -524,6 +559,7 @@ class WindowsPackageContractTests(unittest.TestCase):
                 CONTRACT_PATH.read_bytes())
             for name in ("LICENSE", "packaging/windows/README.md",
                          "dev/winvm/almagestd.exe", "dev/winvm/almagest-cli.exe",
+                         "dev/winvm/almagest-app.exe",
                          "locales/value.json", "examples/example.hujson"):
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)

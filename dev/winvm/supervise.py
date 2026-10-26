@@ -219,7 +219,7 @@ class Supervisor:
                 self.resource_monitor.wait(timeout=3)
         self.resource_monitor = None
 
-    def ready(self, seconds):
+    def ready(self, seconds, different_from=None):
         end = min(self.deadline, time.monotonic() + seconds)
         previous = None
         script = ('if (-not (Test-Path C:\\winvm\\ready)) { exit 1 }; '
@@ -233,7 +233,8 @@ class Supervisor:
                 code = self.command(self.qga("exec", "powershell.exe", "-NoProfile", "-Command", script),
                                     min(7, end - time.monotonic()), output=output, log="agent.log")
             token = (self.directory / "ready-token.txt").read_text(errors="replace").strip()
-            if code == 0 and token and token == previous:
+            if (code == 0 and token and token == previous
+                    and token != different_from):
                 if self.command(self.ssh + ["whoami"], min(8, end - time.monotonic()),
                                 log="ssh-identity.log") == 0:
                     return
@@ -379,12 +380,14 @@ class Supervisor:
         if self.command(self.ssh + [disable_sconfig], 20, log="manual-login.log"):
             raise Failure("manual-login-shell")
         self.note("restarting Windows to enter the interactive console")
+        old_token = (self.directory / "ready-token.txt").read_text(
+            errors="replace").strip()
         self.command(self.qga("shutdown", "--mode", "reboot", seconds=5), 8,
                      log="manual-login.log")
         # The QGA socket can reconnect before SSH after this fast local reboot.
         # The normal readiness probe requires two matching post-boot identities.
         time.sleep(2)
-        self.ready(self.config["bootTimeoutSeconds"])
+        self.ready(self.config["bootTimeoutSeconds"], different_from=old_token)
 
     def manual_scp(self):
         command = ["scp", "-q", *self.ssh[1:-1]]
@@ -602,10 +605,12 @@ class Supervisor:
             if phase == "package-reboot":
                 # A successful Windows reboot can close QGA before it returns
                 # a response. The new boot identity in ready() is authoritative.
+                old_token = (self.directory / "ready-token.txt").read_text(
+                    errors="replace").strip()
                 self.command(self.qga("shutdown", "--mode", "reboot", seconds=5),
                              8, log="package-reboot.log")
                 time.sleep(2)
-                self.ready(self.config["bootTimeoutSeconds"])
+                self.ready(self.config["bootTimeoutSeconds"], different_from=old_token)
                 continue
             if phase == "smoke":
                 script = "smoke.ps1"
