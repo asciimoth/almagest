@@ -15,6 +15,7 @@ await promisify(execFile)(process.execPath, ["scripts/publish-webdemo.mjs", "../
 test("web demo publication is a complete relative static tree", async () => {
   for (const path of [
     "index.html",
+    "LUCIDE_LICENSE.txt",
     "demo/index.html",
     "docs/index.html",
     "docs/content/catalog.json",

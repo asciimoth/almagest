@@ -167,6 +167,7 @@ async function minifiedHTML(source, replacements = []) {
 await rm(target, { recursive: true, force: true });
 await mkdir(target, { recursive: true });
 await cp(new URL("logo-light.svg", repository), new URL("logo.svg", target));
+await cp(new URL("panel/LUCIDE_LICENSE.txt", repository), new URL("LUCIDE_LICENSE.txt", target));
 await cp(new URL("webdemo/main.css", repository), new URL("main.css", target));
 await cp(new URL("panel/style.css", repository), new URL("style.css", target));
 await cp(new URL("panel/public/", repository), new URL("public/", target), { recursive: true });

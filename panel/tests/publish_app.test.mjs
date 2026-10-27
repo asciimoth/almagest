@@ -31,6 +31,7 @@ test("desktop publication retains the panel document and uses its native entry p
   assert.equal(docsDocument.querySelector("meta[http-equiv='Content-Security-Policy']"), null);
   await access(published("vendor/litegraph/litegraph.js"));
   await access(published("vendor/formular-menu/formular-menu.js"));
+  await access(published("LUCIDE_LICENSE.txt"));
 });
 
 test("desktop publication permits only isolated Tauri IPC", async () => {

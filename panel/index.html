@@ -26,16 +26,36 @@
         </div>
         <nav class="tabs">
           <div class="tab-list" aria-label="Admin tabs" data-i18n-aria-label="tabs.aria_label" role="tablist">
-            <button id="tab-graph" class="active" data-tab="graph" data-i18n-aria-label="tab.graph" data-i18n-title="tab.graph" type="button" role="tab" aria-controls="panel-graph" aria-selected="true" aria-label="Graph" title="Graph">◉</button>
-            <button id="tab-sec" data-tab="sec" data-i18n-aria-label="tab.secrets" data-i18n-title="tab.secrets" type="button" role="tab" aria-controls="panel-sec" aria-selected="false" aria-label="Secrets" title="Secrets">⚿</button>
-            <button id="tab-dns" data-tab="dns" data-i18n-aria-label="tab.dns" data-i18n-title="tab.dns" type="button" role="tab" aria-controls="panel-dns" aria-selected="false" aria-label="DNS" title="DNS">@</button>
-            <button id="tab-tls" data-tab="tls" data-i18n-aria-label="tab.tls" data-i18n-title="tab.tls" type="button" role="tab" aria-controls="panel-tls" aria-selected="false" aria-label="TLS" title="TLS">♢</button>
-            <button id="tab-kv" data-tab="kv" data-i18n-aria-label="tab.kv" data-i18n-title="tab.kv" type="button" role="tab" aria-controls="panel-kv" aria-selected="false" aria-label="KV" title="KV">↔</button>
-            <button id="tab-ps" data-tab="ps" data-i18n-aria-label="tab.processes" data-i18n-title="tab.processes" type="button" role="tab" aria-controls="panel-ps" aria-selected="false" aria-label="Processes" title="Processes">⚙</button>
-            <button id="tab-logs" data-tab="logs" data-i18n-aria-label="tab.logs" data-i18n-title="tab.logs" type="button" role="tab" aria-controls="panel-logs" aria-selected="false" aria-label="Logs" title="Logs">≣</button>
-            <button id="tab-config" data-tab="config" data-i18n-aria-label="tab.config" data-i18n-title="tab.config" type="button" role="tab" aria-controls="panel-config" aria-selected="false" aria-label="Config" title="Config">☷</button>
-            <button id="tab-snapshots" data-tab="snapshots" data-i18n-aria-label="tab.snapshots" data-i18n-title="tab.snapshots" type="button" role="tab" aria-controls="panel-snapshots" aria-selected="false" aria-label="Snapshots" title="Snapshots">◫</button>
-            <button id="tab-docs" data-i18n-aria-label="tab.docs" data-i18n-title="tab.docs" type="button" role="link" aria-label="Docs" title="Docs">?</button>
+            <button id="tab-graph" class="active" data-tab="graph" data-i18n-aria-label="tab.graph" data-i18n-title="tab.graph" type="button" role="tab" aria-controls="panel-graph" aria-selected="true" aria-label="Graph" title="Graph">
+              <svg class="tab-icon" data-icon="workflow" viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="8" x="3" y="3" rx="2"></rect><path d="M7 11v4a2 2 0 0 0 2 2h4"></path><rect width="8" height="8" x="13" y="13" rx="2"></rect></svg>
+            </button>
+            <button id="tab-sec" data-tab="sec" data-i18n-aria-label="tab.secrets" data-i18n-title="tab.secrets" type="button" role="tab" aria-controls="panel-sec" aria-selected="false" aria-label="Secrets" title="Secrets">
+              <svg class="tab-icon" data-icon="key-round" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"></path><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"></circle></svg>
+            </button>
+            <button id="tab-dns" data-tab="dns" data-i18n-aria-label="tab.dns" data-i18n-title="tab.dns" type="button" role="tab" aria-controls="panel-dns" aria-selected="false" aria-label="DNS" title="DNS">
+              <svg class="tab-icon" data-icon="network" viewBox="0 0 24 24" aria-hidden="true"><rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"></path></svg>
+            </button>
+            <button id="tab-tls" data-tab="tls" data-i18n-aria-label="tab.tls" data-i18n-title="tab.tls" type="button" role="tab" aria-controls="panel-tls" aria-selected="false" aria-label="TLS" title="TLS">
+              <svg class="tab-icon" data-icon="shield-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>
+            </button>
+            <button id="tab-kv" data-tab="kv" data-i18n-aria-label="tab.kv" data-i18n-title="tab.kv" type="button" role="tab" aria-controls="panel-kv" aria-selected="false" aria-label="KV" title="KV">
+              <svg class="tab-icon" data-icon="database" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5V19A9 3 0 0 0 21 19V5"></path><path d="M3 12A9 3 0 0 0 21 12"></path></svg>
+            </button>
+            <button id="tab-ps" data-tab="ps" data-i18n-aria-label="tab.processes" data-i18n-title="tab.processes" type="button" role="tab" aria-controls="panel-ps" aria-selected="false" aria-label="Processes" title="Processes">
+              <svg class="tab-icon" data-icon="cpu" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20v2M12 2v2M17 20v2M17 2v2M2 12h2M2 17h2M2 7h2M20 12h2M20 17h2M20 7h2M7 20v2M7 2v2"></path><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="8" y="8" width="8" height="8" rx="1"></rect></svg>
+            </button>
+            <button id="tab-logs" data-tab="logs" data-i18n-aria-label="tab.logs" data-i18n-title="tab.logs" type="button" role="tab" aria-controls="panel-logs" aria-selected="false" aria-label="Logs" title="Logs">
+              <svg class="tab-icon" data-icon="logs" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h1M3 12h1M3 19h1M8 5h1M8 12h1M8 19h1M13 5h8M13 12h8M13 19h8"></path></svg>
+            </button>
+            <button id="tab-config" data-tab="config" data-i18n-aria-label="tab.config" data-i18n-title="tab.config" type="button" role="tab" aria-controls="panel-config" aria-selected="false" aria-label="Config" title="Config">
+              <svg class="tab-icon" data-icon="settings-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 17H5M19 7h-9"></path><circle cx="17" cy="17" r="3"></circle><circle cx="7" cy="7" r="3"></circle></svg>
+            </button>
+            <button id="tab-snapshots" data-tab="snapshots" data-i18n-aria-label="tab.snapshots" data-i18n-title="tab.snapshots" type="button" role="tab" aria-controls="panel-snapshots" aria-selected="false" aria-label="Snapshots" title="Snapshots">
+              <svg class="tab-icon" data-icon="archive" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="5" x="2" y="3" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"></path></svg>
+            </button>
+            <button id="tab-docs" data-i18n-aria-label="tab.docs" data-i18n-title="tab.docs" type="button" role="link" aria-label="Docs" title="Docs">
+              <svg class="tab-icon" data-icon="book-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v16"></path><path d="M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"></path></svg>
+            </button>
           </div>
           <label class="locale-picker" for="locale-select" title="Language" data-i18n-title="locale.label">
             <svg class="locale-picker-icon" viewBox="0 0 24 24" aria-hidden="true">

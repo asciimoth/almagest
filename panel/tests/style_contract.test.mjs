@@ -39,7 +39,7 @@ test("the description header puts its documentation link at the right edge", () 
   assert.match(rule, /justify-content:\s*space-between;/);
 });
 
-test("SPA tab and locale glyphs use one fixed control width", () => {
+test("SPA tab and locale icons use one fixed control width", () => {
   const tabRule = cssRule(".tabs button");
   const localeRule = cssRule(".locale-picker");
 
@@ -48,6 +48,16 @@ test("SPA tab and locale glyphs use one fixed control width", () => {
     assert.match(rule, /min-width:\s*38px;/);
     assert.match(rule, /padding:\s*0;/);
   }
+});
+
+test("SPA tab icons use a consistent line style", () => {
+  const rule = cssRule(".tab-icon");
+
+  assert.match(rule, /width:\s*19px;/);
+  assert.match(rule, /height:\s*19px;/);
+  assert.match(rule, /stroke:\s*currentColor;/);
+  assert.match(rule, /stroke-linecap:\s*round;/);
+  assert.match(rule, /stroke-linejoin:\s*round;/);
 });
 
 test("select controls do not use browser-specific native styling", () => {

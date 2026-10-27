@@ -37,6 +37,7 @@ await mkdir(new URL("docs/", target), { recursive: true });
 await mkdir(new URL("vendor/formular-menu/", target), { recursive: true });
 await mkdir(new URL("vendor/litegraph/", target), { recursive: true });
 await cp(new URL("logo-light.svg", repository), new URL("logo.svg", target));
+await cp(new URL("LUCIDE_LICENSE.txt", panel), new URL("LUCIDE_LICENSE.txt", target));
 await cp(new URL("style.css", panel), new URL("style.css", target));
 await cp(new URL("vendor/formular-menu/formular-menu.js", panel), new URL("vendor/formular-menu/formular-menu.js", target));
 await cp(new URL("vendor/litegraph/litegraph.css", panel), new URL("vendor/litegraph/litegraph.css", target));

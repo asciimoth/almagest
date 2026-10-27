@@ -22,6 +22,7 @@ test("published panel assets are minified", async () => {
 
 test("published panel includes only compressed runtime assets", async () => {
   await access(published("index.html.gz"));
+  await access(published("LUCIDE_LICENSE.txt.gz"));
   await access(published("public/build/app.js.gz"));
   await assert.rejects(access(published("index.html")));
   await assert.rejects(access(published("public/build/app.js")));

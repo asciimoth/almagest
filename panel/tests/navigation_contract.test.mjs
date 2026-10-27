@@ -87,15 +87,20 @@ test("graph input recovers from lost mouse-up events", () => {
   assert.match(app, /cancelLiteGraphPointerInteraction\(canvas\)/);
 });
 
-test("SPA tabs use fixed glyphs with localized accessible names", () => {
+test("SPA tabs use meaningful icons with localized accessible names", () => {
   const dom = new JSDOM(html);
   const tabElements = [...dom.window.document.querySelectorAll("[data-tab]")];
-  const glyphs = tabElements.map((button) => button.textContent?.trim());
+  const iconNames = tabElements.map((button) => button.querySelector(".tab-icon")?.getAttribute("data-icon"));
   const labels = tabElements.map((button) => button.getAttribute("aria-label"));
 
-  assert.deepEqual(glyphs.slice(0, 5), ["◉", "⚿", "@", "♢", "↔"]);
+  assert.deepEqual(iconNames, ["workflow", "key-round", "network", "shield-check", "database", "cpu", "logs", "settings-2", "archive"]);
   assert.deepEqual(labels.slice(0, 5), ["Graph", "Secrets", "DNS", "TLS", "KV"]);
   assert.equal(labels.includes("Processes"), true);
+  assert.equal(tabElements.every((tab) => tab.textContent?.trim() === ""), true);
+  assert.equal(tabElements.every((tab) => tab.querySelector(".tab-icon")?.getAttribute("aria-hidden") === "true"), true);
+  const docsIcon = dom.window.document.querySelector("#tab-docs .tab-icon");
+  assert.equal(docsIcon?.getAttribute("data-icon"), "book-open");
+  assert.equal(docsIcon?.getAttribute("aria-hidden"), "true");
   assert.equal(tabElements.every((tab) => tab.getAttribute("title") === tab.getAttribute("aria-label")), true);
   assert.equal(tabElements.every((tab) => tab.hasAttribute("data-i18n-title")), true);
   assert.equal(tabElements.every((tab) => tab.hasAttribute("data-i18n-aria-label")), true);

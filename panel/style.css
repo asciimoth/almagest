@@ -828,6 +828,18 @@ h1 {
   font-size: 17px;
 }
 
+.tab-icon {
+  display: block;
+  width: 19px;
+  height: 19px;
+  margin: auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .tabs {
   gap: 2px;
   border: 1px solid var(--surface0);
