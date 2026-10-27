@@ -19,6 +19,35 @@ export function selectPageInTree(root: ParentNode, id: string): void {
     topic.open = true;
     topic = topic.parentElement?.closest<HTMLDetailsElement>("details") ?? null;
   }
+
+  if (activeLink && isScrollContainer(root)) revealTreeItem(root, activeLink);
+}
+
+function isScrollContainer(value: ParentNode): value is HTMLElement {
+  const candidate = value as Partial<HTMLElement>;
+  return typeof candidate.getBoundingClientRect === "function"
+    && typeof candidate.clientHeight === "number"
+    && typeof candidate.scrollTop === "number";
+}
+
+/**
+ * Move a scrollable documentation tree by the smallest distance that makes an
+ * item fully visible. Keep the user's position unchanged when the item is
+ * already visible.
+ */
+export function revealTreeItem(container: HTMLElement, item: HTMLElement): boolean {
+  const containerBounds = container.getBoundingClientRect();
+  const itemBounds = item.getBoundingClientRect();
+  const viewportTop = containerBounds.top;
+  const viewportBottom = viewportTop + container.clientHeight;
+  let delta = 0;
+
+  if (itemBounds.top < viewportTop) delta = itemBounds.top - viewportTop;
+  else if (itemBounds.bottom > viewportBottom) delta = itemBounds.bottom - viewportBottom;
+
+  if (delta === 0) return false;
+  container.scrollTop += delta;
+  return true;
 }
 
 type ScrollContainer = Pick<HTMLElement, "clientHeight" | "scrollHeight" | "scrollTop">;
