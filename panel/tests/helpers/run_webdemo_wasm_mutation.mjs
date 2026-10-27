@@ -24,37 +24,8 @@ function request(id, surface, method, payload) {
 }
 
 const subscribed = request("subscribe", "engine", "subscribe_notifications", { workspace: "main" });
-const classes = [
-  "almagest/Dns2Network",
-  "almagest/DnsCache",
-  "almagest/DnsClient",
-  "almagest/DnsFallback",
-  "almagest/DnsInject",
-  "almagest/DnsQuery",
-  "almagest/DnsRouter",
-  "almagest/DnsServer",
-  "almagest/MeshNames",
-  "almagest/StaticDns",
-  "almagest/Tun2Dns",
-  "almagest/HttpClient",
-  "almagest/HttpServer",
-  "almagest/MockNetwork",
-  "almagest/NetworkFirewall",
-  "almagest/NetworkRouter",
-  "almagest/Remapper",
-  "almagest/Sniffer",
-  "almagest/Spoofer",
-  "almagest/AutoTunSplitter",
-  "almagest/TunCopy",
-  "almagest/TunFirewall",
-  "almagest/TunJoiner",
-  "almagest/TunSplitter",
-  "almagest/VTun",
-  "almagest/WireGuard",
-  "almagest/WGConfig",
-  "pasta/StringConstant",
-  "pasta/ObjectConstant",
-];
+const initial = request("initial", "engine", "workspace_snapshot", { workspace: "main" });
+const classes = initial.result.snapshot.classes.map((entry) => entry.class);
 const added = classes.map((className, index) => (
   request(`add-${index}`, "engine", "add_node", { workspace: "main", class: className })
 ));
@@ -63,6 +34,7 @@ const config = request("config", "config", "snapshot", {});
 const events = JSON.parse(globalThis.almagestWebDemoEvents());
 process.stdout.write(JSON.stringify({
   subscribed,
+  initialNodeCount: Object.keys(initial.result.snapshot.nodes).length,
   classes,
   added,
   snapshot,

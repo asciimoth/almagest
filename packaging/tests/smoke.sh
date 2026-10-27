@@ -120,7 +120,8 @@ for binary in "${isolation_binaries[@]}"; do
 done
 test -f /usr/share/almagest/locales/en/manifest.json
 test -f /usr/share/almagest/locales/en/docs/index.json
-test -f /usr/share/almagest/examples/001-hello-network/manifest.json
+find /usr/share/almagest/examples -mindepth 2 -maxdepth 2 -type f \
+	-name manifest.json -print -quit | grep -q .
 package_lists_path /usr/share/almagest/locales/en/docs/index.json
 if package_lists_path /usr/share/doc/almagest/DAEMON_ISOLATION.md; then
 	printf 'package contains developer documentation\n' >&2

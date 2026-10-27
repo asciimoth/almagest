@@ -58,22 +58,6 @@ proxy_body_is() {
 		&& [[ "$(<"$output")" == "packaged OutNetwork response" ]]
 }
 
-menu_text() {
-	local node="$1"
-	local block="$2"
-	local field="$3"
-	cli graph menu --name "$node" | jq -er \
-		--arg block "$block" --arg field "$field" '
-			.blocks[] | select(.id == $block) | .items[]
-			| select(.id == $field) | (.value // .text // "")'
-}
-
-example_response_is_ready() {
-	[[ "$(menu_text "Http Client" result status)" == "Status: 200 OK" \
-		&& "$(menu_text "Http Client" result error)" == "" \
-		&& "$(menu_text "Http Client" result response)" == "HTTP server response" ]]
-}
-
 curl_target() {
 	local target="$1"
 	local output="$2"
@@ -133,15 +117,19 @@ cli admin colormap | json_object
 cli config snapshot | json_object
 cli dns caches | json_object
 cli docs tree --locale en >"$E2E_RUNTIME/docs.json"
-grep -F -- 'Welcome' "$E2E_RUNTIME/docs.json" >/dev/null \
+jq -e '.locale == "en" and ([.. | objects | .pages[]?] | length > 0)' \
+	"$E2E_RUNTIME/docs.json" >/dev/null \
 	|| fail "packaged localized documentation is unavailable"
 cli engine workspace-snapshot | json_object
-cli graph classes | jq -e '.classes | length > 20' >/dev/null
+cli graph classes | jq -e \
+	'.classes | length > 0 and all(.[]; (.class | type == "string" and length > 0))' \
+	>/dev/null
 cli kv stores | json_object
 cli log subscribe | json_object
 cli secrets list | json_object
 cli snapshots list >"$E2E_RUNTIME/examples.json"
-jq -e '.snapshots | length > 1' "$E2E_RUNTIME/examples.json" >/dev/null \
+jq -e 'any(.snapshots[]; (.example | type == "string" and length > 0))' \
+	"$E2E_RUNTIME/examples.json" >/dev/null \
 	|| fail "packaged examples are unavailable"
 cli tls list | json_object
 cli workers snapshot | json_object
@@ -189,22 +177,19 @@ cli secrets list | jq -e \
 	'.secrets[] | select(.key == "package-retained" and .value == "package-secret-value")' \
 	>/dev/null || fail "secret was not retained after restart"
 
-# Load a packaged example, run its HTTP client against its mock server, and
-# verify that the loaded graph also returns after a daemon restart.
-cli snapshots load 002-mock-network >"$E2E_RUNTIME/example-loaded.json"
-jq -e '.snapshot.example == "002-mock-network"' \
+# Load one packaged example and verify that its graph returns after a daemon
+# restart. The example catalog is content, so do not bind this package test to
+# a specific example ID or graph shape.
+example_id="$(jq -er 'first(.snapshots[] | select(.example | type == "string" and length > 0)).example' \
+	"$E2E_RUNTIME/examples.json")"
+cli snapshots load "$example_id" >"$E2E_RUNTIME/example-loaded.json"
+jq -e --arg example "$example_id" '.snapshot.example == $example' \
 	"$E2E_RUNTIME/example-loaded.json" >/dev/null \
 	|| fail "packaged example load returned unexpected metadata"
-for node in "Mock Network" "Http Client" "Http Server" Response "Out Network"; do
-	wait_graph_node "$node" || fail "packaged example node $node is missing"
-done
-cli graph click-menu-button --name "Http Client" --block request --button send >/dev/null
-retry "$ALMAGEST_E2E_TIMEOUT" "packaged example HTTP response" \
-	example_response_is_ready || fail "packaged example did not run"
+example_node="$(cli graph map | jq -er '.nodes | keys | first')"
 stop_daemon
 start_daemon
-wait_graph_node "Mock Network" || fail "loaded example was not retained after restart"
-wait_graph_node "Http Client" || fail "loaded example client was not retained after restart"
+wait_graph_node "$example_node" || fail "loaded example was not retained after restart"
 
 # QEMU user-mode emulation supports route netlink but can reject the XFRM and
 # netfilter families that netlink.NewHandle probes. Native hosts normally

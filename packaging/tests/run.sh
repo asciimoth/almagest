@@ -61,7 +61,7 @@ for arch in "${architectures[@]}"; do
 	grep -E '(^|/)bin/almagest-cli$' <<<"$listing" >/dev/null
 	grep -E '(^|/)share/almagest/locales/en/manifest.json$' <<<"$listing" >/dev/null
 	grep -E '(^|/)share/almagest/locales/en/docs/index.json$' <<<"$listing" >/dev/null
-	grep -E '(^|/)share/almagest/examples/001-hello-network/manifest.json$' <<<"$listing" >/dev/null
+	grep -E '(^|/)share/almagest/examples/[^/]+/manifest.json$' <<<"$listing" >/dev/null
 	grep -E '(^|/)PACKAGE_CONTENTS\.md$' <<<"$listing" >/dev/null
 	if grep -E '(^|/)almagest-app$' <<<"$listing" >/dev/null; then
 		printf '%s daemon archive contains the desktop app\n' "$arch" >&2

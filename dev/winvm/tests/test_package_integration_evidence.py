@@ -61,7 +61,7 @@ class PackageIntegrationEvidenceTests(unittest.TestCase):
                 "configAppliedToProgramData": True, "localProxyOutNetwork": True,
                 "scmRestart": {"kvRetained": True, "secretRetained": True,
                                "graphRetained": True},
-                "example": {"id": "002-mock-network", "ran": True,
+                "example": {"id": "test-example", "loaded": True,
                             "retainedAfterRestart": True},
                 "nativeTun": {"safePrivateRoute": True, "adapter": {
                     "name": "almpkg1", "signed": True,

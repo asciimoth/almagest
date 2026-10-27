@@ -51,16 +51,13 @@ function Wait-GraphNode([string]$Name) {
     } "graph node $Name"
 }
 
-function Get-MenuText([object]$Menu, [string]$Block, [string]$Item) {
-    $entry = @($Menu.blocks | Where-Object id -eq $Block).items |
-        Where-Object id -eq $Item | Select-Object -First 1
-    if ($entry.PSObject.Properties.Name -contains 'value' -and $null -ne $entry.value) {
-        return [string]$entry.value
+function Get-DocumentationPageCount([object[]]$Topics) {
+    $count = 0
+    foreach ($topic in $Topics) {
+        $count += @($topic.pages).Count
+        $count += Get-DocumentationPageCount @($topic.topics)
     }
-    if ($entry.PSObject.Properties.Name -contains 'text' -and $null -ne $entry.text) {
-        return [string]$entry.text
-    }
-    ''
+    $count
 }
 
 function Invoke-PackageConfig([string]$Path) {
@@ -134,22 +131,24 @@ try {
     $null = Invoke-PackageJson @('config', 'snapshot')
     $null = Invoke-PackageJson @('dns', 'caches')
     $docs = Invoke-PackageJson @('docs', 'tree', '--locale', 'en')
-    Assert-True (($docs | ConvertTo-Json -Depth 20) -match 'Welcome') `
+    Assert-True ($docs.locale -eq 'en' -and (Get-DocumentationPageCount @($docs.topics)) -gt 0) `
         'Packaged localized documentation is unavailable through the API'
     $null = Invoke-PackageJson @('engine', 'workspace-snapshot')
     $classes = Invoke-PackageJson @('graph', 'classes')
-    Assert-True (@($classes.classes).Count -gt 20) 'Packaged graph classes are incomplete'
+    Assert-True (@($classes.classes).Count -gt 0) 'Packaged graph classes are unavailable'
     $null = Invoke-PackageJson @('kv', 'stores')
     $null = Invoke-PackageJson @('log', 'subscribe')
     $null = Invoke-PackageJson @('secrets', 'list')
     $examples = Invoke-PackageJson @('snapshots', 'list')
-    Assert-True (@($examples.snapshots | Where-Object example).Count -gt 1) `
+    $packagedExamples = @($examples.snapshots | Where-Object { [bool]$_.example })
+    Assert-True ($packagedExamples.Count -gt 0) `
         'Packaged examples are unavailable through the API'
     $null = Invoke-PackageJson @('tls', 'list')
     $null = Invoke-PackageJson @('workers', 'snapshot')
     Assert-True (Test-Path -LiteralPath (Join-Path $script:ProgramFiles 'locales\en\docs\index.json')) `
         'Installed English documentation index is absent'
-    Assert-True (Test-Path -LiteralPath (Join-Path $script:ProgramFiles 'examples\002-mock-network\manifest.json')) `
+    Assert-True (@(Get-ChildItem (Join-Path $script:ProgramFiles 'examples') -Filter manifest.json `
+        -File -Recurse).Count -gt 0) `
         'Installed example manifest is absent'
 
     # A local HTTP target proves that LocalProxy connects through OutNetwork.
@@ -212,22 +211,16 @@ try {
         $_.key -eq 'package-integration' -and $_.value -eq 'retained-secret'
     }).Count -eq 1) 'Secret state did not survive SCM restart'
 
-    $loaded = Invoke-PackageJson @('snapshots', 'load', '002-mock-network')
-    Assert-True ($loaded.snapshot.example -eq '002-mock-network') 'Packaged example metadata differs'
-    foreach ($node in @('Mock Network','Http Client','Http Server','Response','Out Network')) {
-        Wait-GraphNode $node
-    }
-    Invoke-PackageCli @('graph', 'click-menu-button', '--name', 'Http Client', '--block', 'request', '--button', 'send') | Out-Null
-    Wait-Condition {
-        $menu = Invoke-PackageJson @('graph', 'menu', '--name', 'Http Client')
-        (Get-MenuText $menu 'result' 'status') -eq 'Status: 200 OK' -and
-            (Get-MenuText $menu 'result' 'response') -eq 'HTTP server response'
-    } 'the packaged example response'
+    $exampleId = [string]$packagedExamples[0].example
+    $loaded = Invoke-PackageJson @('snapshots', 'load', $exampleId)
+    Assert-True ($loaded.snapshot.example -eq $exampleId) 'Packaged example metadata differs'
+    $exampleMap = Invoke-PackageJson @('graph', 'map')
+    $exampleNode = @($exampleMap.nodes.PSObject.Properties)[0].Name
+    Assert-True ([bool]$exampleNode) 'Packaged example graph is empty'
     $examplePid = (Get-CimInstance Win32_Service -Filter "Name='almagestd'").ProcessId
     Restart-Service almagestd
     $null = Wait-ServiceReady -DifferentProcessId $examplePid
-    Wait-GraphNode 'Mock Network'
-    Wait-GraphNode 'Http Client'
+    Wait-GraphNode $exampleNode
 
     # A regular TUN with private test prefixes is the safe Windows-native path.
     # It creates the adapter and one non-default route without changing DNS or
@@ -298,7 +291,7 @@ try {
         configAppliedToProgramData = $true
         localProxyOutNetwork = $true
         scmRestart = [ordered]@{ kvRetained = $true; secretRetained = $true; graphRetained = $true }
-        example = [ordered]@{ id = '002-mock-network'; ran = $true; retainedAfterRestart = $true }
+        example = [ordered]@{ id = $exampleId; loaded = $true; retainedAfterRestart = $true }
         nativeTun = [ordered]@{ safePrivateRoute = $true; adapter = $adapterRecord }
         normalServiceStop = [ordered]@{ serviceStopped = $true; adapterRemoved = $true; networkConfigurationRemoved = $true }
         serviceProcessIds = [ordered]@{

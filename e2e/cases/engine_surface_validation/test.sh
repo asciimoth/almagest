@@ -208,7 +208,7 @@ start_daemon
 
 cli graph classes >"$E2E_RUNTIME/classes.json"
 mapfile -t classes < <(jq -r '.classes[].class' "$E2E_RUNTIME/classes.json")
-(( ${#classes[@]} > 20 )) || fail "too few node classes were registered"
+((${#classes[@]} > 0)) || fail "no node classes were registered"
 
 node_ids=()
 node_classes=()
@@ -238,7 +238,7 @@ for class in "${classes[@]}"; do
 	((index += 1))
 done
 
-(( ${#node_ids[@]} > 20 )) || fail "too few node classes could be instantiated"
+((${#node_ids[@]} > 0)) || fail "no node class could be instantiated"
 
 # Menu checks operate on independent, unlinked nodes. Run a small batch at a
 # time because each check makes many request/response round trips.

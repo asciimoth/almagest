@@ -41,7 +41,7 @@ function Assert-LifecycleState([string]$Cli, [string]$ProgramData) {
     $snapshot = @($snapshots.snapshots | Where-Object name -eq 'Package lifecycle retained snapshot')
     Assert-True ($snapshot.Count -eq 1) 'Snapshot state was not retained'
 
-    Invoke-PackageCli $Cli @('graph', 'node', '--name', 'Outside Network Gateway') | Out-Null
+    Invoke-PackageCli $Cli @('graph', 'node', '--name', 'Package lifecycle retained node') | Out-Null
     Assert-True ((Get-Content -Raw (Join-Path $ProgramData 'alm.hujson')) -match
         'package-lifecycle-regular') 'Regular configuration edit was not retained'
     Assert-True ((Get-Content -Raw (Join-Path $ProgramData 'protected_alm.hujson')) -match

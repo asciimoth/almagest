@@ -19,7 +19,17 @@ $administrators = @(Get-LocalGroupMember -Group $adminGroupName)
 Assert-True ($administrators.Name -contains $adminGroupMember) `
     'Package smoke did not delegate the test user through the Almagest administration group'
 
-Invoke-PackageCli $cli @('snapshots', 'load', '001-hello-network') | Out-Null
+$classes = Invoke-PackageCli $cli @('graph', 'classes') | ConvertFrom-Json
+$nodeAdded = $false
+foreach ($class in @($classes.classes).class) {
+    & $cli --url pipe://machine engine add-node --class $class --name `
+        'Package lifecycle retained node' 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        $nodeAdded = $true
+        break
+    }
+}
+Assert-True $nodeAdded 'No node class is available for the lifecycle graph check'
 Add-Content -LiteralPath (Join-Path $programData 'alm.hujson') -Value "`r`n// package-lifecycle-regular"
 Add-Content -LiteralPath (Join-Path $programData 'protected_alm.hujson') -Value "`r`n// package-lifecycle-protected"
 Invoke-PackageCli $cli @('kv', 'set', '--key', 'package-lifecycle', '--data', 'retained-kv-value') | Out-Null

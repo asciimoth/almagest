@@ -447,7 +447,7 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertIn('"package-reboot"', supervisor)
         self.assertIn('"package-lifecycle-finish"', supervisor)
         self.assertIn("tools/package-lifecycle-evidence.py", supervisor)
-        for token in ("kv", "secrets", "snapshots", "001-hello-network", "Stop-Service",
+        for token in ("kv", "secrets", "snapshots", "add-node", "Stop-Service",
                       "Start-Service", "package-lifecycle-prepare.json"):
             self.assertIn(token, prepare)
         for token in ("Stop-Process", "/fvomus", "msiexec-upgrade.log",
@@ -468,7 +468,7 @@ class WindowsPackageContractTests(unittest.TestCase):
         for token in (
                 "ProgramFiles", "pipe://machine", "admin', 'hello", "docs', 'tree",
                 "config', 'apply", "LocalProxy 1101", "OutNetwork 1103", "kv', 'set",
-                "secrets', 'set", "002-mock-network", "almagest/Tun",
+                "secrets', 'set", "snapshots', 'load", "almagest/Tun",
                 "Win32_PnPSignedDriver", "Stop-Service almagestd",
                 "package-integration.json"):
             self.assertIn(token, integration)

@@ -185,7 +185,6 @@
           diff --brief --recursive ${./examples} "$out/share/almagest/examples"
           test -f "$out/share/almagest/locales/en/manifest.json"
           test -f "$out/share/almagest/locales/en/docs/index.json"
-          test -f "$out/share/almagest/examples/001-hello-network/manifest.json"
           test -x "$out/bin/almagest-cli"
           test -x "$out/libexec/almagest/almagestd"
           ${pkgs.lib.optionalString linuxIsolationSupported ''
