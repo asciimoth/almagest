@@ -173,6 +173,17 @@ export function graphPreviewPorts(
       addPreviewPort(target.left, link.targetPort, targetTypes.length ? targetTypes : sourceTypes);
     }
   }
+
+  // LiteGraph permits only one connection on an input slot. Almagest ports do
+  // not have that restriction, so give each incoming link its own visual slot.
+  // Keep at least one slot for an input with no links, as the graph tab does.
+  const incomingLinks = countIncomingLinks(config);
+  for (const [nodeName, value] of ports) {
+    value.left = value.left.flatMap((port) => Array.from(
+      { length: Math.max(1, incomingLinks.get(nodeName)?.get(port.name) ?? 0) },
+      () => ({ name: port.name, types: [...port.types] }),
+    ));
+  }
   return ports;
 }
 
@@ -198,7 +209,12 @@ function drawGraphPreview(
     node.color = palette?.type ?? palette?.color ?? DEFAULT_NODE_TITLE_COLOR;
     node.bgcolor = "#1e1e2e";
     node.boxcolor = classInfo ? "#45475a" : "#f38ba8";
-    for (const port of nodePorts.get(model.name)?.left ?? []) addLiteGraphPort(node, port, "left", classInfo?.colormap);
+    const inputOccurrences = new Map<string, number>();
+    for (const port of nodePorts.get(model.name)?.left ?? []) {
+      const occurrence = inputOccurrences.get(port.name) ?? 0;
+      addLiteGraphPort(node, port, "left", classInfo?.colormap, occurrence);
+      inputOccurrences.set(port.name, occurrence + 1);
+    }
     for (const port of nodePorts.get(model.name)?.right ?? []) addLiteGraphPort(node, port, "right", classInfo?.colormap);
     node.size = node.computeSize();
     fitPreviewLabel(node, model.label);
@@ -206,12 +222,14 @@ function drawGraphPreview(
     graphNodes.set(model.name, node);
   }
 
+  const connectedInputs = new Map<string, Map<string, number>>();
   for (const model of config.nodes) {
     for (const link of model.links) {
       const source = graphNodes.get(link.sourceNode);
       const target = graphNodes.get(link.targetNode);
       const output = findSlot(source?.outputs, link.sourcePort);
-      const input = findSlot(target?.inputs, link.targetPort);
+      const occurrence = takeNextInputOccurrence(connectedInputs, link.targetNode, link.targetPort);
+      const input = findSlot(target?.inputs, link.targetPort, occurrence);
       if (source && target && output >= 0 && input >= 0) source.connect(output, target, input);
     }
   }
@@ -332,12 +350,18 @@ function addLiteGraphPort(
   port: PreviewPort,
   side: "left" | "right",
   colormap: Record<string, TypePalette> | undefined,
+  occurrence = 0,
 ): void {
   const type = port.types.includes("any/any") ? "" : port.types.join(",");
   const color = port.types.map((name) => paletteForType(colormap, name)?.type ?? paletteForType(colormap, name)?.color)
     .find((value): value is string => Boolean(value)) ?? DEFAULT_LINK_COLOR;
   const options = { label: port.name, color_on: color, color_off: color };
-  if (side === "left") node.addInput(port.name, type, options);
+  if (side === "left") {
+    // Use a distinct internal name for each slot. The label keeps all copies
+    // visually associated with the same Almagest port.
+    const name = occurrence === 0 ? port.name : `${port.name} ${occurrence + 1}`;
+    node.addInput(name, type, options);
+  }
   else node.addOutput(port.name, type, options);
 }
 
@@ -351,8 +375,43 @@ function fitPreviewLabel(node: any, label: string): void {
   node.size[1] += 24;
 }
 
-function findSlot(slots: Array<{ name?: string; label?: string }> | undefined, name: string): number {
-  return slots?.findIndex((slot) => slot.name === name || slot.label === name) ?? -1;
+function findSlot(
+  slots: Array<{ name?: string; label?: string }> | undefined,
+  name: string,
+  occurrence = 0,
+): number {
+  if (!slots) return -1;
+  let matches = 0;
+  return slots.findIndex((slot) => {
+    if (slot.name !== name && slot.label !== name) return false;
+    if (matches === occurrence) return true;
+    matches += 1;
+    return false;
+  });
+}
+
+function countIncomingLinks(config: GraphPreviewConfig): Map<string, Map<string, number>> {
+  const counts = new Map<string, Map<string, number>>();
+  for (const node of config.nodes) {
+    for (const link of node.links) {
+      const nodeCounts = counts.get(link.targetNode) ?? new Map<string, number>();
+      nodeCounts.set(link.targetPort, (nodeCounts.get(link.targetPort) ?? 0) + 1);
+      counts.set(link.targetNode, nodeCounts);
+    }
+  }
+  return counts;
+}
+
+function takeNextInputOccurrence(
+  occurrences: Map<string, Map<string, number>>,
+  nodeName: string,
+  portName: string,
+): number {
+  const nodeOccurrences = occurrences.get(nodeName) ?? new Map<string, number>();
+  const occurrence = nodeOccurrences.get(portName) ?? 0;
+  nodeOccurrences.set(portName, occurrence + 1);
+  occurrences.set(nodeName, nodeOccurrences);
+  return occurrence;
 }
 
 function addPreviewPort(ports: PreviewPort[], name: string, types: readonly string[]): void {

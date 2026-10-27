@@ -18,6 +18,7 @@ function graphSource() {
       "Links": [
         "slot 2 -> [Sink Two] Network",
         "slot 3 -> [Sink Three] Network",
+        "slot 4 -> [Sink Two] Network",
       ],
     },
     "Sink Two": {"Class": "demo/Sink"},
@@ -73,8 +74,13 @@ test("graph previews add linked dynamic ports that class descriptions omit", () 
     { name: "slot 1", types: ["demo/network"] },
     { name: "slot 2", types: ["demo/network"] },
     { name: "slot 3", types: ["demo/network"] },
+    { name: "slot 4", types: ["demo/network"] },
   ]);
-  assert.deepEqual(ports.get("Sink Two")?.left, [{ name: "Network", types: ["demo/network"] }]);
+  assert.deepEqual(ports.get("Sink Two")?.left, [
+    { name: "Network", types: ["demo/network"] },
+    { name: "Network", types: ["demo/network"] },
+  ]);
+  assert.deepEqual(ports.get("Sink Three")?.left, [{ name: "Network", types: ["demo/network"] }]);
 });
 
 test("graph preview parser rejects malformed and excessive untrusted input", () => {
@@ -95,7 +101,17 @@ test("graph preview draws one inert centered frame and keeps hostile labels out 
   const dom = new JSDOM("<!doctype html><main></main>", { url: "https://panel.test/" });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
-  const calls = { options: null, draw: 0, detached: 0, stopped: 0, offsets: null, scale: null, size: null, showInfo: null };
+  const calls = {
+    options: null,
+    draw: 0,
+    detached: 0,
+    stopped: 0,
+    offsets: null,
+    scale: null,
+    size: null,
+    showInfo: null,
+    connections: [],
+  };
 
   class FakeNode {
     constructor() {
@@ -109,7 +125,10 @@ test("graph preview draws one inert centered frame and keeps hostile labels out 
     addOutput(name, type, options) { this.outputs.push({ name, type, ...options }); }
     computeSize() { return [140, 80]; }
     getBounding() { return [this.pos[0], this.pos[1], this.size[0], this.size[1]]; }
-    connect(output, target, input) { return { output, target, input }; }
+    connect(output, target, input) {
+      calls.connections.push({ source: this.title, output, target: target.title, input });
+      return { output, target, input };
+    }
   }
   class FakeGraph {
     constructor() { this._nodes = []; }
@@ -154,6 +173,10 @@ test("graph preview draws one inert centered frame and keeps hostile labels out 
   assert.notDeepEqual(calls.offsets, [0, 0]);
   assert.equal(calls.showInfo, false);
   assert.equal(globalThis.LiteGraph.allow_scripts, false);
+  assert.deepEqual(
+    calls.connections.filter((connection) => connection.target === "Sink Two").map((connection) => connection.input),
+    [0, 1],
+  );
   assert.equal(host.querySelector("canvas")?.getAttribute("role"), "img");
   assert.equal(host.querySelector("script,img,svg,iframe"), null);
   assert.equal(host.textContent, "");
