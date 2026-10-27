@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 
 	debugnodes "github.com/asciimoth/almagest/lib/debug"
 	"github.com/asciimoth/almagest/lib/testkit"
@@ -164,12 +165,53 @@ func applyTunFirewallUDPClientE2E(t *testing.T, e *NodeE2E, node uint64, port in
 
 func assertTunFirewallUDPWorksE2E(t *testing.T, e *NodeE2E, client uint64) {
 	t.Helper()
-	sendTunFirewallUDPE2E(t, e, client)
-	testkit.Eventually(t, func() bool {
-		return tunFirewallUDPStatusE2E(e, client) == "Status: ok" &&
-			tunFirewallUDPResultE2E(e, client, "error") == "" &&
-			tunFirewallUDPResultE2E(e, client, "response") == "pong:tun-firewall-ping"
-	}, "TUN firewall UDP response")
+	const wantResponse = "pong:tun-firewall-ping"
+	completedBefore := tunFirewallUDPCompletionCountE2E(e, client, wantResponse)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if tunFirewallUDPStatusE2E(e, client) != "Status: "+debugtest.UDPPingStatusRunning {
+			sendTunFirewallUDPE2E(t, e, client)
+		}
+
+		requestDeadline := time.Now().Add(2 * time.Second)
+		for {
+			status := tunFirewallUDPStatusE2E(e, client)
+			if status == "Status: ok" &&
+				tunFirewallUDPResultE2E(e, client, "error") == "" &&
+				tunFirewallUDPResultE2E(e, client, "response") == wantResponse &&
+				tunFirewallUDPCompletionCountE2E(e, client, wantResponse) > completedBefore {
+				return
+			}
+			if status != "Status: "+debugtest.UDPPingStatusRunning || time.Now().After(requestDeadline) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf(
+				"timed out waiting for TUN firewall UDP response; got status=%q error=%q response=%q",
+				tunFirewallUDPStatusE2E(e, client),
+				tunFirewallUDPResultE2E(e, client, "error"),
+				tunFirewallUDPResultE2E(e, client, "response"),
+			)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func tunFirewallUDPCompletionCountE2E(e *NodeE2E, client uint64, response string) int {
+	item, ok := e.MenuItem(client, "logs", "worker")
+	if !ok {
+		return 0
+	}
+	want := "ping complete: " + response
+	count := 0
+	for _, line := range item.Logs {
+		if line.Text == want {
+			count++
+		}
+	}
+	return count
 }
 
 func sendTunFirewallUDPE2E(t *testing.T, e *NodeE2E, client uint64) {
