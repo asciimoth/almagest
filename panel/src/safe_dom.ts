@@ -777,6 +777,14 @@ type MarkdownRenderContext = {
   documentationURL: ((id: string) => string) | undefined;
   onGraphPreview: MarkdownGraphPreviewHandler | undefined;
   documentationTarget: "_blank" | "_self";
+  panelLinks: MarkdownPanelLinkOptions | undefined;
+};
+
+/** Hosting-specific routing for links from documentation to a panel tab. */
+export type MarkdownPanelLinkOptions = {
+  url: (tab: string) => string;
+  target?: string;
+  onNavigate?: (event: MouseEvent, tab: string, href: string) => void;
 };
 
 export function renderNodeDescription(
@@ -788,6 +796,7 @@ export function renderNodeDescription(
   documentationURL?: (id: string) => string,
   onGraphPreview?: MarkdownGraphPreviewHandler,
   documentationTarget: "_blank" | "_self" = "_blank",
+  panelLinks?: MarkdownPanelLinkOptions,
 ): void {
   const text = value.trim();
   if (!text) {
@@ -795,7 +804,7 @@ export function renderNodeDescription(
     return;
   }
   const context: MarkdownRenderContext = {
-    mode, documentID, onPortHighlight, documentationURL, onGraphPreview, documentationTarget,
+    mode, documentID, onPortHighlight, documentationURL, onGraphPreview, documentationTarget, panelLinks,
   };
   const headingIDs = new Map<string, number>();
   node.replaceChildren(...parseMarkdownBlocks(text).flatMap((block) => {
@@ -1126,6 +1135,7 @@ type MarkdownCustomLinkRenderer = (
 
 const markdownCustomLinkRenderers: Readonly<Record<string, MarkdownCustomLinkRenderer>> = {
   docs: renderMarkdownDocumentationLink,
+  panel: renderMarkdownPanelLink,
   port: renderMarkdownPortLink,
 };
 
@@ -1176,6 +1186,31 @@ function renderMarkdownDocumentationLink(
         window.location.assign(anchor.href);
       });
     }
+  }
+  if (title) anchor.title = title;
+  anchor.rel = "noopener noreferrer";
+  return anchor;
+}
+
+function renderMarkdownPanelLink(
+  label: string,
+  destination: string,
+  title: string,
+  context: MarkdownRenderContext,
+): Node {
+  // Panel tab routes are fragments, not general URLs. This restricted token
+  // prevents Markdown input from selecting a URL scheme or injecting markup.
+  if (!/^[a-z][a-z0-9-]{0,63}$/.test(destination)) return document.createTextNode(label);
+
+  const anchor = document.createElement("a");
+  anchor.append(...markdownInlineText(label));
+  anchor.className = "markdown-link-panel";
+  anchor.href = context.panelLinks?.url(destination) ?? `#${encodeURIComponent(destination)}`;
+  if (context.panelLinks?.target) anchor.target = context.panelLinks.target;
+  if (context.panelLinks?.onNavigate) {
+    anchor.addEventListener("click", (event) => {
+      context.panelLinks?.onNavigate?.(event, destination, anchor.href);
+    });
   }
   if (title) anchor.title = title;
   anchor.rel = "noopener noreferrer";

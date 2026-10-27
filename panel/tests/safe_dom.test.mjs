@@ -865,6 +865,47 @@ test("documentation links use the hosting-mode URL resolver when supplied", () =
   assert.equal(link?.rel, "noopener noreferrer");
 });
 
+test("panel links select a tab in the current panel", () => {
+  installDOM();
+  const root = document.createElement("div");
+  renderNodeDescription(root, '[Logs](@panel/logs "Open retained logs")');
+
+  const link = root.querySelector("a");
+  assert.equal(link?.getAttribute("href"), "#logs");
+  assert.equal(link?.target, "");
+  assert.equal(link?.rel, "noopener noreferrer");
+  assert.equal(link?.className, "markdown-link-panel");
+  assert.equal(link?.title, "Open retained logs");
+});
+
+test("documentation panel links use the hosting route and safe click handler", () => {
+  const dom = installDOM();
+  const root = document.createElement("div");
+  const navigations = [];
+  renderNodeDescription(
+    root,
+    `[Logs ${payload}](@panel/logs)`,
+    "docs",
+    "guide/operations",
+    undefined,
+    undefined,
+    undefined,
+    "_blank",
+    {
+      url: (tab) => `../demo/#${encodeURIComponent(tab)}`,
+      target: "almagest-panel",
+      onNavigate: (event, tab, href) => navigations.push([event.type, tab, href]),
+    },
+  );
+
+  const link = root.querySelector("a");
+  link?.dispatchEvent(new dom.window.MouseEvent("click"));
+  assert.equal(link?.getAttribute("href"), "../demo/#logs");
+  assert.equal(link?.target, "almagest-panel");
+  assert.deepEqual(navigations, [["click", "logs", "https://panel.test/demo/#logs"]]);
+  assertNoParsedPayload(root);
+});
+
 test("desktop documentation links stay in the current webview without parsing HTML", () => {
   installDOM();
   const root = document.createElement("div");
@@ -939,6 +980,8 @@ test("custom Markdown links reject unknown types and unsafe documentation IDs", 
   renderNodeDescription(root, [
     `[Unknown ${payload}](@future/value)`,
     `[Traversal ${payload}](@docs/node/../secret)`,
+    `[Unsafe panel ${payload}](@panel/javascript:alert)`,
+    `[Long panel ${payload}](@panel/${"a".repeat(65)})`,
   ].join(" "));
 
   assert.equal(root.querySelector("a"), null);

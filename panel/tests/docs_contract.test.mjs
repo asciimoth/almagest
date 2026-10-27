@@ -77,6 +77,15 @@ test("documentation reuses an open admin panel tab or opens a new tab", () => {
   assert.match(windowNavigationSource, /panel\.focus\(\)/);
 });
 
+test("documentation panel links route to a requested admin or web demo tab", () => {
+  assert.match(docsSource, /url: currentPanelTabURL/);
+  assert.match(docsSource, /adminPanelLink\.getAttribute\("href"\)/);
+  assert.match(docsSource, /openAdminPanelRoute\(window, href\)/);
+  assert.match(docsSource, /rememberDesktopPanelTab\(window\.localStorage, tab\)/);
+  assert.match(docsSource, /target: desktopMode \? "_self" : adminPanelWindowName/);
+  assert.match(siteNavigationSource, /panelHref\.replace\(\/#\.\*\$\/, ""\)/);
+});
+
 test("documentation loads localized pages over HTTP without a WebSocket", () => {
   assert.match(docsSource, /docsClient\(\)\.tree\(locale\)/);
   assert.match(docsSource, /docsClient\(\)\.raw\(effectiveLocale, id\)/);

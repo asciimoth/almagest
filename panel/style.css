@@ -1449,13 +1449,17 @@ h1 {
 }
 
 .node-description .markdown-link-docs,
-.node-description .markdown-link-docs:visited {
+.node-description .markdown-link-docs:visited,
+.node-description .markdown-link-panel,
+.node-description .markdown-link-panel:visited {
   color: var(--teal);
   text-decoration-style: dashed;
 }
 
 .node-description .markdown-link-docs:hover,
-.node-description .markdown-link-docs:visited:hover {
+.node-description .markdown-link-docs:visited:hover,
+.node-description .markdown-link-panel:hover,
+.node-description .markdown-link-panel:visited:hover {
   color: color-mix(in srgb, var(--teal), white 20%);
 }
 

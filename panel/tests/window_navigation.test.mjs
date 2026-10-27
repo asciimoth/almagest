@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   adminPanelWindowName,
+  openAdminPanelRoute,
   openOrFocusAdminPanel,
 } from "../public/build/window_navigation.js";
 
@@ -63,4 +64,32 @@ test("a blocked pop-up reports that the link fallback is required", () => {
   };
 
   assert.equal(openOrFocusAdminPanel(source, "https://almagest.test/"), false);
+});
+
+test("a panel route navigates an existing named panel to the requested tab", () => {
+  let openedURL = "";
+  let target = "";
+  let focused = false;
+  const source = {
+    location: { origin: "https://almagest.test" },
+    open: (url, name) => {
+      openedURL = url;
+      target = name;
+      return { focus: () => { focused = true; } };
+    },
+  };
+
+  assert.equal(openAdminPanelRoute(source, "https://almagest.test/#logs"), true);
+  assert.equal(openedURL, "https://almagest.test/#logs");
+  assert.equal(target, "almagest-admin-panel:https://almagest.test");
+  assert.equal(focused, true);
+});
+
+test("a blocked panel route keeps the anchor fallback available", () => {
+  const source = {
+    location: { origin: "https://almagest.test" },
+    open: () => null,
+  };
+
+  assert.equal(openAdminPanelRoute(source, "https://almagest.test/#logs"), false);
 });

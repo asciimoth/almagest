@@ -15,10 +15,11 @@ fields can be retained for compatibility, but a known field still must have a
 valid value. [Nodes, ports, and links](@docs/almagest/graph) describes the saved
 graph fields and link syntax.
 
-Use the **Config** tab to review or apply the complete document. An applied
-document can add, change, and remove live nodes and links. Create a snapshot
-before a large edit. Read [Snapshots and examples](@docs/almagest/snapshots) for
-snapshot contents and restore behavior.
+Use the [Config tab](@panel/config) to review or apply the complete document. An
+applied document can add, change, and remove live nodes and links. Create a
+snapshot before a large edit. Read
+[Snapshots and examples](@docs/almagest/snapshots) for snapshot contents and
+restore behavior.
 
 ### Regular configuration options
 

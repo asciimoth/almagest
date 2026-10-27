@@ -43,7 +43,7 @@ between regular, mutable, and protected data.
 
 ## Create and restore snapshots
 
-Use the **Snapshots** tab to manage snapshots:
+Use the [Snapshots tab](@panel/snapshots) to manage snapshots:
 
 1. Enter an optional name and select **Create snapshot**.
 1. Make the configuration or stored-data changes that you want to test.
@@ -91,7 +91,7 @@ try.
 
 To load an example:
 
-1. Open the **Snapshots** tab.
+1. Open the [Snapshots tab](@panel/snapshots).
 1. Find the **Examples** section.
 1. Select an example and choose **Load**.
 1. Read its configuration comments, then return to the graph.
@@ -114,5 +114,5 @@ sufficient service privileges. Some examples also need protected administrator
 policy. For example, **Browse through Tor** needs an approved Tor program. The
 graph cannot add this permission.
 
-You can inspect the exact HuJSON on the **Config** tab. Use the node reference
-pages to learn about one node in detail.
+You can inspect the exact HuJSON on the [Config tab](@panel/config). Use the
+node reference pages to learn about one node in detail.

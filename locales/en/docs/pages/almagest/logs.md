@@ -1,10 +1,10 @@
-The panel shows only a small recent part of the service log. The service keeps a
-separate bounded in-memory cache for debug, info, warning, error, and fatal
-entries. New clients receive only the entries still in those caches, then they
-can subscribe to new messages.
+The [Logs tab](@panel/logs) shows only a small recent part of the service log.
+The service keeps a separate bounded in-memory cache for debug, info, warning,
+error, and fatal entries. New clients receive only the entries still in those
+caches, then they can subscribe to new messages.
 
-Do not use the panel as the full log archive. For complete service history, use
-the platform log destination:
+Do not use the [Logs tab](@panel/logs) as the full log archive. For complete
+service history, use the platform log destination:
 
 - Packaged Linux services write standard output and standard error to the
   systemd journal. Use `journalctl --unit almagestd`. The upstream

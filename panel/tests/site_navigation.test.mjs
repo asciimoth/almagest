@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { JSDOM } from "jsdom";
 
-const { documentationURL } = await import("../public/build/site_navigation.js");
+const { documentationURL, panelTabURL } = await import("../public/build/site_navigation.js");
 
 function installDOM(url, base = "") {
   const meta = base ? `<meta name="almagest-site-base" content="${base}">` : "";
@@ -46,4 +46,11 @@ test("web demo documentation links support an absolute configured site root", ()
     documentationURL("guide/welcome"),
     "https://example.test/almagest/docs/?page=guide%2Fwelcome",
   );
+});
+
+test("panel tab links retain relative daemon, desktop, and web demo routes", () => {
+  assert.equal(panelTabURL("/", "logs"), "/#logs");
+  assert.equal(panelTabURL("../index.html", "config"), "../index.html#config");
+  assert.equal(panelTabURL("../demo/", "sec"), "../demo/#sec");
+  assert.equal(panelTabURL("../../custom/demo/#old", "process logs"), "../../custom/demo/#process%20logs");
 });

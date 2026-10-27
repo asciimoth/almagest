@@ -6,7 +6,7 @@ import {
   textElement,
 } from "./safe_dom.js";
 import { readLocaleCookie, writeLocaleCookie } from "./localization.js";
-import { adminPanelWindowName, openOrFocusAdminPanel } from "./window_navigation.js";
+import { adminPanelWindowName, openAdminPanelRoute, openOrFocusAdminPanel } from "./window_navigation.js";
 import { handoffBoundaryScroll, initialTopicOpen, selectPageInTree } from "./docs_tree.js";
 import {
   DEFAULT_NODE_TEXT_COLOR,
@@ -20,9 +20,11 @@ import {
 import { docsClient } from "./docs_client.js";
 import { renderGraphPreview } from "./graph_preview.js";
 import { panelMode } from "./panel_mode.js";
+import { panelTabURL } from "./site_navigation.js";
 import {
   rememberDesktopDocsPage,
   rememberDesktopDocsScroll,
+  rememberDesktopPanelTab,
   rememberDesktopSurface,
   rememberedDesktopDocsPage,
   rememberedDesktopDocsScroll,
@@ -238,6 +240,31 @@ function docsURL(page: string, hash = ""): string {
   return docsClient().pageURL(page, urlLocale, hash);
 }
 
+function currentPanelTabURL(tab: string): string {
+  // The publication step supplies a relative Admin panel or Web demo href.
+  // Reuse it so static sites continue to work below any hosting root path.
+  const panel = adminPanelLink.getAttribute("href") || "./";
+  return panelTabURL(panel, tab);
+}
+
+function navigateToPanelTab(event: MouseEvent, tab: string, href: string): void {
+  if (desktopMode) {
+    // The desktop package has one webview. Persist the requested tab before
+    // navigation because its panel entry point restores the saved route.
+    event.preventDefault();
+    saveCurrentDesktopDocsScroll();
+    rememberDesktopDocsPage(window.localStorage, currentPage);
+    rememberDesktopPanelTab(window.localStorage, tab);
+    rememberDesktopSurface(window.localStorage, "panel");
+    window.location.replace(href);
+    return;
+  }
+  // Preserve native modifier-key behavior. For a normal click, route and
+  // focus the named panel window. Leave the anchor fallback active if blocked.
+  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  if (openAdminPanelRoute(window, href)) event.preventDefault();
+}
+
 function pageNavigationLink(id: string, direction: "prev" | "next"): HTMLAnchorElement {
   const name = pageNames.get(id) || id;
   const directionLabel = direction === "prev" ? "← Previous" : "Next →";
@@ -290,6 +317,12 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
       highlightPreviewPort,
       (destination) => docsURL(destination),
       renderDocumentationGraph,
+      "_blank",
+      {
+        url: currentPanelTabURL,
+        target: desktopMode ? "_self" : adminPanelWindowName(window.location.origin),
+        onNavigate: navigateToPanelTab,
+      },
     );
     const unavailable = pageAvailability.get(id) === false
       ? textElement("div", nodeUnavailableMessage, "docs-node-warning docs-node-unavailable")

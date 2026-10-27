@@ -93,23 +93,24 @@ Examples start with isolated or narrow tests before they change host routing.
 
 ## Work in the panel
 
-The Graph tab is the main editor. Add nodes from the node list, then connect
-ports that have the same type. Select a node to open its settings and status.
-The service saves accepted graph and menu changes to the editable configuration.
+[The Graph tab](@panel/graph) is the main editor. Add nodes from the node list,
+then connect ports that have the same type. Select a node to open its settings
+and status. The service saves accepted graph and menu changes to the editable
+configuration.
 
 Use the other tabs for related data and status:
 
-- **Secrets** stores credentials and other sensitive values for nodes.
-- **DNS** shows the DNS cache stores.
-- **TLS** manages certificates, policies, and the built-in certificate
+- [Secrets](@panel/sec) stores credentials and other sensitive values for nodes.
+- [DNS](@panel/dns) shows the DNS cache stores.
+- [TLS](@panel/tls) manages certificates, policies, and the built-in certificate
   authority.
-- **KV** manages named key-value stores.
-- **Processes** shows active workers grouped by node. It also shows service
-  isolation and subprogram sandbox status.
-- **Logs** shows a limited recent log history and new log messages.
-- **Config** shows the editable HuJSON configuration.
-- **Snapshots** stores or restores the editable configuration and runtime file
-  storage. It also lists packaged examples.
+- [KV](@panel/kv) manages named key-value stores.
+- [Processes](@panel/ps) shows active workers grouped by node. It also shows
+  service isolation and subprogram sandbox status.
+- [Logs](@panel/logs) shows a limited recent log history and new log messages.
+- [Config](@panel/config) shows the editable HuJSON configuration.
+- [Snapshots](@panel/snapshots) stores or restores the editable configuration
+  and runtime file storage. It also lists packaged examples.
 - **Docs** opens these pages and the reference page for each node.
 
 For terminal administration or foreground standard-input use, read

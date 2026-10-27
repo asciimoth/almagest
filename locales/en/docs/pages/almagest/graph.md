@@ -139,8 +139,8 @@ the other node name, and the final `Network` is a port on that node. The arrow
 separates the two endpoints in the stored text. It does not show the direction
 of network traffic. The lowercase `url` field is an HttpClient setting.
 
-Use the config editor for review and controlled bulk changes. An invalid node
-class, port name, link, or node setting usually affects only the related nodes
-and links. If a node class is not available, Almagest keeps the node, ports, and
-links as a placeholder. A syntax error or an invalid top-level configuration can
-prevent the complete configuration from applying.
+Use the [Config tab](@panel/config) for review and controlled bulk changes. An
+invalid node class, port name, link, or node setting usually affects only the
+related nodes and links. If a node class is not available, Almagest keeps the
+node, ports, and links as a placeholder. A syntax error or an invalid top-level
+configuration can prevent the complete configuration from applying.

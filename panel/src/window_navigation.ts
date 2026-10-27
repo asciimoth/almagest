@@ -14,3 +14,13 @@ export function openOrFocusAdminPanel(source: Window, panelURL: string): boolean
   panel.focus();
   return true;
 }
+
+/** Open a panel route, or navigate the existing named panel to that route. */
+export function openAdminPanelRoute(source: Window, panelURL: string): boolean {
+  // Supplying the URL makes the browser apply its normal named-target
+  // navigation. A same-document fragment changes the SPA tab without reload.
+  const panel = source.open(panelURL, adminPanelWindowName(source.location.origin));
+  if (!panel) return false;
+  panel.focus();
+  return true;
+}

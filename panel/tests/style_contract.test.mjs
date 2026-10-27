@@ -20,7 +20,7 @@ test("links use the interface palette and focus treatment", () => {
 });
 
 test("internal documentation links are distinct from external links", () => {
-  const rule = cssRule(".node-description .markdown-link-docs,\n.node-description .markdown-link-docs:visited");
+  const rule = cssRule(".node-description .markdown-link-docs,\n.node-description .markdown-link-docs:visited,\n.node-description .markdown-link-panel,\n.node-description .markdown-link-panel:visited");
 
   assert.match(rule, /color:\s*var\(--teal\);/);
   assert.match(rule, /text-decoration-style:\s*dashed;/);

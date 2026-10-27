@@ -8,7 +8,7 @@ Almagest stores certificates, verification policies, and its built-in CA in
 TLS settings. Most nodes that show a **TLS config** selector use the built-in
 `default` config when you do not select another one.
 
-Open the **TLS configs** tab in the administration interface to inspect the
+Open the [TLS tab](@panel/tls) in the administration interface to inspect the
 built-in CA, add certificates, and create named verification policies. A named
 policy then becomes available in the **TLS config** selector of applicable
 nodes.

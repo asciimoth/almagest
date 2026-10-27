@@ -20,3 +20,8 @@ export function documentationURL(page = ""): string {
   if (page) url.pathname += page.split("/").map(encodeURIComponent).join("/");
   return url.pathname + url.search;
 }
+
+/** Add a panel tab fragment without converting a relative hosting link to an absolute URL. */
+export function panelTabURL(panelHref: string, tab: string): string {
+  return `${panelHref.replace(/#.*$/, "")}#${encodeURIComponent(tab)}`;
+}
