@@ -1,4 +1,4 @@
-Passes a [TUN](https://www.kernel.org/doc/html/latest/networking/tuntap.html)
+Passes a [TUN](@docs/almagest/types)
 between one provider connected to [Tun](@port/right/Tun) and one consumer
 connected to [Tun](@port/left/Tun), but blocks all TUN configuration
 suggestions. Place it in a TUN path when the provider's interface settings must

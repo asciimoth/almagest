@@ -1,4 +1,4 @@
-Tries connected [DNS](https://www.rfc-editor.org/rfc/rfc1034) services in
+Tries connected [DNS](@docs/almagest/dns) services in
 ascending slot order. [slot 1](@port/right/slot%201) has the highest priority.
 Empty slots are skipped.
 

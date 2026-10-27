@@ -1,5 +1,5 @@
 TunSplitter sends packets from one
-[TUN](https://www.kernel.org/doc/html/latest/networking/tuntap.html) connection
+[TUN](@docs/almagest/types) connection
 to numbered output slots. Use this node when you must select each path with
 explicit packet rules. Use
 [AutoTunSplitter](@docs/node/almagest/AutoTunSplitter) instead when the output

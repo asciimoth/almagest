@@ -139,7 +139,8 @@ without activity.
 A plain SOCKS-over-WebSocket client still needs network access to this separate
 UDP relay. Use **Gost UDPTUN** when the client must carry UDP in the SOCKS
 connection, or when an application needs a stable externally configured UDP
-endpoint, such as a WireGuard peer with a fixed endpoint. **UDP ASSOC** and
+endpoint, such as a [WireGuard](@docs/node/almagest/WireGuard) peer with a fixed
+endpoint. **UDP ASSOC** and
 **Gost UDPTUN** are not available on WSS connections.
 
 ## Operation

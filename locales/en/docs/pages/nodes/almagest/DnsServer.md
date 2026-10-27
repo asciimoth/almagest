@@ -1,4 +1,4 @@
-Accepts [DNS](https://www.rfc-editor.org/rfc/rfc1034) requests over
+Accepts [DNS](@docs/almagest/dns) requests over
 [UDP](https://www.rfc-editor.org/rfc/rfc768) through an attached Network and
 sends each request to an attached DNS resolver. Connect the listening network to
 [Network](@port/right/Network) and the resolver that will answer requests to

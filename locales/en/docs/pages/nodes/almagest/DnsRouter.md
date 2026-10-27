@@ -1,4 +1,4 @@
-Routes each [DNS](https://www.rfc-editor.org/rfc/rfc1034) request to one
+Routes each [DNS](@docs/almagest/dns) request to one
 selected DNS service. Rules are evaluated from top to bottom against the first
 question in the DNS message. The first matching `BACKEND` or `DROP` action stops
 evaluation.

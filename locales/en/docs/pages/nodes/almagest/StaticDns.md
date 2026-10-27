@@ -1,4 +1,4 @@
-Serves configured [DNS](https://www.rfc-editor.org/rfc/rfc1034) records and
+Serves configured [DNS](@docs/almagest/dns) records and
 optionally sends misses to one [Fallback](@port/right/Fallback) DNS service. The
 [DNS](@port/left/DNS) output is available even when no records or fallback are
 configured.

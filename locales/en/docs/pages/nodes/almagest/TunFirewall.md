@@ -1,5 +1,5 @@
 Filters IP packets between one
-[TUN](https://www.kernel.org/doc/html/latest/networking/tuntap.html) provider on
+[TUN](@docs/almagest/types) provider on
 [Tun](@port/right/Tun) and one TUN consumer on [Tun](@port/left/Tun).
 
 The default policy is stateful and has these actions:

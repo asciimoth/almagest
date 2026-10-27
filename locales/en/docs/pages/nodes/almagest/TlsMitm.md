@@ -1,5 +1,5 @@
 TlsMitm intercepts selected client-first
-[TLS](https://www.rfc-editor.org/rfc/rfc8446) connections. It presents a locally
+[TLS](@docs/almagest/tls) connections. It presents a locally
 generated certificate to the client, decrypts the connection, and creates a
 separate TLS connection to the original server through the connected
 [Network](@port/right/Network). Place it between a [Network](@port/left/Network)

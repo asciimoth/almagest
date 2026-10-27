@@ -1,5 +1,5 @@
 Creates an [Amnezia](https://docs.amnezia.org/) VPN connection and owns its
-[WireGuard](https://www.wireguard.com/) device. Use this node when you want one
+[WireGuard](@docs/node/almagest/WireGuard) device. Use this node when you want one
 node to import the connection, create the tunnel, and provide tunnel DNS.
 
 Connect a TUN provider to [Tun](@port/left/Tun) and an outgoing network to

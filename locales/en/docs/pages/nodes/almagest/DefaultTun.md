@@ -1,6 +1,6 @@
 DefaultTun captures traffic from the host system and provides it through the
 [Tun](@port/right/Tun) port. Connect this port to the start of a
-[TUN](https://www.kernel.org/doc/html/latest/networking/tuntap.html) processing
+[TUN](@docs/almagest/types) processing
 path, such as a tunnel, splitter, firewall, or spoofer. The node also installs
 the operating system routes and DNS settings that send traffic to this TUN.
 

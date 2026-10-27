@@ -98,7 +98,8 @@ operations through the normal host network:
 }
 ```
 
-This preview explains topology only. Read the DefaultTun page and test a narrow
+This preview explains topology only. Read the
+[DefaultTun](@docs/node/almagest/DefaultTun) page and test a narrow
 route before you apply this graph.
 
 ## Saved graph format
@@ -137,7 +138,8 @@ The keys under `nodes` are the unique node names. In the saved link text,
 `Network` before the arrow is a port on **Http Client**. The bracketed text is
 the other node name, and the final `Network` is a port on that node. The arrow
 separates the two endpoints in the stored text. It does not show the direction
-of network traffic. The lowercase `url` field is an HttpClient setting.
+of network traffic. The lowercase `url` field is an
+[HttpClient](@docs/node/almagest/HttpClient) setting.
 
 Use the [Config tab](@panel/config) for review and controlled bulk changes. An
 invalid node class, port name, link, or node setting usually affects only the

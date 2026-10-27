@@ -1,5 +1,5 @@
 TunCopy makes a point-to-point packet path between two
-[TUN](https://www.kernel.org/doc/html/latest/networking/tuntap.html) endpoints.
+[TUN](@docs/almagest/types) endpoints.
 A packet read from [TunA](@port/left/TunA) is written once to
 [TunB](@port/left/TunB). A packet read from [TunB](@port/left/TunB) is written
 once to [TunA](@port/left/TunA).

@@ -1,4 +1,4 @@
-Tun2Dns receives raw [DNS](https://www.rfc-editor.org/rfc/rfc1034) packets from
+Tun2Dns receives raw [DNS](@docs/almagest/dns) packets from
 [Tun](@port/left/Tun), sends their DNS messages to the connected
 [DNS](@port/right/DNS) resolver, and writes raw response packets back to the
 same TUN.

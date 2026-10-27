@@ -1,5 +1,5 @@
 TunJoiner combines multiple
-[TUN](https://www.kernel.org/doc/html/latest/networking/tuntap.html) paths into
+[TUN](@docs/almagest/types) paths into
 one [Tun](@port/right/Tun) connection. Connect one fallback path to
 [Default](@port/left/Default). Connect any number of additional paths to the
 shared [Secondary](@port/left/Secondary) port.

@@ -1,4 +1,4 @@
-Provides the daemon's outbound [DNS](https://www.rfc-editor.org/rfc/rfc1034)
+Provides the daemon's outbound [DNS](@docs/almagest/dns)
 service as a [DNS](@port/left/DNS) output. Use OutDns as the normal upstream for
 [DnsCache](@docs/node/almagest/DnsCache),
 [DnsRouter](@docs/node/almagest/DnsRouter),

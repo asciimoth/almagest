@@ -1,5 +1,5 @@
 Adds a separately managed peer list to an existing
-[WireGuard](https://www.wireguard.com/) node. WGConfig does not create a
+[WireGuard](@docs/node/almagest/WireGuard) node. WGConfig does not create a
 WireGuard interface. It also does not configure the device private key, listen
 port, interface addresses, or system routes.
 

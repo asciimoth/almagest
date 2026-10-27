@@ -2,7 +2,7 @@ AmnesiaCtrl is deprecated. Use the [Amnesia](@docs/node/almagest/Amnesia) node
 for new configurations.
 
 AmnesiaCtrl imports an [Amnezia](https://docs.amnezia.org/) VPN connection and
-adds its peer to an attached [WireGuard](https://www.wireguard.com/) node. The
+adds its peer to an attached [WireGuard](@docs/node/almagest/WireGuard) node. The
 WireGuard node continues to control the device private key, TUN connection,
 listen settings, and UDP transport. AmnesiaCtrl removes only the peer that it
 added when you disable or disconnect the node.

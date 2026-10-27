@@ -111,7 +111,8 @@ connections to a hostname.
 Normal SOCKS5 UDP uses UDP ASSOCIATE. The proxy selects the relay address, and a
 requested local listen address is not preserved. Add `?gost` to use the GOST
 UDP-over-TCP tunnel and multiplexed BIND extensions. Use this mode when a UDP
-application, such as WireGuard, needs a stable configured endpoint port.
+application, such as [WireGuard](@docs/node/almagest/WireGuard), needs a stable
+configured endpoint port.
 
 TLS and secure WebSocket proxy URLs disable UDP by default. Add `?insecureudp`
 to enable it. With normal UDP ASSOCIATE, UDP packets use a separate unencrypted

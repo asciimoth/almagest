@@ -3,7 +3,7 @@ Provides [DNS](@port/left/DNS) service through the resolver of an attached
 [Network](@port/right/Network), then connect DNS consumers to
 [DNS](@port/left/DNS).
 
-The node converts each [DNS](https://www.rfc-editor.org/rfc/rfc1034) question to
+The node converts each [DNS](@docs/almagest/dns) question to
 a resolver lookup on the [Network](@port/right/Network). It does not select a
 DNS server or DNS transport. The attached [Network](@port/right/Network)
 controls how it resolves names. For example, if DNS was injected into the

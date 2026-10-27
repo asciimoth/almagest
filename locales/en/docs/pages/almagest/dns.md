@@ -61,8 +61,10 @@ both paths.
 
 ## Network DNS and graph DNS
 
-A Network can have its own lookup behavior. For example, OutNetwork uses the
-service's outbound resolver, while a Tor Network resolves through Tor. A DNS
+A Network can have its own lookup behavior. For example,
+[OutNetwork](@docs/node/almagest/OutNetwork) uses the
+service's outbound resolver, while a
+[TorDriver](@docs/node/almagest/TorDriver) Network resolves through Tor. A DNS
 link is an explicit resolver service that can be routed and cached
 independently.
 

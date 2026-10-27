@@ -74,7 +74,7 @@ backend that handles each name lookup. Hostname dials keep their original host
 text during routing, so `ADDR_S` and `ADDR_RE` can match that text.
 
 When [DNS](@port/right/DNS) is connected, all explicit
-[DNS](https://www.rfc-editor.org/rfc/rfc1034) lookups go directly to that DNS
+[DNS](@docs/almagest/dns) lookups go directly to that DNS
 service and bypass the backend slots. The router also resolves host and service
 names through that DNS service before it selects a slot for a dial or listener.
 Address rules then see the selected numeric address instead of the original

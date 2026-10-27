@@ -1,4 +1,4 @@
-TlsTerminator accepts an outgoing [TLS](https://www.rfc-editor.org/rfc/rfc8446)
+TlsTerminator accepts an outgoing [TLS](@docs/almagest/tls)
 connection from a client, presents a locally generated certificate, and sends
 the decrypted TCP stream through the connected [Network](@port/right/Network).
 Place it between a [Network](@port/left/Network) consumer and the

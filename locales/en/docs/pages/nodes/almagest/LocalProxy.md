@@ -84,7 +84,8 @@ not need:
 For UDP operations, destination traffic uses the connected
 [proxy](@port/right/proxy). The local UDP relay for **UDP ASSOC** stays on the
 system-local network. Use **Gost UDPTUN** when an application needs a stable,
-externally configured UDP port, such as a WireGuard peer with a fixed endpoint.
+externally configured UDP port, such as a
+[WireGuard](@docs/node/almagest/WireGuard) peer with a fixed endpoint.
 
 The proxy listeners can start without a connected [proxy](@port/right/proxy),
 but all proxy requests then fail. Connecting, disconnecting, or replacing the

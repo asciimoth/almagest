@@ -1,4 +1,4 @@
-TlsWrapper adds [TLS](https://www.rfc-editor.org/rfc/rfc8446) to both client and
+TlsWrapper adds [TLS](@docs/almagest/tls) to both client and
 server TCP operations on a Network. Place it between a
 [Network](@port/left/Network) consumer and the [Network](@port/right/Network)
 that supplies the actual connections.
