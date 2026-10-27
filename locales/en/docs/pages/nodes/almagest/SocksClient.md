@@ -101,7 +101,7 @@ sends the request. It does not use graph DNS or the resolver from
 
 Explicit forward and reverse lookups are disabled by default. Add `?tor` to use
 the
-[Tor `RESOLVE` and `RESOLVE_PTR` extensions](https://spec.torproject.org/socks-extensions.html)
+[Tor RESOLVE and RESOLVE_PTR extensions](https://spec.torproject.org/socks-extensions.html)
 through a compatible SOCKS5 server. Other record lookups, such as MX, SRV, TXT,
 and CNAME, are not supported. The `tor` option is not required for normal SOCKS5
 connections to a hostname.

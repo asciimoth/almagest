@@ -73,7 +73,7 @@ general routing features.
   supports user rules. Android uses package names. Normal route rules
   [find the process from the connection 5-tuple](https://github.com/SagerNet/sing-box/blob/testing/route/process_cache.go).
   Linux `auto_redirect` also has a
-  [`bypass` pre-match action](https://sing-box.sagernet.org/configuration/route/rule_action/#bypass).
+  [bypass pre-match action](https://sing-box.sagernet.org/configuration/route/rule_action/#bypass).
   It can keep matching direct connections out of sing-box userspace forwarding.
   This early path requires Linux, `auto_redirect`, and NFQUEUE. It provides
   direct bypass, not Almagest's early Include, Exclude, and Strict modes.
