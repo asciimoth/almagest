@@ -237,7 +237,7 @@ import {
 } from "./localization.js";
 import { setupMobileNavigation } from "./mobile_navigation.js";
 import { tabHash, tabNameFromHash } from "./tab_navigation.js";
-import { applyStandardWheelZoom, redrawRevealedGraph } from "./graph_canvas_compat.js";
+import { applyStandardWheelZoom, GraphPinchZoom, redrawRevealedGraph } from "./graph_canvas_compat.js";
 import { apiReconnectDelay } from "./api_reconnect.js";
 import {
   preservePendingNodePosition,
@@ -1405,8 +1405,13 @@ function initGraph(): void {
   installLiteGraphWidgetSelectionGuard();
   installLiteGraphPointerGuard();
   registerLiteGraphNode();
+  // LiteGraph 0.7 defaults to mouse events. Mobile browsers only synthesize
+  // enough mouse input for a tap, so use Pointer Events to receive the full
+  // touch drag sequence for canvas panning and node movement.
+  if (window.PointerEvent) LiteGraph.pointerevents_method = "pointer";
   graph = new LGraph();
   canvas = new LGraphCanvas("#graph-canvas", graph, { skip_render: true });
+  const graphPinchZoom = new GraphPinchZoom(canvas, el.graphCanvas);
   graphDefaultScale = isFiniteNumber(canvas.ds?.scale) ? canvas.ds.scale : 1;
   disableOverlappingLiteGraphUI();
   canvas.clear_background_color = GRAPH_BACKGROUND_COLOR;
@@ -1426,6 +1431,10 @@ function initGraph(): void {
   el.graphCanvas.addEventListener("pointerdown", (event) => {
     armGraphShortcuts(event);
     el.graphCanvas.focus({ preventScroll: true });
+    if (graphPinchZoom.start(event)) {
+      cancelLiteGraphPointerInteraction(canvas);
+      event.preventDefault();
+    }
   });
   el.graphCanvas.addEventListener("pointerenter", (event) => {
     graphPointerInside = true;
@@ -1444,21 +1453,42 @@ function initGraph(): void {
   el.graphCanvas.addEventListener("dragover", handleGraphCanvasDragOver);
   el.graphCanvas.addEventListener("drop", handleGraphCanvasDrop);
   document.addEventListener("mousemove", recoverLostGraphMouseUp, { capture: true });
-  document.addEventListener("pointerup", () => {
+  document.addEventListener("pointermove", (event) => {
+    if (!graphPinchZoom.move(event)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, { capture: true });
+  document.addEventListener("pointerup", (event) => {
+    if (graphPinchZoom.end(event)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
     finishGraphPointerInteraction();
     scheduleGraphViewportSave();
+  }, { capture: true });
+  document.addEventListener("pointercancel", (event) => {
+    const pinching = graphPinchZoom.end(event);
+    if (canvas?.pointer_is_down || pinching) {
+      flushNodePositions();
+      cancelLiteGraphPointerInteraction(canvas);
+      requestPendingGraphRender();
+      scheduleGraphViewportSave();
+    }
+    if (pinching) event.stopImmediatePropagation();
   }, { capture: true });
   document.addEventListener("pointerdown", (event) => {
     if (event.target !== el.graphCanvas) graphShortcutsArmed = false;
   }, { capture: true });
   document.addEventListener("mouseup", scheduleGraphViewportSave, { capture: true });
   window.addEventListener("blur", () => {
+    graphPinchZoom.cancel();
     flushNodePositions();
     cancelLiteGraphPointerInteraction(canvas);
     requestPendingGraphRender();
     saveGraphViewportState();
   });
   window.addEventListener("pagehide", () => {
+    graphPinchZoom.cancel();
     cancelLiteGraphPointerInteraction(canvas);
     saveGraphViewportState();
   });

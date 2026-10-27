@@ -105,6 +105,10 @@ test("compact layouts preserve content space and expose mobile navigation", () =
   assert.match(css, /\.docs-navigation-scrim\.open\s*\{/);
 });
 
+test("the graph canvas owns touch drag gestures", () => {
+  assert.match(cssRule("#graph-canvas"), /touch-action:\s*none;/);
+});
+
 test("compact entry actions align at the row edge", () => {
   assert.match(css, /@media \(max-width: 56\.25rem\)[\s\S]*?\.kv-row\s*\{[^}]*grid-template-columns:\s*24px minmax\(0, 1fr\) max-content;/);
   assert.match(css, /@media \(max-width: 32\.5rem\)[\s\S]*?\.kv-row-actions\s*\{[^}]*justify-content:\s*flex-end;/);

@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   applyStandardWheelZoom,
+  GraphPinchZoom,
   redrawRevealedGraph,
 } from "../public/build/graph_canvas_compat.js";
 
@@ -52,6 +53,49 @@ test("standard wheel adapter leaves disabled and zero-delta input unchanged", ()
   event.deltaY = 0;
   assert.equal(applyStandardWheelZoom(canvas, element, event), false);
   assert.equal(changes, 0);
+});
+
+test("two touch pointers zoom and pan around their moving midpoint", () => {
+  let changes = 0;
+  const canvas = {
+    allow_dragcanvas: true,
+    ds: {
+      scale: 1,
+      offset: [0, 0],
+      changeScale(scale, center) {
+        this.scale = scale;
+        assert.deepEqual(center, [60, 50]);
+      },
+    },
+    graph: { change() { changes += 1; } },
+  };
+  const pinch = new GraphPinchZoom(canvas, {
+    getBoundingClientRect: () => ({ left: 10, top: 20 }),
+  });
+
+  assert.equal(pinch.start({ pointerId: 1, pointerType: "touch", clientX: 50, clientY: 70 }), false);
+  assert.equal(pinch.start({ pointerId: 2, pointerType: "touch", clientX: 90, clientY: 70 }), true);
+  assert.equal(pinch.move({ pointerId: 2, pointerType: "touch", clientX: 130, clientY: 90 }), true);
+  assert.equal(canvas.ds.scale, Math.sqrt(6800) / 40);
+  assert.deepEqual(canvas.ds.offset.map((value) => Math.round(value * 1000) / 1000), [9.701, 4.851]);
+  assert.equal(changes, 1);
+  assert.equal(pinch.end({ pointerId: 2, pointerType: "touch", clientX: 130, clientY: 90 }), true);
+  assert.equal(pinch.end({ pointerId: 1, pointerType: "touch", clientX: 50, clientY: 70 }), true);
+});
+
+test("pinch zoom ignores mouse pointers and resets after cancellation", () => {
+  const canvas = {
+    allow_dragcanvas: true,
+    ds: { scale: 1, offset: [0, 0], changeScale() {} },
+    graph: { change() {} },
+  };
+  const pinch = new GraphPinchZoom(canvas, { getBoundingClientRect: () => ({ left: 0, top: 0 }) });
+
+  assert.equal(pinch.start({ pointerId: 1, pointerType: "mouse", clientX: 0, clientY: 0 }), false);
+  pinch.start({ pointerId: 2, pointerType: "touch", clientX: 0, clientY: 0 });
+  pinch.start({ pointerId: 3, pointerType: "touch", clientX: 20, clientY: 0 });
+  pinch.cancel();
+  assert.equal(pinch.move({ pointerId: 2, pointerType: "touch", clientX: 2, clientY: 0 }), false);
 });
 
 test("revealing the graph dirties and draws both canvas layers", () => {

@@ -43,6 +43,18 @@ test("desktop graph input uses standard wheel events without legacy duplicates",
   assert.match(app, /applyStandardWheelZoom\(canvas, el\.graphCanvas, event\)/);
 });
 
+test("graph input uses pointer events for touch dragging", () => {
+  const pointerSetup = app.indexOf('LiteGraph.pointerevents_method = "pointer"');
+  const canvasSetup = app.indexOf('new LGraphCanvas("#graph-canvas"');
+
+  assert.ok(pointerSetup >= 0);
+  assert.ok(pointerSetup < canvasSetup);
+  assert.match(app, /new GraphPinchZoom\(canvas, el\.graphCanvas\)/);
+  assert.match(app, /graphPinchZoom\.move\(event\)[\s\S]*?event\.stopImmediatePropagation\(\)/);
+  assert.match(app, /addEventListener\("pointercancel", \(event\) => \{/);
+  assert.match(app, /pointercancel[\s\S]*?cancelLiteGraphPointerInteraction\(canvas\)/);
+});
+
 test("returning to the graph tab waits for layout and forces a complete frame", () => {
   const setTab = app.slice(app.indexOf("function setTab"), app.indexOf("function moveTabFocus"));
   assert.match(setTab, /requestAnimationFrame\(\(\) => \{\s*window\.requestAnimationFrame/);

@@ -1277,6 +1277,7 @@ h1 {
   height: 100%;
   min-width: 0;
   min-height: 0;
+  touch-action: none;
   outline: none;
   background: var(--crust);
 }
