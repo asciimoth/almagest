@@ -39,6 +39,8 @@ test("web demo publication is a complete relative static tree", async () => {
   assert.equal(landing.querySelector("a[href='./docs/']") !== null, true);
   assert.equal(landing.querySelector("a[href='./demo/']") !== null, true);
   assert.equal(demo.querySelector("meta[name='almagest-site-base']")?.getAttribute("content"), "../");
+  assert.match(demo.querySelector("meta[name='viewport']")?.content ?? "", /viewport-fit=cover/);
+  assert.equal(demo.querySelectorAll("meta[name='almagest-site-base']").length, 1);
   assert.equal(demo.querySelector(".header-logo-link")?.getAttribute("href"), "../");
   assert.equal(docs.querySelector(".header-logo-link")?.getAttribute("href"), "../");
   assert.equal(demo.querySelector(".header-logo-link")?.href, "https://example.test/almagest/");

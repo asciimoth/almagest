@@ -235,6 +235,7 @@ import {
   writeLocaleCookie,
   type LocaleSnapshot,
 } from "./localization.js";
+import { setupMobileNavigation } from "./mobile_navigation.js";
 import { tabHash, tabNameFromHash } from "./tab_navigation.js";
 import { applyStandardWheelZoom, redrawRevealedGraph } from "./graph_canvas_compat.js";
 import { apiReconnectDelay } from "./api_reconnect.js";
@@ -6734,6 +6735,7 @@ function visibleCanvasCenterPosition(): [number, number] {
 }
 
 function wireUI(): void {
+  setupMobileNavigation(document, window.matchMedia("(max-width: 40rem), (max-width: 56.25rem) and (max-height: 32rem)"));
   for (const tab of el.tabs) {
     tab.addEventListener("click", () => setTab(tab.dataset.tab ?? "graph"));
     tab.addEventListener("keydown", moveTabFocus);

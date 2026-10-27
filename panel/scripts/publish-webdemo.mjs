@@ -175,7 +175,7 @@ await cp(new URL("panel/vendor/", repository), new URL("vendor/", target), { rec
 await writeFile(new URL("index.html", target), await minifiedHTML(new URL("webdemo/index.html", repository)));
 await mkdir(new URL("demo/", target), { recursive: true });
 await writeFile(new URL("demo/index.html", target), await minifiedHTML(new URL("panel/index.html", repository), [
-  ["<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">", "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"almagest-site-base\" content=\"../\">"],
+  ["</head>", "<meta name=\"almagest-site-base\" content=\"../\"></head>"],
   ["script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'"],
   ["class=\"header-logo-link\" href=\"./\"", "class=\"header-logo-link\" href=\"../\""],
   ["href=\"./vendor/", "href=\"../vendor/"],

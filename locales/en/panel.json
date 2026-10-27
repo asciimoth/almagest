@@ -175,6 +175,7 @@
   "logs.list.aria_label": "Merged logs",
   "logs.title": "Merged logs",
   "node.create.aria_label": "Create {class} node",
+  "navigation.sections": "Sections",
   "node.create.menu": "Add Node",
   "node.create.title": "Create node",
   "node.description.empty": "No long description is registered for this node class.",

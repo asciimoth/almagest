@@ -99,6 +99,8 @@ test("TLS forms and policy rows collapse to one column on mobile", () => {
 test("compact layouts preserve content space and expose mobile navigation", () => {
   assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) clamp\(17rem, 34vw, 22rem\);/);
   assert.match(css, /\.tab-list\s*\{[^}]*overflow-x:\s*auto;/s);
+  assert.match(css, /\.tabs \.tab-list button:not\(\[hidden\]\)\s*\{[^}]*display:\s*flex;/s);
+  assert.doesNotMatch(css, /\.tabs \.tab-list button\s*\{[^}]*display:\s*flex;/s);
   assert.match(css, /\.docs-tree\.open\s*\{[^}]*transform:\s*translateX\(0\);/s);
   assert.match(css, /\.docs-navigation-scrim\.open\s*\{/);
 });
