@@ -1,7 +1,6 @@
-Routes each [DNS](@docs/almagest/dns) request to one
-selected DNS service. Rules are evaluated from top to bottom against the first
-question in the DNS message. The first matching `BACKEND` or `DROP` action stops
-evaluation.
+Routes each [DNS](@docs/almagest/dns) request to one selected DNS service. Rules
+are evaluated from top to bottom against the first question in the DNS message.
+The first matching `BACKEND` or `DROP` action stops evaluation.
 
 Each rule segment ends with `BACKEND slot N` or `DROP`. `BACKEND` sends the
 request to the specified slot. `DROP` rejects the request with a `no upstream`

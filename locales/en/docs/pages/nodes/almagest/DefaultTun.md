@@ -1,8 +1,8 @@
 DefaultTun captures traffic from the host system and provides it through the
 [Tun](@port/right/Tun) port. Connect this port to the start of a
-[TUN](@docs/almagest/types) processing
-path, such as a tunnel, splitter, firewall, or spoofer. The node also installs
-the operating system routes and DNS settings that send traffic to this TUN.
+[TUN](@docs/almagest/types) processing path, such as a tunnel, splitter,
+firewall, or spoofer. The node also installs the operating system routes and DNS
+settings that send traffic to this TUN.
 
 Only one DefaultTun node can exist in a workspace. The node is available only
 when the active platform backend supports a system default TUN.

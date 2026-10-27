@@ -1,8 +1,7 @@
-Passes a [TUN](@docs/almagest/types)
-between one provider connected to [Tun](@port/right/Tun) and one consumer
-connected to [Tun](@port/left/Tun), but blocks all TUN configuration
-suggestions. Place it in a TUN path when the provider's interface settings must
-remain independent of the connected consumer.
+Passes a [TUN](@docs/almagest/types) between one provider connected to
+[Tun](@port/right/Tun) and one consumer connected to [Tun](@port/left/Tun), but
+blocks all TUN configuration suggestions. Place it in a TUN path when the
+provider's interface settings must remain independent of the connected consumer.
 
 The node blocks the complete configuration suggestion in either direction. This
 includes:

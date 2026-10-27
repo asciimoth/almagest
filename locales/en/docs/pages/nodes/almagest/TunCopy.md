@@ -1,8 +1,7 @@
 TunCopy makes a point-to-point packet path between two
-[TUN](@docs/almagest/types) endpoints.
-A packet read from [TunA](@port/left/TunA) is written once to
-[TunB](@port/left/TunB). A packet read from [TunB](@port/left/TunB) is written
-once to [TunA](@port/left/TunA).
+[TUN](@docs/almagest/types) endpoints. A packet read from
+[TunA](@port/left/TunA) is written once to [TunB](@port/left/TunB). A packet
+read from [TunB](@port/left/TunB) is written once to [TunA](@port/left/TunA).
 
 Use TunCopy to connect two TUN providers directly, such as two
 [VTun](@docs/node/almagest/VTun) nodes. It is not a packet-mirroring node and

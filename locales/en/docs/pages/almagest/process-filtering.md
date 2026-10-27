@@ -24,8 +24,8 @@ captured routes separate.
 
 Include and Exclude cannot be active together. Windows currently supports only
 non-strict executable-tree exclusions. Read the
-[DefaultTun](@docs/node/almagest/DefaultTun) page for the exact
-rules on each platform.
+[DefaultTun](@docs/node/almagest/DefaultTun) page for the exact rules on each
+platform.
 
 ## Filtering after capture
 

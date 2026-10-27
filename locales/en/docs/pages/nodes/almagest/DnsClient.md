@@ -1,9 +1,8 @@
-Sends [DNS](@docs/almagest/dns) requests to upstream servers
-through an attached Network. Connect the transport network to
-[Network](@port/right/Network) and connect DNS consumers to
-[DNS](@port/left/DNS). The [DNS](@port/left/DNS) output becomes available when
-the [Network](@port/right/Network) is ready and at least one valid server is
-configured.
+Sends [DNS](@docs/almagest/dns) requests to upstream servers through an attached
+Network. Connect the transport network to [Network](@port/right/Network) and
+connect DNS consumers to [DNS](@port/left/DNS). The [DNS](@port/left/DNS) output
+becomes available when the [Network](@port/right/Network) is ready and at least
+one valid server is configured.
 
 ## DNS servers
 

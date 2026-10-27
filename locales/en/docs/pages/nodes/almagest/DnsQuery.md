@@ -1,6 +1,6 @@
-Sends a test query to an attached [DNS](@docs/almagest/dns)
-provider. Use this node to check a DNS chain and inspect the complete response.
-Connect the resolver to [DNS](@port/right/DNS).
+Sends a test query to an attached [DNS](@docs/almagest/dns) provider. Use this
+node to check a DNS chain and inspect the complete response. Connect the
+resolver to [DNS](@port/right/DNS).
 
 ## Request
 

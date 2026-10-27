@@ -1,9 +1,9 @@
-TlsMitm intercepts selected client-first
-[TLS](@docs/almagest/tls) connections. It presents a locally
-generated certificate to the client, decrypts the connection, and creates a
-separate TLS connection to the original server through the connected
-[Network](@port/right/Network). Place it between a [Network](@port/left/Network)
-consumer and its outbound [Network](@port/right/Network) path.
+TlsMitm intercepts selected client-first [TLS](@docs/almagest/tls) connections.
+It presents a locally generated certificate to the client, decrypts the
+connection, and creates a separate TLS connection to the original server through
+the connected [Network](@port/right/Network). Place it between a
+[Network](@port/left/Network) consumer and its outbound
+[Network](@port/right/Network) path.
 
 The client must trust Almagest's local TLS CA. TlsMitm supplies its
 [Network](@port/left/Network) only when the outbound

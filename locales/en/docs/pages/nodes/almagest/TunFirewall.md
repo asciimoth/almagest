@@ -1,5 +1,4 @@
-Filters IP packets between one
-[TUN](@docs/almagest/types) provider on
+Filters IP packets between one [TUN](@docs/almagest/types) provider on
 [Tun](@port/right/Tun) and one TUN consumer on [Tun](@port/left/Tun).
 
 The default policy is stateful and has these actions:

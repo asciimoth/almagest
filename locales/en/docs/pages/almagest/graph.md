@@ -99,8 +99,8 @@ operations through the normal host network:
 ```
 
 This preview explains topology only. Read the
-[DefaultTun](@docs/node/almagest/DefaultTun) page and test a narrow
-route before you apply this graph.
+[DefaultTun](@docs/node/almagest/DefaultTun) page and test a narrow route before
+you apply this graph.
 
 ## Saved graph format
 

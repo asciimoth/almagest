@@ -1,6 +1,5 @@
-TunJoiner combines multiple
-[TUN](@docs/almagest/types) paths into
-one [Tun](@port/right/Tun) connection. Connect one fallback path to
+TunJoiner combines multiple [TUN](@docs/almagest/types) paths into one
+[Tun](@port/right/Tun) connection. Connect one fallback path to
 [Default](@port/left/Default). Connect any number of additional paths to the
 shared [Secondary](@port/left/Secondary) port.
 
@@ -80,8 +79,8 @@ paths.
 
 ## Graph example
 
-This graph combines packets from two independent IP stacks. The joined path
-uses one Spoofer and one outbound Network. TunJoiner sends return packets to the
+This graph combines packets from two independent IP stacks. The joined path uses
+one Spoofer and one outbound Network. TunJoiner sends return packets to the
 stack that owns the applicable flow.
 
 ```graph

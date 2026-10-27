@@ -1,7 +1,6 @@
-Serves configured [DNS](@docs/almagest/dns) records and
-optionally sends misses to one [Fallback](@port/right/Fallback) DNS service. The
-[DNS](@port/left/DNS) output is available even when no records or fallback are
-configured.
+Serves configured [DNS](@docs/almagest/dns) records and optionally sends misses
+to one [Fallback](@port/right/Fallback) DNS service. The [DNS](@port/left/DNS)
+output is available even when no records or fallback are configured.
 
 Write one record on each line in this form:
 

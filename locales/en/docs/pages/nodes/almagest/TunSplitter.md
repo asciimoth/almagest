@@ -1,6 +1,5 @@
-TunSplitter sends packets from one
-[TUN](@docs/almagest/types) connection
-to numbered output slots. Use this node when you must select each path with
+TunSplitter sends packets from one [TUN](@docs/almagest/types) connection to
+numbered output slots. Use this node when you must select each path with
 explicit packet rules. Use
 [AutoTunSplitter](@docs/node/almagest/AutoTunSplitter) instead when the output
 paths advertise the routes that they can reach.

@@ -130,8 +130,8 @@ stops. The node does not copy the WireGuard private key into this data.
 ## Graph example
 
 TailscaleCtrl uses one Network for control, discovery, and DERP traffic. The
-WireGuard node uses a different Network for direct peer UDP. The controller
-also supplies MagicDNS through its DNS port.
+WireGuard node uses a different Network for direct peer UDP. The controller also
+supplies MagicDNS through its DNS port.
 
 ```graph
 {

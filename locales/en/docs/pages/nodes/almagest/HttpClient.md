@@ -26,10 +26,10 @@ start the request. Only one request can run at a time. Each request has a fixed
 
 ## HTTPS
 
-For an HTTPS URL, select the [TLS](@docs/almagest/tls)
-configuration that contains the required trust settings and client certificate
-settings. Certificate verification uses the hostname in the URL unless the
-selected configuration specifies a different server name.
+For an HTTPS URL, select the [TLS](@docs/almagest/tls) configuration that
+contains the required trust settings and client certificate settings.
+Certificate verification uses the hostname in the URL unless the selected
+configuration specifies a different server name.
 
 An invalid TLS configuration stops an HTTPS request. It does not affect an HTTP
 request because HTTP does not use TLS.

@@ -1,7 +1,7 @@
-TlsWrapper adds [TLS](@docs/almagest/tls) to both client and
-server TCP operations on a Network. Place it between a
-[Network](@port/left/Network) consumer and the [Network](@port/right/Network)
-that supplies the actual connections.
+TlsWrapper adds [TLS](@docs/almagest/tls) to both client and server TCP
+operations on a Network. Place it between a [Network](@port/left/Network)
+consumer and the [Network](@port/right/Network) that supplies the actual
+connections.
 
 - For a TCP dial, TlsWrapper connects to the requested destination and completes
   a TLS client handshake. The consumer uses a normal plaintext stream, while the

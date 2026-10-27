@@ -62,11 +62,10 @@ both paths.
 ## Network DNS and graph DNS
 
 A Network can have its own lookup behavior. For example,
-[OutNetwork](@docs/node/almagest/OutNetwork) uses the
-service's outbound resolver, while a
-[TorDriver](@docs/node/almagest/TorDriver) Network resolves through Tor. A DNS
-link is an explicit resolver service that can be routed and cached
-independently.
+[OutNetwork](@docs/node/almagest/OutNetwork) uses the service's outbound
+resolver, while a [TorDriver](@docs/node/almagest/TorDriver) Network resolves
+through Tor. A DNS link is an explicit resolver service that can be routed and
+cached independently.
 
 [DnsInject](@docs/node/almagest/DnsInject) gives a Network an explicit DNS
 service. Use it when clients on that Network must use a graph resolver instead

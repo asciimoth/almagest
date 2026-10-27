@@ -1,9 +1,7 @@
-Creates a regular
-[TUN](@docs/almagest/types) interface
-on the daemon host and supplies it through [Tun](@port/right/Tun) to one TUN
-consumer. Use it when a node such as
-[WireGuard](@docs/node/almagest/WireGuard) must read and write IP packets
-through a host interface.
+Creates a regular [TUN](@docs/almagest/types) interface on the daemon host and
+supplies it through [Tun](@port/right/Tun) to one TUN consumer. Use it when a
+node such as [WireGuard](@docs/node/almagest/WireGuard) must read and write IP
+packets through a host interface.
 
 This node does not automatically make the interface the system default route.
 Add only the routes that must use the interface. Use

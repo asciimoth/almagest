@@ -1,5 +1,5 @@
-Provides the daemon's outbound [DNS](@docs/almagest/dns)
-service as a [DNS](@port/left/DNS) output. Use OutDns as the normal upstream for
+Provides the daemon's outbound [DNS](@docs/almagest/dns) service as a
+[DNS](@port/left/DNS) output. Use OutDns as the normal upstream for
 [DnsCache](@docs/node/almagest/DnsCache),
 [DnsRouter](@docs/node/almagest/DnsRouter),
 [DnsFallback](@docs/node/almagest/DnsFallback), or

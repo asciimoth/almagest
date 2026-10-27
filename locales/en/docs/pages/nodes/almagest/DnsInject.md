@@ -1,8 +1,7 @@
-DnsInject adds a selected [DNS](@docs/almagest/dns) resolver
-to an existing Network. Connect the connection path to the
-[Network](@port/right/Network) input, connect a resolver to the
-[DNS](@port/right/DNS) input, and connect network consumers to the
-[Network](@port/left/Network) output.
+DnsInject adds a selected [DNS](@docs/almagest/dns) resolver to an existing
+Network. Connect the connection path to the [Network](@port/right/Network)
+input, connect a resolver to the [DNS](@port/right/DNS) input, and connect
+network consumers to the [Network](@port/left/Network) output.
 
 The resulting [Network](@port/left/Network) uses the connected
 [DNS](@port/right/DNS) resolver instead of the resolver from the original

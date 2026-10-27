@@ -185,8 +185,7 @@ state.
 This graph holds the latest input string at Gateway. In a live graph built with
 this pattern, select **Trigger** on **Release value** to let the current string
 pass to [StringUpper](@docs/node/pasta/StringUpper). A later input change stays
-at Gateway until the next
-trigger.
+at Gateway until the next trigger.
 
 ```graph
 {

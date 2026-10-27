@@ -146,8 +146,8 @@ inspected traffic to the cache.
 ## Graph example
 
 This graph waits for the first bytes of each intercepted TCP connection. The
-Sniffer rules can send recognized traffic to the isolated service and send
-other operations to the host network.
+Sniffer rules can send recognized traffic to the isolated service and send other
+operations to the host network.
 
 ```graph
 {
