@@ -9,13 +9,65 @@
                Guid="909C9053-EEA8-5E1A-9E81-98D5790F7F16" Subdirectory="en\docs">
       <File Id="File_1f74847e8f4da39d79841d75" Source="$(var.SourceDir)\locales\en\docs\index.json" KeyPath="yes" />
     </Component>
-    <Component Id="Locales_1d0de412f9b7a3c173519710" Directory="LOCALESFOLDER"
-               Guid="ACB95FD2-27BC-5064-876E-42758BDD1CD1" Subdirectory="en\docs\pages\guides">
-      <File Id="File_1d0de412f9b7a3c173519710" Source="$(var.SourceDir)\locales\en\docs\pages\guides\welcome.md" KeyPath="yes" />
+    <Component Id="Locales_5fc966e52f22f1c21a44a578" Directory="LOCALESFOLDER"
+               Guid="A8AB90C2-50FC-56D2-A3C3-76BFB8DEF094" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_5fc966e52f22f1c21a44a578" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\administration.md" KeyPath="yes" />
     </Component>
-    <Component Id="Locales_6fdf6c36680b8c02969ad7ed" Directory="LOCALESFOLDER"
-               Guid="61D42ADF-97CC-5962-BC99-F70EF1AD83C1" Subdirectory="en\docs\pages\guides">
-      <File Id="File_6fdf6c36680b8c02969ad7ed" Source="$(var.SourceDir)\locales\en\docs\pages\guides\workspaces.md" KeyPath="yes" />
+    <Component Id="Locales_e14adc4c0e19bd5e66ee406a" Directory="LOCALESFOLDER"
+               Guid="77E0D7A5-12FA-5507-A2EE-EB280EF536E9" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_e14adc4c0e19bd5e66ee406a" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\architecture.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_9387a721c63801630a0f0933" Directory="LOCALESFOLDER"
+               Guid="D01D9634-B61D-558C-BC72-A573A3B4F9EA" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_9387a721c63801630a0f0933" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\daemon-cli.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_f41e1fdf789503792af53c64" Directory="LOCALESFOLDER"
+               Guid="700A5D70-3681-51B0-BC90-B9989852BEA3" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_f41e1fdf789503792af53c64" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\data.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_04a8fa44870d3028079e10a9" Directory="LOCALESFOLDER"
+               Guid="6C5D74A8-BB78-5042-B11E-830E589431E1" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_04a8fa44870d3028079e10a9" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\dns.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_db12ded92f1b188b45695ab2" Directory="LOCALESFOLDER"
+               Guid="3CDB3530-8DFA-5CE6-9229-1635F749E636" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_db12ded92f1b188b45695ab2" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\graph.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_9cf02574123967617b7fba9e" Directory="LOCALESFOLDER"
+               Guid="E3B0DC0C-AB3D-5E66-8B79-88D425E0D673" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_9cf02574123967617b7fba9e" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\killswitch.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_09320d4bb7629a1b4321a00e" Directory="LOCALESFOLDER"
+               Guid="E306FD26-659B-5D1F-A436-70DF6AB430FD" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_09320d4bb7629a1b4321a00e" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\logic.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_b0f290c49608e23565ab4fe0" Directory="LOCALESFOLDER"
+               Guid="03FB26FC-2D4F-5C77-A938-686DA75FA158" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_b0f290c49608e23565ab4fe0" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\logs.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_cf468cffe719ce2ff83ba7b3" Directory="LOCALESFOLDER"
+               Guid="44638CAC-7391-5DB5-AF50-084549B845FC" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_cf468cffe719ce2ff83ba7b3" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\process-filtering.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_7e6d0230bfed0e7887d9bb0c" Directory="LOCALESFOLDER"
+               Guid="4267D462-2A8E-5772-8D05-0F889245308B" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_7e6d0230bfed0e7887d9bb0c" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\security.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_2b4f4f63949786606f0e72c5" Directory="LOCALESFOLDER"
+               Guid="8ACBD511-715A-5432-AE8E-99F91AAA252B" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_2b4f4f63949786606f0e72c5" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\snapshots.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_8b3ae402c3ac662961d7f10b" Directory="LOCALESFOLDER"
+               Guid="3C3F91B5-68BA-57E1-8E32-F5333DC0D29A" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_8b3ae402c3ac662961d7f10b" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\start.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_45216ef2f0f8688bbc0a0e66" Directory="LOCALESFOLDER"
+               Guid="CE442396-ACB9-5E78-9384-A7168ED2B30C" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_45216ef2f0f8688bbc0a0e66" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\tls.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_383961220ff3debc26c8380b" Directory="LOCALESFOLDER"
+               Guid="663D17D0-F0F8-5559-8DC6-7572362A88C9" Subdirectory="en\docs\pages\almagest">
+      <File Id="File_383961220ff3debc26c8380b" Source="$(var.SourceDir)\locales\en\docs\pages\almagest\types.md" KeyPath="yes" />
     </Component>
     <Component Id="Locales_5ebe269d33e0f3bf0c99f621" Directory="LOCALESFOLDER"
                Guid="9E9198A6-9C34-51D6-B35A-F5FFD27C88F9" Subdirectory="en\docs\pages\nodes\almagest">
@@ -843,8 +895,21 @@
     <ComponentGroup Id="LocalesComponents">
       <ComponentRef Id="Locales_6ac1b5ad9acbdc788e0fc020" />
       <ComponentRef Id="Locales_1f74847e8f4da39d79841d75" />
-      <ComponentRef Id="Locales_1d0de412f9b7a3c173519710" />
-      <ComponentRef Id="Locales_6fdf6c36680b8c02969ad7ed" />
+      <ComponentRef Id="Locales_5fc966e52f22f1c21a44a578" />
+      <ComponentRef Id="Locales_e14adc4c0e19bd5e66ee406a" />
+      <ComponentRef Id="Locales_9387a721c63801630a0f0933" />
+      <ComponentRef Id="Locales_f41e1fdf789503792af53c64" />
+      <ComponentRef Id="Locales_04a8fa44870d3028079e10a9" />
+      <ComponentRef Id="Locales_db12ded92f1b188b45695ab2" />
+      <ComponentRef Id="Locales_9cf02574123967617b7fba9e" />
+      <ComponentRef Id="Locales_09320d4bb7629a1b4321a00e" />
+      <ComponentRef Id="Locales_b0f290c49608e23565ab4fe0" />
+      <ComponentRef Id="Locales_cf468cffe719ce2ff83ba7b3" />
+      <ComponentRef Id="Locales_7e6d0230bfed0e7887d9bb0c" />
+      <ComponentRef Id="Locales_2b4f4f63949786606f0e72c5" />
+      <ComponentRef Id="Locales_8b3ae402c3ac662961d7f10b" />
+      <ComponentRef Id="Locales_45216ef2f0f8688bbc0a0e66" />
+      <ComponentRef Id="Locales_383961220ff3debc26c8380b" />
       <ComponentRef Id="Locales_5ebe269d33e0f3bf0c99f621" />
       <ComponentRef Id="Locales_cce065804b9ec04264da6135" />
       <ComponentRef Id="Locales_c162813aa6e2d20f93e8674b" />
