@@ -108,11 +108,17 @@ printf '%q ' "${qemu[@]}" >"$work/qemu-command.log"
 "${qemu[@]}" >>"$work/qemu.log" 2>&1 &
 pid=$!
 deadline=$((SECONDS + 20))
-while [[ ! -S $qmp && $SECONDS -lt $deadline ]]; do
+qmp_ready=0
+while ((SECONDS < deadline)); do
     kill -0 "$pid" || die 'QEMU exited before QMP readiness'
+    if [[ -S $qmp ]] && "$script_dir/tools/qga.py" --socket "$qmp" --timeout 3 \
+        qmp query-status >/dev/null 2>&1; then
+        qmp_ready=1
+        break
+    fi
     sleep .1
 done
-[[ -S $qmp ]] || die 'QMP readiness timeout'
+((qmp_ready)) || die 'QMP readiness timeout'
 # Firmware and optical-media timing varies across cold boots. Send the Return
 # key until setup starts writing to the disk, then stop immediately. This avoids
 # both a fixed early window and stray input after Windows Setup has started.
