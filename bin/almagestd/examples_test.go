@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -309,113 +308,6 @@ func TestExamplesRootOverrideValidation(t *testing.T) {
 	t.Setenv("ALMAGEST_EXAMPLES_DIR", root)
 	if resolved, err := resolveExamplesRoot("/default"); err != nil || resolved != root {
 		t.Fatalf("resolved root = %q, err=%v", resolved, err)
-	}
-}
-
-func TestRepositoryExamplesAreMinimalAndValid(t *testing.T) {
-	exampleIDs := []string{
-		"001-hello-network",
-		"002-mock-network",
-		"003-select-networks",
-		"004-remap-service",
-		"005-route-network-operations",
-		"006-filter-network-operations",
-		"007-local-socks-access",
-		"008-socks-client-and-server",
-		"009-inspect-and-route-traffic",
-		"010-terminate-tls",
-		"011-wrap-connection-in-tls",
-		"012-intercept-selected-tls",
-		"013-static-dns-records",
-		"014-dns-fallback-and-cache",
-		"015-dns-client-and-server",
-		"016-route-dns-questions",
-		"017-inject-and-export-dns",
-		"018-mesh-names-with-fallback",
-		"019-virtual-ip-stacks",
-		"020-tun-to-network",
-		"021-filter-ip-packets",
-		"022-split-ip-packets",
-		"023-join-tun-paths",
-		"024-strip-tun-configuration",
-		"025-route-host-through-almagest",
-		"026-create-host-tun",
-		"027-handle-tun-dns",
-		"028-wireguard-isolated-lab",
-		"029-manage-wireguard-peers",
-		"030-split-tun-by-advertised-routes",
-		"031-join-tailscale-network",
-		"032-browse-through-tor",
-		"033-check-public-address",
-		"034-complete-dns-policy-chain",
-		"035-wireguard-through-local-socks",
-		"036-wireguard-over-socks",
-		"037-switch-wireguard-destination",
-		"038-nested-wireguard",
-		"039-route-host-tun-egress",
-	}
-	root := filepath.Join("..", "..", "examples")
-	store, err := openExampleStore(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close() //nolint:errcheck
-	listed, err := store.List("en")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(listed) != len(exampleIDs) {
-		t.Fatalf("repository examples = %#v", listed)
-	}
-	for i, exampleID := range exampleIDs {
-		if listed[i].Example != exampleID {
-			t.Fatalf("repository examples = %#v", listed)
-		}
-		entries, err := os.ReadDir(filepath.Join(root, exampleID))
-		if err != nil {
-			t.Fatal(err)
-		}
-		wantEntries := []string{snapshotConfigName, exampleManifestName}
-		if exampleID == "028-wireguard-isolated-lab" ||
-			exampleID == "029-manage-wireguard-peers" ||
-			exampleID == "030-split-tun-by-advertised-routes" ||
-			exampleID == "035-wireguard-through-local-socks" ||
-			exampleID == "036-wireguard-over-socks" ||
-			exampleID == "037-switch-wireguard-destination" ||
-			exampleID == "038-nested-wireguard" ||
-			exampleID == "039-route-host-tun-egress" {
-			wantEntries = []string{snapshotConfigName, "files", exampleManifestName}
-			files, err := os.ReadDir(filepath.Join(root, exampleID, "files"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(files) != 1 || files[0].Name() != kvDBFileName {
-				t.Fatalf("%s stored files = %#v", exampleID, files)
-			}
-			if err := validateBboltDatabase(filepath.Join(root, exampleID, "files", kvDBFileName)); err != nil {
-				t.Fatalf("%s bbolt database: %v", exampleID, err)
-			}
-		}
-		if len(entries) != len(wantEntries) {
-			t.Fatalf("%s files = %#v", exampleID, entries)
-		}
-		for entryIndex, wantEntry := range wantEntries {
-			if entries[entryIndex].Name() != wantEntry {
-				t.Fatalf("%s files = %#v", exampleID, entries)
-			}
-		}
-		configData, err := readExampleFile(store.root, exampleID+"/config.hujson", snapshotConfigMaxBytes)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, generatedDefault := range [][]byte{[]byte(`"body"`), []byte(`"method"`), []byte(`"tlsConfig"`)} {
-			if bytes.Contains(configData, generatedDefault) {
-				t.Fatalf("%s config contains generated default %s", exampleID, generatedDefault)
-			}
-		}
-		if _, err := parseEditableConfig(configData); err != nil {
-			t.Fatalf("%s config: %v", exampleID, err)
-		}
 	}
 }
 

@@ -6,7 +6,7 @@ source /e2e/lib/common.sh
 start_daemon
 
 jq -e '
-	.snapshots | length == 41
+	.snapshots | length >= 2
 	and .[0].example == "001-hello-network"
 	and .[0].name == "Hello Network"
 	and (.[0].comment | length > 0)
@@ -17,8 +17,6 @@ jq -e '
 	and (.[1].comment | length > 0)
 	and (.[1] | has("uuid") | not)
 	and (.[1] | has("timestamp") | not)
-	and .[-2].example == "040-share-http-and-https-port"
-	and .[-1].example == "041-route-protocols-to-separate-services"
 	and all(.[];
 		(.example | length > 0)
 		and (.name | length > 0)

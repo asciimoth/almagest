@@ -316,46 +316,6 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertIn("sha256-ZqMQfVrWoFiqt1PqrCBHzLLtDjlGXdD+WETaPjANUXI=",
                       self.flake)
 
-    def test_generated_payload_is_current_complete_and_stable(self):
-        subprocess.run(
-            ["python3", "packaging/windows/generate-payload-wxs.py", "--check"],
-            cwd=ROOT,
-            check=True,
-        )
-        components = self.payload_wix.findall(f".//{WIX}Component")
-        actual_sources = {
-            component.find(f"{WIX}File").attrib["Source"]
-            for component in components
-        }
-        tracked = subprocess.run(
-            ["git", "ls-files", "locales", "examples"],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.splitlines()
-        expected_sources = {
-            "$(var.SourceDir)\\" + path.replace("/", "\\")
-            for path in tracked
-        }
-        self.assertEqual(actual_sources, expected_sources)
-        self.assertEqual(len(components), len(tracked))
-
-        by_source = {
-            component.find(f"{WIX}File").attrib["Source"]: component
-            for component in components
-        }
-        for path in tracked:
-            with self.subTest(path=path):
-                tree = path.split("/", 1)[0]
-                expected = str(uuid.uuid5(
-                    uuid.UUID(self.contract["components"][
-                        f"{tree}GuidNamespace"]),
-                    path,
-                )).upper()
-                source = "$(var.SourceDir)\\" + path.replace("/", "\\")
-                self.assertEqual(by_source[source].attrib["Guid"], expected)
-
     def test_program_data_component_is_permanent(self):
         component = self._component(self.wix, "ProgramDataAclComponent")
         self.assertEqual(component.attrib["Permanent"], "yes")

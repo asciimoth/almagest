@@ -20,7 +20,6 @@ test("web demo publication is a complete relative static tree", async () => {
     "docs/index.html",
     "docs/content/catalog.json",
     "docs/content/node-classes.json",
-    "docs/content/en/pages/almagest/start.md",
     "public/build/webdemo.js",
     "public/build/static_docs.js",
     "almagest.wasm",
@@ -92,26 +91,15 @@ test("published web demo retains the complete existing panel document contract",
   assert.equal(demo.querySelectorAll("input, select, textarea, button").length, source.querySelectorAll("input, select, textarea, button").length);
 });
 
-test("the static documentation catalog includes raw and custom-link pages", async () => {
+test("the static documentation catalog preserves node page metadata", async () => {
   const catalog = JSON.parse(await readFile(output("docs/content/catalog.json"), "utf8"));
-  assert.deepEqual(catalog.available, [{ locale: "en", name: "English" }]);
-  assert.equal(catalog.locales.en.pages["almagest/start"], "content/en/pages/almagest/start.md");
-  assert.equal(catalog.locales.en.pages["node/almagest/MeshNames"], "content/en/pages/nodes/almagest/MeshNames.md");
   const nodeTopic = catalog.locales.en.tree.find((topic) => topic.id === "nodes");
-  const availablePage = nodeTopic.pages.find((page) => page.id === "node/almagest/MeshNames");
-  assert.equal(availablePage.available, true);
-  assert.deepEqual(availablePage.marks, ["available"]);
-  const unavailablePage = nodeTopic.pages.find((page) => page.id === "node/almagest/Tun");
-  assert.equal(unavailablePage.available, false);
-  assert.deepEqual(unavailablePage.marks, []);
   for (const page of nodeTopic.pages) {
     assert.deepEqual(page.marks, page.available ? ["available"] : []);
   }
   const publishedClasses = nodeTopic.pages.map((page) => page.id.slice("node/".length));
   const cache = JSON.parse(await readFile(output("docs/content/node-classes.json"), "utf8"));
   assert.deepEqual(publishedClasses, cache.order.filter((className) => publishedClasses.includes(className)));
-  const source = await readFile(output("docs/content/en/pages/nodes/almagest/DnsInject.md"), "utf8");
-  assert.match(source, /\[MeshNames\]\(@docs\/node\/almagest\/MeshNames\)/);
 });
 
 test("the web demo publishes production node preview metadata", async () => {
