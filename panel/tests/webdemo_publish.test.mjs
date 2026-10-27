@@ -19,7 +19,7 @@ test("web demo publication is a complete relative static tree", async () => {
     "docs/index.html",
     "docs/content/catalog.json",
     "docs/content/node-classes.json",
-    "docs/content/en/pages/guides/welcome.md",
+    "docs/content/en/pages/almagest/start.md",
     "public/build/webdemo.js",
     "public/build/static_docs.js",
     "almagest.wasm",
@@ -92,7 +92,7 @@ test("published web demo retains the complete existing panel document contract",
 test("the static documentation catalog includes raw and custom-link pages", async () => {
   const catalog = JSON.parse(await readFile(output("docs/content/catalog.json"), "utf8"));
   assert.deepEqual(catalog.available, [{ locale: "en", name: "English" }]);
-  assert.equal(catalog.locales.en.pages["guide/welcome"], "content/en/pages/guides/welcome.md");
+  assert.equal(catalog.locales.en.pages["almagest/start"], "content/en/pages/almagest/start.md");
   assert.equal(catalog.locales.en.pages["node/almagest/MeshNames"], "content/en/pages/nodes/almagest/MeshNames.md");
   const nodeTopic = catalog.locales.en.tree.find((topic) => topic.id === "nodes");
   const availablePage = nodeTopic.pages.find((page) => page.id === "node/almagest/MeshNames");

@@ -1,28 +1,122 @@
 {
   "topics": [
     {
-      "id": "guides",
-      "name": "Guides",
+      "id": "almagest",
+      "name": "Almagest",
       "order": 1,
       "folded": false,
       "pages": [
         {
-          "id": "guide/welcome",
-          "name": "Welcome",
-          "file": "guides/welcome.md",
+          "id": "almagest/start",
+          "name": "Start here",
+          "file": "almagest/start.md",
           "order": 1,
           "default": true
+        },
+        {
+          "id": "almagest/architecture",
+          "name": "Architecture",
+          "file": "almagest/architecture.md",
+          "order": 2
+        },
+        {
+          "id": "almagest/snapshots",
+          "name": "Snapshots and examples",
+          "file": "almagest/snapshots.md",
+          "order": 3
         }
       ],
       "topics": [
         {
-          "id": "guides/concepts",
-          "name": "Concepts",
+          "id": "almagest/graphs",
+          "name": "Graphs and data",
+          "order": 10,
           "pages": [
             {
-              "id": "guide/workspaces",
-              "name": "Workspaces",
-              "file": "guides/workspaces.md"
+              "id": "almagest/graph",
+              "name": "Nodes, ports, and links",
+              "file": "almagest/graph.md",
+              "order": 1
+            },
+            {
+              "id": "almagest/types",
+              "name": "Network, TUN, DNS, and Object",
+              "file": "almagest/types.md",
+              "order": 2
+            },
+            {
+              "id": "almagest/logic",
+              "name": "Values and logic",
+              "file": "almagest/logic.md",
+              "order": 3
+            },
+            {
+              "id": "almagest/data",
+              "name": "Configuration, KV, and secrets",
+              "file": "almagest/data.md",
+              "order": 4
+            }
+          ]
+        },
+        {
+          "id": "almagest/networking",
+          "name": "Networking",
+          "order": 20,
+          "pages": [
+            {
+              "id": "almagest/dns",
+              "name": "DNS",
+              "file": "almagest/dns.md",
+              "order": 1
+            },
+            {
+              "id": "almagest/tls",
+              "name": "TLS",
+              "file": "almagest/tls.md",
+              "order": 2
+            },
+            {
+              "id": "almagest/process-filtering",
+              "name": "Application and process filtering",
+              "file": "almagest/process-filtering.md",
+              "order": 3
+            },
+            {
+              "id": "almagest/killswitch",
+              "name": "Kill switch",
+              "file": "almagest/killswitch.md",
+              "order": 4
+            }
+          ]
+        },
+        {
+          "id": "almagest/operations",
+          "name": "Operation and administration",
+          "order": 30,
+          "pages": [
+            {
+              "id": "almagest/daemon-cli",
+              "name": "Service and command line",
+              "file": "almagest/daemon-cli.md",
+              "order": 1
+            },
+            {
+              "id": "almagest/logs",
+              "name": "Logs and diagnostics",
+              "file": "almagest/logs.md",
+              "order": 2
+            },
+            {
+              "id": "almagest/security",
+              "name": "Isolation and sandboxing",
+              "file": "almagest/security.md",
+              "order": 3
+            },
+            {
+              "id": "almagest/administration",
+              "name": "System administration",
+              "file": "almagest/administration.md",
+              "order": 4
             }
           ]
         }
