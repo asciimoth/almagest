@@ -66,3 +66,44 @@ Queued runs start in arrival order after the preceding run sends
 Adding or removing any connection on ForLoop cancels the active run and all
 queued runs. This cancellation does not send [Completed](@port/right/Completed).
 After the connections are stable, send a new trigger to start again.
+
+## Graph example
+
+This loop sends one body trigger for each index from 0 through 2. The direct
+Continue path ends each iteration. When the range is complete, ForLoop triggers
+the popup. Replace the direct body path with the work that must run on each
+iteration.
+
+```graph
+{
+  "Start loop": {
+    "Class": "pasta/Trigger",
+    "Pos": "{\"x\":31,\"y\":80}",
+    "Links": ["Trigger -> [Count indexes] Trigger"],
+  },
+  "End index": {
+    "Class": "pasta/IntConstant",
+    "Pos": "{\"x\":31,\"y\":187}",
+    "Label": "3",
+    "Links": ["output -> [Count indexes] End index"],
+    "value": 3,
+  },
+  "Count indexes": {
+    "Class": "pasta/ForLoop",
+    "Pos": "{\"x\":261,\"y\":120}",
+    "Links": [
+      "Loop -> [End iteration] Loop",
+      "Body -> [End iteration] Continue",
+      "Completed -> [Done popup] Trigger",
+    ],
+  },
+  "End iteration": {
+    "Class": "pasta/Iter",
+    "Pos": "{\"x\":509,\"y\":80}",
+  },
+  "Done popup": {
+    "Class": "pasta/PopUp",
+    "Pos": "{\"x\":509,\"y\":187}",
+  },
+}
+```

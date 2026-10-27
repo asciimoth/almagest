@@ -30,3 +30,42 @@ source address for each route.
 DNS suggestions are not sent through this node because different output slots
 can use different DNS services. Use DNS links and DNS nodes when the graph needs
 DNS routing, multiple resolvers, caching, or policy.
+
+## Graph example
+
+Use this topology when WireGuard advertises private routes. AutoTunSplitter
+sends those packets to WireGuard and sends all other packets to the flow
+converter through slot 1. Both branches send their configuration suggestions
+back through AutoTunSplitter to the client stack.
+
+```graph
+{
+  "Client IP stack": {
+    "Class": "almagest/VTun",
+    "Pos": "{\"x\":31,\"y\":120}",
+    "Links": ["Tun -> [Automatic packet router] Tun"],
+  },
+  "Automatic packet router": {
+    "Class": "almagest/AutoTunSplitter",
+    "Pos": "{\"x\":245,\"y\":120}",
+    "Links": [
+      "slot 1 -> [Default flow converter] Tun",
+      "slot 2 -> [Private tunnel] Tun",
+    ],
+  },
+  "Default flow converter": {
+    "Class": "almagest/Spoofer",
+    "Pos": "{\"x\":493,\"y\":53}",
+    "Links": ["Network -> [Outside network] Network"],
+  },
+  "Private tunnel": {
+    "Class": "almagest/WireGuard",
+    "Pos": "{\"x\":493,\"y\":187}",
+    "Links": ["Network -> [Outside network] Network"],
+  },
+  "Outside network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":731,\"y\":120}",
+  },
+}
+```

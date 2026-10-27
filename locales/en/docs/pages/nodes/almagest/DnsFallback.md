@@ -31,3 +31,40 @@ query.
 Changing **Attempt timeout (ms)** cancels active queries and supplies consumers
 with a replacement fallback service. New queries use the new timeout and keep
 the currently connected slots.
+
+## Graph example
+
+This resolver path tries the local records first. It sends an unanswered
+question to outbound DNS. DnsCache stores successful answers from either path.
+
+```graph
+{
+  "DNS consumer": {
+    "Class": "almagest/DnsQuery",
+    "Pos": "{\"x\":31,\"y\":120}",
+    "Links": ["DNS -> [DNS cache] DNS"],
+  },
+  "DNS cache": {
+    "Class": "almagest/DnsCache",
+    "Pos": "{\"x\":230,\"y\":120}",
+    "Links": ["DNS -> [Fallback resolver] DNS"],
+  },
+  "Fallback resolver": {
+    "Class": "almagest/DnsFallback",
+    "Pos": "{\"x\":430,\"y\":120}",
+    "Links": [
+      "slot 1 -> [Local records] DNS",
+      "slot 2 -> [Outbound DNS] DNS",
+    ],
+  },
+  "Local records": {
+    "Class": "almagest/StaticDns",
+    "Pos": "{\"x\":681,\"y\":53}",
+    "records": "service.internal A 192.0.2.10",
+  },
+  "Outbound DNS": {
+    "Class": "almagest/OutDns",
+    "Pos": "{\"x\":681,\"y\":187}",
+  },
+}
+```

@@ -31,3 +31,42 @@ when [Loop](@port/left/Loop) is disconnected or when the associated loop has no
 active iteration. Disconnecting or replacing the [Loop](@port/left/Loop)
 connection also clears the current iteration. Triggering Iter itself has no
 effect.
+
+## Graph example
+
+Iter has one association link from the loop and two possible results from the
+body path. SelectOut makes sure that one body trigger reaches Continue or Break.
+The `false` constant selects Break, so this example runs one iteration.
+
+```graph
+{
+  "Loop": {
+    "Class": "pasta/WhileLoop",
+    "Pos": "{\"x\":31,\"y\":80}",
+    "Links": [
+      "Loop -> [Iteration result] Loop",
+      "Body -> [Choose result] In",
+    ],
+  },
+  "Condition": {
+    "Class": "pasta/BoolConstant",
+    "Pos": "{\"x\":31,\"y\":187}",
+    "Label": "false",
+    "Links": ["output -> [Choose result] Selector"],
+    "value": false,
+  },
+  "Choose result": {
+    "Class": "pasta/SelectOut",
+    "Primary": "pasta/trigger",
+    "Pos": "{\"x\":261,\"y\":120}",
+    "Links": [
+      "Out 0 -> [Iteration result] Break",
+      "Out 1 -> [Iteration result] Continue",
+    ],
+  },
+  "Iteration result": {
+    "Class": "pasta/Iter",
+    "Pos": "{\"x\":493,\"y\":120}",
+  },
+}
+```

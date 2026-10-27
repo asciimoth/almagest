@@ -161,3 +161,45 @@ SOCKS5 UDP association is not sufficient because the proxy chooses the relay
 port. Use a transport that preserves a fixed UDP listen port, such as a SOCKS
 client URL with `?gost`, or use a topology in which the peer can learn the
 endpoint dynamically.
+
+## Graph example
+
+WireGuard has separate packet, UDP transport, and optional control paths. The
+VTun supplies client packets. The default Network carries menu peers. WGConfig
+adds a peer group that uses its own UDP Network.
+
+```graph
+{
+  "Client": {
+    "Class": "almagest/HttpClient",
+    "Pos": "{\"x\":31,\"y\":220}",
+    "Links": ["Network -> [Client IP stack] Network"],
+  },
+  "Client IP stack": {
+    "Class": "almagest/VTun",
+    "Pos": "{\"x\":245,\"y\":220}",
+    "Links": ["Tun -> [WireGuard tunnel] Tun"],
+  },
+  "Extra peers": {
+    "Class": "almagest/WGConfig",
+    "Pos": "{\"x\":245,\"y\":20}",
+    "Links": [
+      "WireGuard -> [WireGuard tunnel] WGCtrl",
+      "Network -> [Controller UDP network] Network",
+    ],
+  },
+  "WireGuard tunnel": {
+    "Class": "almagest/WireGuard",
+    "Pos": "{\"x\":525,\"y\":220}",
+    "Links": ["Network -> [Default UDP network] Network"],
+  },
+  "Controller UDP network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":525,\"y\":20}",
+  },
+  "Default UDP network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":755,\"y\":220}",
+  },
+}
+```

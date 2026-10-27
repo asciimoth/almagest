@@ -46,3 +46,48 @@ WhileLoop has no built-in condition, delay, or iteration limit. An unconditional
 reachable **Break** path, and avoid starting a run unless its
 [Body](@port/right/Body) path can always reach the associated
 [Iter](@docs/node/pasta/Iter) node.
+
+## Graph example
+
+SelectOut sends each body trigger to Continue or Break. In this safe example,
+the `false` constant selects Break and the loop runs once. Replace the constant
+with a condition that stays `true` while another iteration is required and
+becomes `false` to select Break.
+
+```graph
+{
+  "Start loop": {
+    "Class": "pasta/Trigger",
+    "Pos": "{\"x\":31,\"y\":53}",
+    "Links": ["Trigger -> [Repeat work] Trigger"],
+  },
+  "Stop condition": {
+    "Class": "pasta/BoolConstant",
+    "Pos": "{\"x\":31,\"y\":187}",
+    "Label": "false",
+    "Links": ["output -> [Select result] Selector"],
+    "value": false,
+  },
+  "Repeat work": {
+    "Class": "pasta/WhileLoop",
+    "Pos": "{\"x\":245,\"y\":80}",
+    "Links": [
+      "Loop -> [End iteration] Loop",
+      "Body -> [Select result] In",
+    ],
+  },
+  "Select result": {
+    "Class": "pasta/SelectOut",
+    "Primary": "pasta/trigger",
+    "Pos": "{\"x\":476,\"y\":120}",
+    "Links": [
+      "Out 0 -> [End iteration] Break",
+      "Out 1 -> [End iteration] Continue",
+    ],
+  },
+  "End iteration": {
+    "Class": "pasta/Iter",
+    "Pos": "{\"x\":706,\"y\":120}",
+  },
+}
+```

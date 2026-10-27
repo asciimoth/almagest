@@ -151,3 +151,40 @@ shows listener addresses, restarts, and startup failures.
 Changing or replacing either [listen](@port/right/listen) or
 [proxy](@port/right/proxy) Network restarts the server and closes active client
 sessions. If a listener cannot start, the server waits briefly and tries again.
+
+## Graph example
+
+The listener Network carries connections between SocksClient and SocksServer.
+The proxy Network carries the operations that SocksServer makes for the client.
+These Networks can be different providers.
+
+```graph
+{
+  "Application": {
+    "Class": "almagest/HttpClient",
+    "Pos": "{\"x\":31,\"y\":53}",
+    "Links": ["Network -> [SOCKS client] Network"],
+  },
+  "SOCKS client": {
+    "Class": "almagest/SocksClient",
+    "Pos": "{\"x\":245,\"y\":53}",
+    "Links": ["out -> [SOCKS carrier] Network"],
+  },
+  "SOCKS carrier": {
+    "Class": "almagest/MockNetwork",
+    "Pos": "{\"x\":493,\"y\":53}",
+  },
+  "SOCKS server": {
+    "Class": "almagest/SocksServer",
+    "Pos": "{\"x\":245,\"y\":187}",
+    "Links": [
+      "listen -> [SOCKS carrier] Network",
+      "proxy -> [Outside network] Network",
+    ],
+  },
+  "Outside network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":493,\"y\":187}",
+  },
+}
+```

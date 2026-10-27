@@ -84,3 +84,57 @@ Windows Filtering Platform rules. The driver is a global, exclusive resource. An
 exclusion cannot start if the compatible driver is missing, another program owns
 it, or its state requires recovery. DefaultTun reports the failure in the node
 menu.
+
+## Graph example
+
+DefaultTun uses separate packet and DNS paths. In this graph, the packet path
+goes through a policy splitter. System DNS questions go to MeshNames and its
+fallback resolver. The DNS link does not follow a packet slot.
+
+```graph
+{
+  "Default TUN": {
+    "Class": "almagest/DefaultTun",
+    "Pos": "{\"x\":31,\"y\":120}",
+    "Links": [
+      "Tun -> [Packet policy] Tun",
+      "DNS -> [Mesh names] DNS",
+    ],
+  },
+  "Packet policy": {
+    "Class": "almagest/TunSplitter",
+    "Pos": "{\"x\":245,\"y\":80}",
+    "Links": [
+      "slot 1 -> [Tunnel] Tun",
+      "slot 2 -> [Flow converter] Tun",
+    ],
+    "rules": "SNET4 10.0.0.0/8\nSLOT 1\n\nTRUE\nSLOT 2",
+  },
+  "Tunnel": {
+    "Class": "almagest/WireGuard",
+    "Pos": "{\"x\":493,\"y\":27}",
+    "Links": ["Network -> [Outside network] Network"],
+  },
+  "Flow converter": {
+    "Class": "almagest/Spoofer",
+    "Pos": "{\"x\":493,\"y\":133}",
+    "Links": ["Network -> [Outside network] Network"],
+  },
+  "Mesh names": {
+    "Class": "almagest/MeshNames",
+    "Pos": "{\"x\":245,\"y\":213}",
+    "Links": [
+      "Network -> [Outside network] Network",
+      "Fallback DNS -> [Outbound DNS] DNS",
+    ],
+  },
+  "Outside network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":731,\"y\":80}",
+  },
+  "Outbound DNS": {
+    "Class": "almagest/OutDns",
+    "Pos": "{\"x\":493,\"y\":253}",
+  },
+}
+```

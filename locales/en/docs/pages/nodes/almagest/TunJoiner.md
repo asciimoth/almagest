@@ -77,3 +77,38 @@ The node label shows `waiting for default` when no default path is ready. This
 label does not mean that ready secondary paths are stopped. With a ready
 default, the label shows `joined default` and the number of ready secondary
 paths.
+
+## Graph example
+
+This graph combines packets from two independent IP stacks. The joined path
+uses one Spoofer and one outbound Network. TunJoiner sends return packets to the
+stack that owns the applicable flow.
+
+```graph
+{
+  "Default IP stack": {
+    "Class": "almagest/VTun",
+    "Pos": "{\"x\":31,\"y\":53}",
+    "Links": ["Tun -> [Path joiner] Default"],
+  },
+  "Secondary IP stack": {
+    "Class": "almagest/VTun",
+    "Pos": "{\"x\":31,\"y\":187}",
+    "Links": ["Tun -> [Path joiner] Secondary"],
+  },
+  "Path joiner": {
+    "Class": "almagest/TunJoiner",
+    "Pos": "{\"x\":261,\"y\":120}",
+    "Links": ["Tun -> [Flow converter] Tun"],
+  },
+  "Flow converter": {
+    "Class": "almagest/Spoofer",
+    "Pos": "{\"x\":476,\"y\":120}",
+    "Links": ["Network -> [Outside network] Network"],
+  },
+  "Outside network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":691,\"y\":120}",
+  },
+}
+```

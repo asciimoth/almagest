@@ -103,3 +103,42 @@ unavailable. Other invalid remap values prevent the
 changes the label to `local TLS CA unavailable`. The label is
 `waiting for network` until an outbound [Network](@port/right/Network) is ready
 and `terminating TLS` during normal operation.
+
+## Graph example
+
+Sniffer lets an HTTP service share one address and port for HTTP and HTTPS. It
+sends plain HTTP directly to the service Network. It sends TLS to TlsTerminator,
+which removes TLS before it sends the connection to the same service Network.
+
+```graph
+{
+  "Clients": {
+    "Class": "almagest/LocalProxy",
+    "Pos": "{\"x\":31,\"y\":120}",
+    "Links": ["proxy -> [Protocol sniffer] Network"],
+  },
+  "Protocol sniffer": {
+    "Class": "almagest/Sniffer",
+    "Pos": "{\"x\":245,\"y\":120}",
+    "Links": [
+      "slot 1 -> [Service network] Network",
+      "slot 2 -> [TLS terminator] Network",
+    ],
+    "rules": "DIAL\nTCP\nAND\nINTERCEPT\n\nSNIFF HTTP\nROUTE 1 DST:127.0.0.1:8080\n\nSNIFF TLS\nROUTE 2 DST:127.0.0.1:8080\n\nTRUE\nDROP",
+  },
+  "TLS terminator": {
+    "Class": "almagest/TlsTerminator",
+    "Pos": "{\"x\":493,\"y\":187}",
+    "Links": ["Network -> [Service network] Network"],
+  },
+  "Service network": {
+    "Class": "almagest/MockNetwork",
+    "Pos": "{\"x\":731,\"y\":120}",
+  },
+  "HTTP service": {
+    "Class": "almagest/HttpServer",
+    "Pos": "{\"x\":493,\"y\":53}",
+    "Links": ["Network -> [Service network] Network"],
+  },
+}
+```

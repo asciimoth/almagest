@@ -85,3 +85,47 @@ hostname.
 [DnsCache](@docs/node/almagest/DnsCache) node must populate that same storage
 with reverse records. NetworkRouter does not perform a live reverse lookup for
 these matches. Exact cached DNS names match with or without one trailing dot.
+
+## Graph example
+
+This graph gives several clients one policy entry point. NetworkRouter can send
+each network operation through SOCKS, send it directly to the host network, or
+drop it. The separate DNS path resolves names before the router selects a slot.
+
+```graph
+{
+  "Network clients": {
+    "Class": "almagest/LocalProxy",
+    "Pos": "{\"x\":31,\"y\":120}",
+    "Links": ["proxy -> [Network policy router] Network"],
+  },
+  "Network policy router": {
+    "Class": "almagest/NetworkRouter",
+    "Pos": "{\"x\":245,\"y\":120}",
+    "Links": [
+      "slot 1 -> [Host network] Network",
+      "slot 2 -> [SOCKS path] Network",
+      "DNS -> [Policy DNS] DNS",
+    ],
+    "rules": "ADDR_S private.example\nSLOT 2\n\nTRUE\nSLOT 1",
+  },
+  "Host network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":731,\"y\":53}",
+  },
+  "SOCKS path": {
+    "Class": "almagest/SocksClient",
+    "Pos": "{\"x\":493,\"y\":120}",
+    "Links": ["out -> [Host network] Network"],
+  },
+  "Policy DNS": {
+    "Class": "almagest/DnsCache",
+    "Pos": "{\"x\":493,\"y\":213}",
+    "Links": ["DNS -> [Outbound DNS] DNS"],
+  },
+  "Outbound DNS": {
+    "Class": "almagest/OutDns",
+    "Pos": "{\"x\":731,\"y\":213}",
+  },
+}
+```

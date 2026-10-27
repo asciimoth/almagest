@@ -144,3 +144,46 @@ Changing accepted configuration restarts the Tor client and can close active
 connections and listeners. Detaching [out](@port/right/out) makes the node
 unavailable. Reconnect it to restore Tor connectivity. Use **Restart Tor** in
 the menu to restart the current configuration explicitly.
+
+## Graph example
+
+TorDriver creates a separate Network port for each configured client Network.
+All client Networks use the Network on `out` for Tor relay traffic. The
+configuration keeps the default client Network for HTTP and adds `dns` for the
+DNS path.
+
+```graph
+{
+  "Tor HTTP client": {
+    "Class": "almagest/HttpClient",
+    "Pos": "{\"x\":31,\"y\":53}",
+    "Links": ["Network -> [Tor] Network default"],
+  },
+  "Tor DNS query": {
+    "Class": "almagest/DnsQuery",
+    "Pos": "{\"x\":-199,\"y\":160}",
+    "Links": ["DNS -> [Tor DNS export] DNS"],
+  },
+  "Tor DNS export": {
+    "Class": "almagest/Dns2Network",
+    "Pos": "{\"x\":31,\"y\":160}",
+    "Links": ["Network -> [Tor] Network dns"],
+  },
+  "Tor": {
+    "Class": "almagest/TorDriver",
+    "Pos": "{\"x\":261,\"y\":107}",
+    "Links": ["out -> [Outside network] Network"],
+    "configuration": {
+      "enabled": false,
+      "networks": [
+        {"name": "default"},
+        {"name": "dns"},
+      ],
+    },
+  },
+  "Outside network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":493,\"y\":107}",
+  },
+}
+```

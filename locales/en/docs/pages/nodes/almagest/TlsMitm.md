@@ -142,3 +142,43 @@ Changes to the outbound [Network](@port/right/Network), local CA, TLS config,
 leaf TTL, sniff limit, or filter replace the supplied
 [Network](@port/left/Network). Active connections through the previous
 configuration can close.
+
+## Graph example
+
+TlsMitm intercepts only the TLS connections that match its filter. It passes
+other TLS connections to the same downstream Network without interception. In
+this test topology, TlsTerminator terminates both paths before the plaintext
+service receives them. For an intercepted connection, it removes the
+server-facing TLS connection that TlsMitm creates.
+
+```graph
+{
+  "HTTPS clients": {
+    "Class": "almagest/LocalProxy",
+    "Pos": "{\"x\":31,\"y\":120}",
+    "Links": ["proxy -> [Selective TLS interception] Network"],
+  },
+  "Selective TLS interception": {
+    "Class": "almagest/TlsMitm",
+    "Pos": "{\"x\":245,\"y\":120}",
+    "Links": ["Network -> [TLS terminator] Network"],
+    "filterMode": "inclusive",
+    "filterRules": "[{\"sni_hosts\":[\"intercept.test\"]}]",
+  },
+  "TLS terminator": {
+    "Class": "almagest/TlsTerminator",
+    "Pos": "{\"x\":476,\"y\":120}",
+    "Links": ["Network -> [Service network] Network"],
+    "destinationRemaps": "[{\"sni_hosts\":[\"intercept.test\"],\"dst\":\"127.0.0.1:8080\"}]",
+  },
+  "Service network": {
+    "Class": "almagest/MockNetwork",
+    "Pos": "{\"x\":706,\"y\":120}",
+  },
+  "Service": {
+    "Class": "almagest/HttpServer",
+    "Pos": "{\"x\":476,\"y\":240}",
+    "Links": ["Network -> [Service network] Network"],
+  },
+}
+```

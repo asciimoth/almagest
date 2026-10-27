@@ -73,3 +73,46 @@ Changing the DNS resolver or timeout cancels requests that are still waiting.
 If the TUN stops working, the node shows `TUN error` and requests a replacement
 from the connected TUN provider. It resumes packet handling when a replacement
 becomes ready.
+
+## Graph example
+
+TunSplitter sends UDP port 53 packets to Tun2Dns and sends other packets to
+Spoofer. Tun2Dns turns the DNS packets into questions for the DNS resolver and
+writes the answers back as packets.
+
+```graph
+{
+  "Host TUN": {
+    "Class": "almagest/Tun",
+    "Pos": "{\"x\":31,\"y\":120}",
+    "Links": ["Tun -> [Packet router] Tun"],
+  },
+  "Packet router": {
+    "Class": "almagest/TunSplitter",
+    "Pos": "{\"x\":230,\"y\":120}",
+    "Links": [
+      "slot 1 -> [DNS packet handler] Tun",
+      "slot 2 -> [Flow converter] Tun",
+    ],
+    "rules": "UDP\nPORT 53\nAND\nSLOT 1\n\nTRUE\nSLOT 2",
+  },
+  "DNS packet handler": {
+    "Class": "almagest/Tun2Dns",
+    "Pos": "{\"x\":476,\"y\":53}",
+    "Links": ["DNS -> [DNS resolver] DNS"],
+  },
+  "Flow converter": {
+    "Class": "almagest/Spoofer",
+    "Pos": "{\"x\":476,\"y\":187}",
+    "Links": ["Network -> [Outside network] Network"],
+  },
+  "DNS resolver": {
+    "Class": "almagest/OutDns",
+    "Pos": "{\"x\":691,\"y\":53}",
+  },
+  "Outside network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":691,\"y\":187}",
+  },
+}
+```

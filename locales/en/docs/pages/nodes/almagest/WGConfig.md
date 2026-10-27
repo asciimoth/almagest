@@ -75,3 +75,52 @@ With the override enabled, **AWG obfuscation** selects the effective profile:
 Disabling obfuscation hides but preserves the peer profile values. Enabling it
 again restores those values. An old peer configuration that has an AWG override
 but no obfuscation switch keeps the override enabled.
+
+## Graph example
+
+Each WGConfig controls its own peers and UDP transport. In this graph, both
+controllers add peers to one WireGuard device, but each controller uses a
+different Network path. The Network on WireGuard carries menu and Object peers.
+
+```graph
+{
+  "Client IP stack": {
+    "Class": "almagest/VTun",
+    "Pos": "{\"x\":280,\"y\":180}",
+    "Links": ["Tun -> [WireGuard device] Tun"],
+  },
+  "First peer group": {
+    "Class": "almagest/WGConfig",
+    "Pos": "{\"x\":31,\"y\":20}",
+    "Links": [
+      "WireGuard -> [WireGuard device] WGCtrl",
+      "Network -> [First UDP path] Network",
+    ],
+  },
+  "WireGuard device": {
+    "Class": "almagest/WireGuard",
+    "Pos": "{\"x\":525,\"y\":180}",
+    "Links": ["Network -> [Default UDP path] Network"],
+  },
+  "Second peer group": {
+    "Class": "almagest/WGConfig",
+    "Pos": "{\"x\":31,\"y\":350}",
+    "Links": [
+      "WireGuard -> [WireGuard device] WGCtrl",
+      "Network -> [Second UDP path] Network",
+    ],
+  },
+  "First UDP path": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":525,\"y\":20}",
+  },
+  "Default UDP path": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":755,\"y\":180}",
+  },
+  "Second UDP path": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":525,\"y\":350}",
+  },
+}
+```

@@ -122,3 +122,41 @@ explicit source route suggestion has priority for its route.
 DNS suggestions are not sent through TunSplitter because different slots can use
 different DNS services. Use DNS links and DNS nodes when the graph needs DNS
 routing, multiple resolvers, caching, or policy.
+
+## Graph example
+
+This graph keeps one private prefix as IP packets for WireGuard. It converts all
+other traffic to Network operations. TunSplitter rules select the two slots.
+
+```graph
+{
+  "Client IP stack": {
+    "Class": "almagest/VTun",
+    "Pos": "{\"x\":31,\"y\":120}",
+    "Links": ["Tun -> [Packet policy] Tun"],
+  },
+  "Packet policy": {
+    "Class": "almagest/TunSplitter",
+    "Pos": "{\"x\":245,\"y\":120}",
+    "Links": [
+      "slot 1 -> [Private tunnel] Tun",
+      "slot 2 -> [Default flow converter] Tun",
+    ],
+    "rules": "SNET4 10.0.0.0/8\nSLOT 1\n\nTRUE\nSLOT 2",
+  },
+  "Private tunnel": {
+    "Class": "almagest/WireGuard",
+    "Pos": "{\"x\":493,\"y\":27}",
+    "Links": ["Network -> [Outside network] Network"],
+  },
+  "Default flow converter": {
+    "Class": "almagest/Spoofer",
+    "Pos": "{\"x\":493,\"y\":187}",
+    "Links": ["Network -> [Outside network] Network"],
+  },
+  "Outside network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":731,\"y\":120}",
+  },
+}
+```

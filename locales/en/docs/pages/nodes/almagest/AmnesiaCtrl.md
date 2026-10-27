@@ -76,3 +76,36 @@ receives the new public key.
 This procedure changes the identity for all peers and controllers that use the
 WireGuard node. Use a dedicated WireGuard node if this VPN connection must
 rotate its identity independently.
+
+## Graph example
+
+AmnesiaCtrl has a control path to WireGuard and a Network path for service API
+and pre-connect traffic. WireGuard uses a separate Network for tunnel UDP. The
+two Network links can use the same provider, but they have different purposes.
+
+```graph
+{
+  "VPN client stack": {
+    "Class": "almagest/VTun",
+    "Pos": "{\"x\":31,\"y\":213}",
+    "Links": ["Tun -> [WireGuard tunnel] Tun"],
+  },
+  "Amnezia controller": {
+    "Class": "almagest/AmnesiaCtrl",
+    "Pos": "{\"x\":31,\"y\":27}",
+    "Links": [
+      "WireGuard -> [WireGuard tunnel] WGCtrl",
+      "Network -> [Outside network] Network",
+    ],
+  },
+  "WireGuard tunnel": {
+    "Class": "almagest/WireGuard",
+    "Pos": "{\"x\":300,\"y\":187}",
+    "Links": ["Network -> [Outside network] Network"],
+  },
+  "Outside network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":570,\"y\":107}",
+  },
+}
+```

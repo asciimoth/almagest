@@ -142,3 +142,41 @@ query data, so use only the fields that the routing decision needs.
 [DnsCache](@docs/node/almagest/DnsCache) node must populate the same storage.
 Sniffer does not make a live reverse lookup for these matches and does not write
 inspected traffic to the cache.
+
+## Graph example
+
+This graph waits for the first bytes of each intercepted TCP connection. The
+Sniffer rules can send recognized traffic to the isolated service and send
+other operations to the host network.
+
+```graph
+{
+  "Local clients": {
+    "Class": "almagest/LocalProxy",
+    "Pos": "{\"x\":31,\"y\":120}",
+    "Links": ["proxy -> [Traffic sniffer] Network"],
+  },
+  "Traffic sniffer": {
+    "Class": "almagest/Sniffer",
+    "Pos": "{\"x\":245,\"y\":120}",
+    "Links": [
+      "slot 1 -> [Outside network] Network",
+      "slot 2 -> [Service network] Network",
+    ],
+    "rules": "DIAL\nTCP\nAND\nINTERCEPT\n\nSNIFF HTTP URL:/internal\nROUTE 2 DST:127.0.0.1:8080\n\nTRUE\nSLOT 1",
+  },
+  "Outside network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":493,\"y\":53}",
+  },
+  "Service network": {
+    "Class": "almagest/MockNetwork",
+    "Pos": "{\"x\":493,\"y\":187}",
+  },
+  "Service": {
+    "Class": "almagest/HttpServer",
+    "Pos": "{\"x\":245,\"y\":253}",
+    "Links": ["Network -> [Service network] Network"],
+  },
+}
+```

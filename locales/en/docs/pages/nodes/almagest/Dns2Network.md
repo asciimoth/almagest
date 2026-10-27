@@ -28,3 +28,45 @@ is removed or replaced, current DNS outputs close and in-progress requests are
 canceled. The node supplies new DNS outputs when the replacement
 [Network](@port/right/Network) is ready. Removing one DNS consumer does not
 affect the [Network](@port/right/Network) or other DNS consumers.
+
+## Graph example
+
+DnsInject adds StaticDns to the base Network. Dns2Network then exports that
+resolver as a DNS service. The HTTP client and DNS query use the same resolver
+through different link types.
+
+```graph
+{
+  "HTTP client": {
+    "Class": "almagest/HttpClient",
+    "Pos": "{\"x\":31,\"y\":53}",
+    "Links": ["Network -> [DNS injection] Network"],
+  },
+  "DNS query": {
+    "Class": "almagest/DnsQuery",
+    "Pos": "{\"x\":31,\"y\":187}",
+    "Links": ["DNS -> [DNS from network] DNS"],
+  },
+  "DNS from network": {
+    "Class": "almagest/Dns2Network",
+    "Pos": "{\"x\":245,\"y\":187}",
+    "Links": ["Network -> [DNS injection] Network"],
+  },
+  "DNS injection": {
+    "Class": "almagest/DnsInject",
+    "Pos": "{\"x\":476,\"y\":120}",
+    "Links": [
+      "Network -> [Base network] Network",
+      "DNS -> [Static DNS] DNS",
+    ],
+  },
+  "Base network": {
+    "Class": "almagest/MockNetwork",
+    "Pos": "{\"x\":706,\"y\":53}",
+  },
+  "Static DNS": {
+    "Class": "almagest/StaticDns",
+    "Pos": "{\"x\":706,\"y\":187}",
+  },
+}
+```

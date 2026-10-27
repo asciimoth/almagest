@@ -126,3 +126,45 @@ confirmation data as hidden private data for this node. Persistent daemon
 storage keeps this identity after a restart and after you rename the node. If
 persistent storage is unavailable, the identity is kept only until the daemon
 stops. The node does not copy the WireGuard private key into this data.
+
+## Graph example
+
+TailscaleCtrl uses one Network for control, discovery, and DERP traffic. The
+WireGuard node uses a different Network for direct peer UDP. The controller
+also supplies MagicDNS through its DNS port.
+
+```graph
+{
+  "MagicDNS consumer": {
+    "Class": "almagest/DnsQuery",
+    "Pos": "{\"x\":31,\"y\":27}",
+    "Links": ["DNS -> [Tailscale controller] DNS"],
+  },
+  "Tailnet IP stack": {
+    "Class": "almagest/VTun",
+    "Pos": "{\"x\":31,\"y\":267}",
+    "Links": ["Tun -> [Tailnet WireGuard] Tun"],
+  },
+  "Tailscale controller": {
+    "Class": "almagest/TailscaleCtrl",
+    "Pos": "{\"x\":245,\"y\":27}",
+    "Links": [
+      "WireGuard -> [Tailnet WireGuard] WGCtrl",
+      "Network -> [Control and relay network] Network",
+    ],
+  },
+  "Tailnet WireGuard": {
+    "Class": "almagest/WireGuard",
+    "Pos": "{\"x\":525,\"y\":240}",
+    "Links": ["Network -> [Peer UDP network] Network"],
+  },
+  "Control and relay network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":525,\"y\":27}",
+  },
+  "Peer UDP network": {
+    "Class": "almagest/OutNetwork",
+    "Pos": "{\"x\":755,\"y\":240}",
+  },
+}
+```
