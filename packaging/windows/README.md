@@ -13,9 +13,14 @@ in `contracts/windows/` controls support status.
 ## Installed files and retained data
 
 The MSI installs immutable files below `%ProgramFiles%\Almagest`. These files
-include `almagestd.exe`, `almagest-cli.exe`, the optional `almagest-app.exe`,
-the official amd64 `wintun.dll`, locales, examples, package documentation, and a
-staging directory for the complete Mullvad split-tunnel driver package.
+include `almagestd.exe`, `almagest-cli.exe`, the optional `almagest-app.exe` and
+its `WebView2Loader.dll`, the official amd64 `wintun.dll`, locales, examples,
+package documentation, and a staging directory for the complete Mullvad
+split-tunnel driver package.
+
+The installer adds `%ProgramFiles%\Almagest` to the machine `PATH`. New command
+prompts can run the daemon and CLI by name. When the desktop app is installed,
+the installer also creates Start menu and public desktop shortcuts.
 
 ## Desktop app installer choices
 
@@ -76,9 +81,9 @@ unelevated process can use the pipe.
 ## Service
 
 The package registers the own-process `almagestd` service as
-`Almagest Network Daemon`. It runs as LocalSystem, starts automatically with a
-delay, and invokes `almagestd.exe --isolation=off`. The service name cannot
-change because the executable uses it in its SCM dispatcher contract.
+`Almagest Network Daemon`. It runs as LocalSystem, starts automatically, and
+invokes `almagestd.exe --isolation=off`. The service name cannot change because
+the executable uses it in its SCM dispatcher contract.
 
 Recovery restarts the daemon after 5 seconds, 15 seconds, and then 60 seconds.
 Later failures repeat the 60-second action. The failure count resets after 24

@@ -45,7 +45,8 @@ class PackageSmokeEvidenceTests(unittest.TestCase):
                 "service": {"state": "Running"},
                 "elevatedCli": "passed",
                 "desktopApp": {
-                    "installed": True, "autoStart": True,
+                    "installed": True, "loaderPresent": True,
+                    "launchPassed": True, "autoStart": True,
                     "autoStartCommand": '"C:\\Program Files\\Almagest\\almagest-app.exe" --background',
                 },
                 "administrationGroup": {
@@ -57,6 +58,7 @@ class PackageSmokeEvidenceTests(unittest.TestCase):
                 "suite": "windows-msi-package-smoke-user",
                 "outcome": user_outcome,
                 "programFilesWriteDenied": True,
+                "cliAvailableOnPath": True,
                 "machinePipeAccessGranted": True,
                 "protectedConfigReadDenied": True,
             }).encode(),

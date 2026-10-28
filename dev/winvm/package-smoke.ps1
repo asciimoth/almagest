@@ -108,6 +108,7 @@ $expected = [ordered]@{
     'almagestd.exe' = $inputHashes['dev/winvm/almagestd.exe']
     'almagest-cli.exe' = $inputHashes['dev/winvm/almagest-cli.exe']
     'almagest-app.exe' = $inputHashes['dev/winvm/almagest-app.exe']
+    'WebView2Loader.dll' = $inputHashes['dev/winvm/WebView2Loader.dll']
     'wintun.dll' = $inputHashes['dev/winvm/package-inputs/wintun/amd64/wintun.dll']
     'LICENSE.txt' = $inputHashes['LICENSE']
     'PACKAGE-README.md' = $inputHashes['packaging/windows/README.md']
@@ -145,9 +146,27 @@ foreach ($path in $actualFiles) { Assert-True $expected.Contains($path) "Unexpec
 
 $appPath = Join-Path $programFiles 'almagest-app.exe'
 Assert-True ((Get-PEMachine $appPath) -eq '0x8664') 'Desktop app is not an amd64 PE executable'
+$webViewLoader = Join-Path $programFiles 'WebView2Loader.dll'
+Assert-True ((Get-PEMachine $webViewLoader) -eq '0x8664') 'WebView2 loader is not an amd64 PE executable'
+$appHelp = Start-Process $appPath -ArgumentList '--help' -Wait -PassThru
+Assert-True ($appHelp.ExitCode -eq 0) `
+    'Desktop app cannot start with the packaged WebView2 loader'
 $autoStart = (Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run').Almagest
 $expectedAutoStart = '"{0}" --background' -f $appPath
 Assert-True ($autoStart -eq $expectedAutoStart) "Unexpected desktop app autostart command: $autoStart"
+$startMenuShortcut = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Almagest.lnk'
+$desktopShortcut = Join-Path $env:Public 'Desktop\Almagest.lnk'
+$shell = New-Object -ComObject WScript.Shell
+foreach ($shortcutPath in @($startMenuShortcut, $desktopShortcut)) {
+    Assert-True (Test-Path -LiteralPath $shortcutPath -PathType Leaf) "Shortcut is absent: $shortcutPath"
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    Assert-True ($shortcut.TargetPath -eq $appPath) "Shortcut target differs: $shortcutPath"
+}
+$machinePath = (Get-ItemProperty `
+    'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').Path
+$machinePathEntries = @($machinePath -split ';' | ForEach-Object { $_.TrimEnd('\') })
+Assert-True ($machinePathEntries -contains $programFiles) `
+    'Almagest install directory is absent from the machine PATH'
 
 $wintunPath = Join-Path $programFiles 'wintun.dll'
 Assert-True ((Get-PEMachine $wintunPath) -eq $contract.drivers.wintun.peMachine) 'Wintun architecture differs'
@@ -180,7 +199,7 @@ Assert-True ($service.StartMode -eq 'Auto') 'Service startup type is not automat
 Assert-True ($service.DisplayName -eq 'Almagest Network Daemon') 'Service display name differs'
 Assert-True ($service.Description -eq 'Almagest network daemon') 'Service description differs'
 $serviceRegistry = 'HKLM:\SYSTEM\CurrentControlSet\Services\almagestd'
-Assert-True ((Get-ItemProperty $serviceRegistry).DelayedAutoStart -eq 1) 'Delayed automatic start is not enabled'
+Assert-True ((Get-ItemProperty $serviceRegistry).DelayedAutoStart -eq 0) 'Immediate automatic start is not enabled'
 Assert-True ((Get-ItemProperty $serviceRegistry).FailureActionsOnNonCrashFailures -eq 1) 'Recovery does not include error exits'
 $failureActions = (& sc.exe qfailure almagestd | Out-String)
 Assert-True ($LASTEXITCODE -eq 0) 'Cannot query service recovery actions'
@@ -219,7 +238,7 @@ Assert-True ($logContent -match 'Starting Windows pipe admin listener') 'Normal 
 $serviceRecord = [ordered]@{
     name = $service.Name; displayName = $service.DisplayName; description = $service.Description
     state = $service.State; startMode = $service.StartMode; account = $service.StartName
-    pathName = $service.PathName; delayedAutoStart = 1; failureActions = $failureActions.Trim()
+    pathName = $service.PathName; delayedAutoStart = 0; failureActions = $failureActions.Trim()
 }
 $serviceRecord | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $ArtifactDir 'service-after-install.json') -Encoding utf8
 $installedFiles | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $ArtifactDir 'installed-files.json') -Encoding utf8
@@ -238,8 +257,11 @@ $evidence = [ordered]@{
     installerExitCode = $installer.ExitCode; installedFileCount = $installedFiles.Count
     service = $serviceRecord; machinePipe = 'pipe://machine'; elevatedCli = 'passed'
     desktopApp = [ordered]@{
-        installed = $true; autoStart = $true; autoStartCommand = $autoStart
+        installed = $true; loaderPresent = $true; launchPassed = $true
+        autoStart = $true; autoStartCommand = $autoStart
+        startMenuShortcut = $startMenuShortcut; desktopShortcut = $desktopShortcut
     }
+    machinePath = $machinePath
     administrationGroup = [ordered]@{
         name = $adminGroup.Name; sid = $adminGroup.SID.Value
         initialMemberCount = $adminGroupMembers.Count; delegatedAdministrator = $delegatedAdministrator

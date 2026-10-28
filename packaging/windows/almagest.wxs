@@ -26,6 +26,7 @@
                Level="1" AllowAbsent="no">
         <ComponentRef Id="DaemonServiceComponent" />
         <ComponentRef Id="CliComponent" />
+        <ComponentRef Id="PathEnvironmentComponent" />
         <ComponentRef Id="WintunComponent" />
         <ComponentRef Id="PackageDocumentationComponent" />
         <ComponentRef Id="MullvadDriverComponent" />
@@ -72,6 +73,8 @@
     <StandardDirectory Id="System64Folder">
       <Directory Id="SYSTEMDRIVERSFOLDER" Name="drivers" />
     </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
   </Fragment>
 
   <Fragment>
@@ -90,7 +93,7 @@
                       Arguments="--isolation=off"
                       Vital="yes">
         <ServiceConfig Id="AlmagestServiceConfig"
-                       DelayedAutoStart="yes"
+                       DelayedAutoStart="no"
                        FailureActionsWhen="failedToStopOrReturnedError"
                        OnInstall="yes"
                        OnReinstall="yes" />
@@ -109,10 +112,40 @@
             KeyPath="yes" />
     </Component>
 
+    <Component Id="PathEnvironmentComponent" Directory="INSTALLFOLDER"
+               Guid="B715470A-24CC-4B31-B642-F097B7604A5C" Bitness="always64">
+      <Environment Id="AlmagestPathEnvironment"
+                   Name="PATH"
+                   Value="[INSTALLFOLDER]"
+                   Action="set"
+                   Part="last"
+                   System="yes" />
+      <RegistryValue Root="HKLM"
+                     Key="Software\Almagest\Installer"
+                     Name="PathEnvironment"
+                     Value="1"
+                     Type="integer" KeyPath="yes" />
+    </Component>
+
     <Component Id="DesktopAppComponent" Directory="INSTALLFOLDER"
                Guid="C3E680A8-1629-4788-8A31-765AF7D06C6A" Bitness="always64">
       <File Id="DesktopAppExecutable" Source="$(var.PayloadDir)\almagest-app.exe"
-            KeyPath="yes" />
+            KeyPath="yes">
+        <Shortcut Id="DesktopAppStartMenuShortcut"
+                  Directory="ProgramMenuFolder"
+                  Name="Almagest"
+                  Description="Almagest desktop app"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Advertise="yes" />
+        <Shortcut Id="DesktopAppDesktopShortcut"
+                  Directory="DesktopFolder"
+                  Name="Almagest"
+                  Description="Almagest desktop app"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Advertise="yes" />
+      </File>
+      <File Id="WebView2Loader"
+            Source="$(var.PayloadDir)\WebView2Loader.dll" />
     </Component>
 
     <Component Id="DesktopAppAutoStartComponent" Directory="INSTALLFOLDER"

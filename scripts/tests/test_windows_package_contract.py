@@ -67,6 +67,7 @@ class WindowsPackageContractTests(unittest.TestCase):
         service = self.contract["service"]
         self.assertEqual(service["name"], "almagestd")
         self.assertEqual(service["account"], "LocalSystem")
+        self.assertEqual(service["start"], "automatic")
         self.assertEqual(service["arguments"], ["--isolation=off"])
         self.assertEqual(service["lifecycle"], {
             "progressIntervalMilliseconds": 2000,
@@ -180,7 +181,7 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertEqual(service.attrib["Arguments"], "--isolation=off")
 
         config = service.find(f"{WIX}ServiceConfig")
-        self.assertEqual(config.attrib["DelayedAutoStart"], "yes")
+        self.assertEqual(config.attrib["DelayedAutoStart"], "no")
         self.assertEqual(config.attrib["FailureActionsWhen"],
                          "failedToStopOrReturnedError")
         self.assertIsNone(service.find(f"{WIX}ServiceConfigFailureActions"))
@@ -235,6 +236,15 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertEqual(app.attrib["Guid"], self.contract["components"]["desktopApp"])
         self.assertEqual(app.find(f"{WIX}File").attrib["Source"],
                          r"$(var.PayloadDir)\almagest-app.exe")
+        files = {item.attrib["Id"]: item for item in app.findall(f"{WIX}File")}
+        self.assertEqual(files["WebView2Loader"].attrib["Source"],
+                         r"$(var.PayloadDir)\WebView2Loader.dll")
+        shortcuts = files["DesktopAppExecutable"].findall(f"{WIX}Shortcut")
+        self.assertEqual(
+            {(item.attrib["Directory"], item.attrib["Name"]) for item in shortcuts},
+            {("ProgramMenuFolder", "Almagest"),
+             ("DesktopFolder", "Almagest")},
+        )
         auto_start = self._component(self.wix, "DesktopAppAutoStartComponent")
         self.assertEqual(auto_start.attrib["Guid"],
                          self.contract["components"]["desktopAppAutoStart"])
@@ -243,6 +253,20 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertEqual(value.attrib["Name"], "Almagest")
         self.assertEqual(value.attrib["Value"],
                          r'"[#DesktopAppExecutable]" --background')
+
+    def test_wix_adds_install_directory_to_machine_path(self):
+        component = self._component(self.wix, "PathEnvironmentComponent")
+        self.assertEqual(component.attrib["Guid"],
+                         self.contract["components"]["pathEnvironment"])
+        environment = component.find(f"{WIX}Environment")
+        self.assertEqual(environment.attrib, {
+            "Id": "AlmagestPathEnvironment",
+            "Name": "PATH",
+            "Value": "[INSTALLFOLDER]",
+            "Action": "set",
+            "Part": "last",
+            "System": "yes",
+        })
 
     def test_wix_driver_policy_is_explicit(self):
         component = self._component(self.wix, "MullvadDriverComponent")
@@ -387,6 +411,8 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertIn("WixToolset.DifxApp.wixext.dll", package)
         self.assertIn("WixToolset.UI.wixext.dll", package)
         self.assertIn("WixToolset.Dtf.WindowsInstaller.dll", package)
+        self.assertIn("cargo-vendor\\webview2-com-sys-*\\x64\\WebView2Loader.dll",
+                      package)
         self.assertIn("$summary.RevisionNumber", package)
         self.assertIn("$summary.CreateTime", package)
         self.assertIn("$summary.LastSaveTime", package)
@@ -519,7 +545,7 @@ class WindowsPackageContractTests(unittest.TestCase):
                 CONTRACT_PATH.read_bytes())
             for name in ("LICENSE", "packaging/windows/README.md",
                          "dev/winvm/almagestd.exe", "dev/winvm/almagest-cli.exe",
-                         "dev/winvm/almagest-app.exe",
+                         "dev/winvm/almagest-app.exe", "dev/winvm/WebView2Loader.dll",
                          "locales/value.json", "examples/example.hujson"):
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)

@@ -37,6 +37,14 @@ try {
 $appSource = Join-Path $SourceDir 'app\src-tauri\target\release\almagest-app.exe'
 $appPayload = Join-Path $SourceDir 'dev\winvm\almagest-app.exe'
 Copy-Item -LiteralPath $appSource -Destination $appPayload -Force
+$loaderCandidates = @(Get-ChildItem `
+    (Join-Path $SourceDir 'dev\winvm\cargo-vendor\webview2-com-sys-*\x64\WebView2Loader.dll') `
+    -File)
+if ($loaderCandidates.Count -ne 1) {
+    throw "Expected one x64 WebView2Loader.dll, found $($loaderCandidates.Count)"
+}
+Copy-Item -LiteralPath $loaderCandidates[0].FullName `
+    -Destination (Join-Path $SourceDir 'dev\winvm\WebView2Loader.dll') -Force
 & python.exe (Join-Path $SourceDir 'packaging\windows\create-build-manifest.py') `
     --version $manifest.version --root $SourceDir `
     --source-record (Join-Path $SourceDir 'dev\winvm\source.json') `

@@ -4,6 +4,10 @@ Set-StrictMode -Version Latest
 
 $programFiles = Join-Path $env:ProgramFiles 'Almagest'
 $programData = Join-Path $env:ProgramData 'Almagest'
+$resolvedCli = Get-Command almagest-cli.exe -ErrorAction SilentlyContinue
+if (-not $resolvedCli -or $resolvedCli.Source -ne (Join-Path $programFiles 'almagest-cli.exe')) {
+    throw 'almagest-cli.exe is not available through PATH'
+}
 $probe = Join-Path $programFiles 'ordinary-user-write-probe'
 $writeDenied = $false
 try {
@@ -43,6 +47,7 @@ if (-not $privateReadDenied) { throw 'Ordinary user can read protected ProgramDa
     outcome = 'passed'
     identity = (& whoami.exe | Out-String).Trim()
     programFilesWriteDenied = $writeDenied
+    cliAvailableOnPath = $true
     machinePipeAccessGranted = $true
     cliExitCode = $cliExit
     cliOutput = $cliOutput.Trim()

@@ -36,6 +36,8 @@ def main() -> None:
         assert smoke["service"]["state"] == "Running"
         assert smoke["elevatedCli"] == "passed"
         assert smoke["desktopApp"]["installed"]
+        assert smoke["desktopApp"]["loaderPresent"]
+        assert smoke["desktopApp"]["launchPassed"]
         assert smoke["desktopApp"]["autoStart"]
         assert smoke["desktopApp"]["autoStartCommand"].endswith(
             'almagest-app.exe" --background'
@@ -45,6 +47,7 @@ def main() -> None:
         assert user["suite"] == "windows-msi-package-smoke-user"
         assert user["outcome"] == "passed"
         assert user["programFilesWriteDenied"]
+        assert user["cliAvailableOnPath"]
         assert user["machinePipeAccessGranted"]
         assert user["protectedConfigReadDenied"]
         assert hashlib.sha256(msi).hexdigest() == build["sha256"]

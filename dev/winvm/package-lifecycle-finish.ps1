@@ -23,8 +23,8 @@ $upgradeMsi = Join-Path $ArtifactDir $upgrade.output
 $bootTicks = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().Ticks
 Assert-True ($bootTicks -ne $prepare.bootTimeUtcTicks) 'The lifecycle reboot did not change the Windows boot identity'
 $afterBoot = Wait-AlmagestService
-Assert-True ((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\almagestd').DelayedAutoStart -eq 1) `
-    'Delayed automatic start was not retained after reboot'
+Assert-True ((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\almagestd').DelayedAutoStart -eq 0) `
+    'Immediate automatic start was not retained after reboot'
 Assert-LifecycleState $cli $programData
 
 $recoveryPid = $afterBoot.ProcessId
@@ -90,6 +90,11 @@ $uninstallExit = Invoke-MSI @(
 ) 'Uninstall'
 Assert-True (-not (Get-Service almagestd -ErrorAction SilentlyContinue)) 'Daemon service remains after uninstall'
 Assert-True (-not (Test-Path -LiteralPath $programFiles)) 'Program Files payload remains after uninstall'
+$pathAfterUninstall = (Get-ItemProperty `
+    'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').Path
+$pathEntriesAfterUninstall = @($pathAfterUninstall -split ';' | ForEach-Object { $_.TrimEnd('\') })
+Assert-True ($pathEntriesAfterUninstall -notcontains $programFiles) `
+    'Uninstall retained the Almagest machine PATH entry'
 Assert-True (-not (Get-Service $driverName -ErrorAction SilentlyContinue)) 'Driver service remains after uninstall'
 Assert-True (-not (Test-Path -LiteralPath $driverSystemPath)) 'System driver remains after uninstall'
 $driverHash = $contract.drivers.mullvadSplitTunnel.files.'mullvad-split-tunnel.sys'.sha256
@@ -112,10 +117,22 @@ $reinstallExit = Invoke-MSI @(
 ) 'Service-only reinstall'
 $afterReinstall = Wait-AlmagestService
 Assert-LifecycleState $cli $programData
+$pathAfterReinstall = (Get-ItemProperty `
+    'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').Path
+$pathEntriesAfterReinstall = @($pathAfterReinstall -split ';' | ForEach-Object { $_.TrimEnd('\') })
+Assert-True ($pathEntriesAfterReinstall -contains $programFiles) `
+    'Service-only reinstall did not restore the Almagest machine PATH entry'
 Assert-True ([bool](Get-Service $driverName -ErrorAction SilentlyContinue)) 'Driver service is absent after reinstall'
 Assert-True (Test-Path -LiteralPath $driverSystemPath) 'System driver is absent after reinstall'
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $programFiles 'almagest-app.exe'))) `
     'Service-only reinstall installed the desktop app'
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $programFiles 'WebView2Loader.dll'))) `
+    'Service-only reinstall installed the WebView2 loader'
+Assert-True (-not (Test-Path -LiteralPath `
+    (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Almagest.lnk'))) `
+    'Service-only reinstall created a Start menu shortcut'
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $env:Public 'Desktop\Almagest.lnk'))) `
+    'Service-only reinstall created a desktop shortcut'
 Assert-True (-not (Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run' `
     -Name Almagest -ErrorAction SilentlyContinue)) 'Service-only reinstall created desktop app autostart'
 

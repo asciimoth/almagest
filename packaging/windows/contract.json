@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "target": {
     "operatingSystem": "Windows Server 2022",
     "build": 20348,
@@ -22,6 +22,7 @@
   "components": {
     "daemonService": "C05707E1-C3A4-482D-B634-975B99A7F8AB",
     "cli": "D0351CF1-25F6-423B-ABCE-9C7F57FFD162",
+    "pathEnvironment": "B715470A-24CC-4B31-B642-F097B7604A5C",
     "desktopApp": "C3E680A8-1629-4788-8A31-765AF7D06C6A",
     "desktopAppAutoStart": "CE97A2C4-E435-497A-BD0E-8211A38CF6B9",
     "wintun": "E029577A-A19D-4F4D-B5C3-666186CF4BE5",
@@ -38,6 +39,7 @@
     "daemon": "%ProgramFiles%\\Almagest\\almagestd.exe",
     "cli": "%ProgramFiles%\\Almagest\\almagest-cli.exe",
     "desktopApp": "%ProgramFiles%\\Almagest\\almagest-app.exe",
+    "webView2Loader": "%ProgramFiles%\\Almagest\\WebView2Loader.dll",
     "wintun": "%ProgramFiles%\\Almagest\\wintun.dll",
     "locales": "%ProgramFiles%\\Almagest\\locales",
     "examples": "%ProgramFiles%\\Almagest\\examples",
@@ -54,7 +56,7 @@
     "displayName": "Almagest Network Daemon",
     "account": "LocalSystem",
     "type": "ownProcess",
-    "start": "automaticDelayed",
+    "start": "automatic",
     "errorControl": "normal",
     "arguments": [
       "--isolation=off"
@@ -85,6 +87,8 @@
     "autoStartByDefault": true,
     "autoStartOptionalFeature": "DesktopAppAutoStartFeature",
     "autoStartCommand": "\"%ProgramFiles%\\Almagest\\almagest-app.exe\" --background",
+    "startMenuShortcut": "%ProgramData%\\Microsoft\\Windows\\Start Menu\\Programs\\Almagest.lnk",
+    "desktopShortcut": "%Public%\\Desktop\\Almagest.lnk",
     "serviceOnlyInstallSupported": true
   },
   "authorization": {
