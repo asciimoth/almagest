@@ -35,6 +35,7 @@ def main() -> None:
         args.root / "dev/winvm/almagest-cli.exe",
         args.root / "dev/winvm/almagest-app.exe",
         args.root / "dev/winvm/WebView2Loader.dll",
+        args.root / "dev/winvm/LICENSE.rtf",
         args.root / "LICENSE",
         args.root / "packaging/windows/README.md",
     ]

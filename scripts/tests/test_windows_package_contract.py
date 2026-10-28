@@ -201,7 +201,7 @@ class WindowsPackageContractTests(unittest.TestCase):
                     self.wix.findall(f".//{WIX}InstallExecuteSequence/{WIX}Custom")}
         self.assertEqual(sequence["RollbackAlmagestServiceRecovery"].attrib,
                          {"Action": "RollbackAlmagestServiceRecovery",
-                          "After": "CreateAlmagestAdministrationGroup",
+                          "After": "AddCurrentUserAdminAccess",
                           "Condition": 'NOT (REMOVE ~= "ALL")'})
         self.assertEqual(sequence["ConfigureAlmagestServiceRecovery"].attrib,
                          {"Action": "ConfigureAlmagestServiceRecovery",
@@ -340,6 +340,21 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertIn("sha256-ZqMQfVrWoFiqt1PqrCBHzLLtDjlGXdD+WETaPjANUXI=",
                       self.flake)
 
+        package = self.wix.find(f"{WIX}Package")
+        license_variable = package.find(f"{WIX}WixVariable[@Id='WixUILicenseRtf']")
+        self.assertEqual(license_variable.attrib["Value"],
+                         r"$(var.PayloadDir)\LICENSE.rtf")
+        generator = ROOT / "packaging/windows/create-license-rtf.py"
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "LICENSE"
+            output = Path(temporary) / "LICENSE.rtf"
+            source.write_text("License {text} \\ value\nsecond line\n", encoding="utf-8")
+            subprocess.run(["python3", str(generator), str(source), str(output)],
+                           check=True)
+            rendered = output.read_text(encoding="ascii")
+            self.assertTrue(rendered.startswith(r"{\rtf1\ansi"))
+            self.assertIn(r"License \{text\} \\ value\par", rendered)
+
     def test_program_data_component_is_permanent(self):
         component = self._component(self.wix, "ProgramDataAclComponent")
         self.assertEqual(component.attrib["Permanent"], "yes")
@@ -356,8 +371,12 @@ class WindowsPackageContractTests(unittest.TestCase):
             "machinePipeAccess": [
                 "LocalSystem", "Administrators", "Almagest Administrators"],
             "groupPreservedOnUninstall": True,
-            "installerSelectsMembers": False,
-            "inferInteractiveUser": False,
+            "currentUserAccessFeature": "CurrentUserAdminAccessFeature",
+            "currentUserAccessByDefault": True,
+            "membershipActivation": (
+                "Sign out and sign in again before an unelevated process uses "
+                "the administration pipe."),
+            "groupMembershipPreservedOnUninstall": True,
         })
         actions = {item.attrib["Id"]: item for item in
                    self.wix.findall(f".//{WIX}CustomAction")}
@@ -375,6 +394,29 @@ class WindowsPackageContractTests(unittest.TestCase):
             "After": "ConfigureMullvadDriverService",
             "Condition": 'NOT (REMOVE ~= "ALL")',
         })
+        package = self.wix.find(f"{WIX}Package")
+        feature = package.find(
+            f".//{WIX}Feature[@Id='{authorization['currentUserAccessFeature']}']")
+        self.assertEqual(feature.attrib["Level"], "1")
+        self.assertIn("Sign out and sign in", feature.attrib["Description"])
+        component = self._component(self.wix, "CurrentUserAdminAccessComponent")
+        self.assertEqual(component.attrib["Guid"],
+                         self.contract["components"]["currentUserAdminAccess"])
+        self.assertEqual(sequence["AddCurrentUserAdminAccess"].attrib, {
+            "Action": "AddCurrentUserAdminAccess",
+            "After": "CreateAlmagestAdministrationGroup",
+            "Condition": ('&CurrentUserAdminAccessFeature = 3 AND '
+                          'NOT (REMOVE ~= "ALL")'),
+        })
+        membership = actions["AddCurrentUserAdminAccess"]
+        self.assertIn("[ALMAGEST_ACCESS_SID]", membership.attrib["ExeCommand"])
+        self.assertIn("Get-LocalGroupMember", membership.attrib["ExeCommand"])
+        self.assertIn("S-1-5-18", membership.attrib["ExeCommand"])
+        self.assertIn("New-Object -TypeName System.Security.Principal.SecurityIdentifier",
+                      membership.attrib["ExeCommand"])
+        self.assertNotIn("[System.Security", membership.attrib["ExeCommand"])
+        self.assertEqual(membership.attrib["Execute"], "deferred")
+        self.assertEqual(membership.attrib["Impersonate"], "no")
 
     def test_fixture_build_is_x64_and_uses_required_extensions(self):
         source = FIXTURE_BUILD_PATH.read_text()
@@ -546,6 +588,7 @@ class WindowsPackageContractTests(unittest.TestCase):
             for name in ("LICENSE", "packaging/windows/README.md",
                          "dev/winvm/almagestd.exe", "dev/winvm/almagest-cli.exe",
                          "dev/winvm/almagest-app.exe", "dev/winvm/WebView2Loader.dll",
+                         "dev/winvm/LICENSE.rtf",
                          "locales/value.json", "examples/example.hujson"):
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)

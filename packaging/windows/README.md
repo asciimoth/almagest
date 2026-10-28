@@ -45,6 +45,13 @@ msiexec.exe /i almagest_VERSION_windows_amd64.msi /qn `
 To install the app without autostart, include `DesktopAppFeature` and omit
 `DesktopAppAutoStartFeature` from `ADDLOCAL`.
 
+## Installer license
+
+An interactive install shows the project license before feature selection. The
+package build converts the repository `LICENSE` file to deterministic RTF for
+the Windows Installer dialog. The MSI also installs the original text as
+`%ProgramFiles%\Almagest\LICENSE.txt`.
+
 The daemon uses these mutable paths:
 
 | Purpose                 | Path                                          |
@@ -68,15 +75,25 @@ administrators, and members of this group. Group membership grants access to the
 Almagest administration API. It does not grant Windows service-control or file
 permissions.
 
+An interactive install selects **Allow current user to use the admin API** by
+default. This option adds the user who started the installer to the local
+`Almagest Administrators` group. Clear the option in the feature tree if the
+current user must not get access. For a silent install, omit
+`CurrentUserAdminAccessFeature` from `ADDLOCAL` to disable this access.
+An unattended install that runs as LocalSystem does not add LocalSystem to the
+group. Set `ALMAGEST_ACCESS_SID` to the intended user SID when deployment
+software runs the MSI as LocalSystem and selects this feature.
+
 Add a local or domain principal with an elevated PowerShell session:
 
 ```powershell
 Add-LocalGroupMember -Group 'Almagest Administrators' -Member 'CONTOSO\Almagest Operators'
 ```
 
-Windows puts group membership in an access token when the user signs in. A user
-who is added while signed in must sign out and sign in again before an
-unelevated process can use the pipe.
+Windows puts group membership in an access token when the user signs in. After
+installation, the user must sign out and sign in again before an unelevated app
+or CLI can use the pipe. A Windows restart also creates a new access token, but
+sign-out and sign-in is sufficient.
 
 ## Service
 

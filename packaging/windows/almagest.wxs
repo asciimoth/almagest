@@ -32,6 +32,12 @@
         <ComponentRef Id="MullvadDriverComponent" />
         <ComponentRef Id="MullvadDriverServiceComponent" />
         <ComponentRef Id="ProgramDataAclComponent" />
+        <Feature Id="CurrentUserAdminAccessFeature"
+                 Title="Allow current user to use the admin API"
+                 Description="Add the current user to the Almagest Administrators group. Sign out and sign in after installation to activate access in unelevated apps."
+                 Level="1">
+          <ComponentRef Id="CurrentUserAdminAccessComponent" />
+        </Feature>
         <ComponentGroupRef Id="LocalesComponents" />
         <ComponentGroupRef Id="ExamplesComponents" />
       </Feature>
@@ -47,7 +53,13 @@
       </Feature>
     </Feature>
     <ui:WixUI Id="WixUI_FeatureTree" />
-    <WixVariable Id="WixUILicenseRtf" Value="$(var.SourceDir)\LICENSE" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.PayloadDir)\LICENSE.rtf" />
+    <Property Id="ALMAGEST_ACCESS_SID" Secure="yes" />
+    <SetProperty Id="ALMAGEST_ACCESS_SID"
+                 Value="[UserSID]"
+                 Before="CostFinalize"
+                 Sequence="first"
+                 Condition="NOT ALMAGEST_ACCESS_SID" />
     <CustomActionRef Id="RollbackAlmagestServiceRecovery" />
     <CustomActionRef Id="ConfigureAlmagestServiceRecovery" />
     <CustomActionRef Id="RollbackMullvadDriverService" />
@@ -123,6 +135,15 @@
       <RegistryValue Root="HKLM"
                      Key="Software\Almagest\Installer"
                      Name="PathEnvironment"
+                     Value="1"
+                     Type="integer" KeyPath="yes" />
+    </Component>
+
+    <Component Id="CurrentUserAdminAccessComponent" Directory="INSTALLFOLDER"
+               Guid="98DCEEC8-F20B-45B4-A5EC-1E34C42D698F" Bitness="always64">
+      <RegistryValue Root="HKLM"
+                     Key="Software\Almagest\Installer"
+                     Name="CurrentUserAdminAccess"
                      Value="1"
                      Type="integer" KeyPath="yes" />
     </Component>
@@ -264,6 +285,16 @@
                   Execute="deferred"
                   Impersonate="no"
                   Return="check" />
+    <!-- Group membership is effective in new access tokens only. The feature
+         description tells an interactive user to sign out and sign in. Keep
+         membership on uninstall or rollback, as with administrator-managed
+         members and the durable local group. -->
+    <CustomAction Id="AddCurrentUserAdminAccess"
+                  Directory="SystemFolder"
+                  ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$sid = '[ALMAGEST_ACCESS_SID]'; if ($sid -ne 'S-1-5-18' -and -not (Get-LocalGroupMember -Group 'Almagest Administrators' | Where-Object { $_.SID.Value -eq $sid })) { $sidObject = New-Object -TypeName System.Security.Principal.SecurityIdentifier -ArgumentList $sid; $accountType = (New-Object -TypeName System.Security.Principal.NTAccount -ArgumentList 'placeholder').GetType(); $account = $sidObject.Translate($accountType).Value; Add-LocalGroupMember -Group 'Almagest Administrators' -Member $account -ErrorAction Stop }&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
     <InstallExecuteSequence>
       <Custom Action="DeleteMullvadDriverService"
               After="StopServices"
@@ -280,8 +311,11 @@
       <Custom Action="CreateAlmagestAdministrationGroup"
               After="ConfigureMullvadDriverService"
               Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
-      <Custom Action="RollbackAlmagestServiceRecovery"
+      <Custom Action="AddCurrentUserAdminAccess"
               After="CreateAlmagestAdministrationGroup"
+              Condition="&amp;CurrentUserAdminAccessFeature = 3 AND NOT (REMOVE ~= &quot;ALL&quot;)" />
+      <Custom Action="RollbackAlmagestServiceRecovery"
+              After="AddCurrentUserAdminAccess"
               Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
       <Custom Action="ConfigureAlmagestServiceRecovery"
               After="RollbackAlmagestServiceRecovery"

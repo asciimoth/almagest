@@ -45,6 +45,9 @@ $programFiles = Join-Path $env:ProgramFiles 'Almagest'
 $programData = Join-Path $env:ProgramData 'Almagest'
 $driverName = 'mullvad-split-tunnel'
 $adminGroupName = 'Almagest Administrators'
+$delegatedAdministrator = "$env:COMPUTERNAME\winvm"
+$delegatedSid = ([System.Security.Principal.NTAccount]$delegatedAdministrator).Translate(
+    [System.Security.Principal.SecurityIdentifier]).Value
 $driverSystemPath = Join-Path $env:SystemRoot 'System32\drivers\mullvad-split-tunnel.sys'
 $pipePath = '\\.\pipe\almagest-admin'
 $preconditions = [ordered]@{
@@ -67,7 +70,8 @@ $msi = Join-Path $ArtifactDir $manifest.output
 Assert-True (Test-Path -LiteralPath $msi -PathType Leaf) 'Built MSI is absent'
 $installLog = Join-Path $ArtifactDir 'msiexec-install.log'
 $installer = Start-Process msiexec.exe -ArgumentList @(
-    '/i', ('"{0}"' -f $msi), '/qn', '/norestart', '/l*v', ('"{0}"' -f $installLog)
+    '/i', ('"{0}"' -f $msi), "ALMAGEST_ACCESS_SID=$delegatedSid",
+    '/qn', '/norestart', '/l*v', ('"{0}"' -f $installLog)
 ) -Wait -PassThru
 Assert-True ($installer.ExitCode -in @(0, 3010)) "MSI install failed: $($installer.ExitCode)"
 
@@ -81,7 +85,10 @@ Assert-True ($service -and $service.State -eq 'Running') 'almagestd did not reac
 $adminGroup = Get-LocalGroup -Name $adminGroupName
 Assert-True ([bool]$adminGroup) 'Almagest administration group is absent'
 $adminGroupMembers = @(Get-LocalGroupMember -Group $adminGroupName)
-Assert-True ($adminGroupMembers.Count -eq 0) 'Silent install inferred an administration group member'
+Assert-True ($adminGroupMembers.Count -eq 1) `
+    'Default installer option did not add exactly one administration group member'
+Assert-True ($adminGroupMembers[0].SID.Value -eq $delegatedSid) `
+    'Default installer option did not add the selected current user'
 $pipeAcl = $null
 $pipeAclDeadline = [DateTime]::UtcNow.AddMinutes(2)
 do {
@@ -228,8 +235,6 @@ foreach ($path in @($programFiles, $programData, (Join-Path $programData 'alm.hu
 
 $cliOutput = & (Join-Path $programFiles 'almagest-cli.exe') --url pipe://machine admin ping --nonce package-smoke 2>&1 | Out-String
 Assert-True ($LASTEXITCODE -eq 0 -and $cliOutput -match 'package-smoke') 'Elevated CLI cannot use pipe://machine'
-$delegatedAdministrator = "$env:COMPUTERNAME\winvm"
-Add-LocalGroupMember -Group $adminGroupName -Member $delegatedAdministrator
 $logPath = Join-Path $programData 'logs\almagestd.log'
 Assert-True (Test-Path -LiteralPath $logPath -PathType Leaf) 'Durable service log is absent'
 $logContent = Get-Content -Raw -LiteralPath $logPath

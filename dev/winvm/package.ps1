@@ -45,6 +45,9 @@ if ($loaderCandidates.Count -ne 1) {
 }
 Copy-Item -LiteralPath $loaderCandidates[0].FullName `
     -Destination (Join-Path $SourceDir 'dev\winvm\WebView2Loader.dll') -Force
+& python.exe (Join-Path $SourceDir 'packaging\windows\create-license-rtf.py') `
+    (Join-Path $SourceDir 'LICENSE') (Join-Path $SourceDir 'dev\winvm\LICENSE.rtf')
+if ($LASTEXITCODE -ne 0) { throw "License RTF generation failed: $LASTEXITCODE" }
 & python.exe (Join-Path $SourceDir 'packaging\windows\create-build-manifest.py') `
     --version $manifest.version --root $SourceDir `
     --source-record (Join-Path $SourceDir 'dev\winvm\source.json') `

@@ -28,6 +28,9 @@ try {
     @('almagestd.exe', 'almagest-cli.exe') | ForEach-Object {
         [System.IO.File]::WriteAllBytes((Join-Path $payload $_), [byte[]](0x4d, 0x5a))
     }
+    & python.exe (Join-Path $packageDirectory 'create-license-rtf.py') `
+        (Join-Path $sourceDirectory 'LICENSE') (Join-Path $payload 'LICENSE.rtf')
+    if ($LASTEXITCODE -ne 0) { throw "License RTF generation failed: $LASTEXITCODE" }
     [System.IO.File]::WriteAllBytes((Join-Path $wintun 'wintun.dll'), [byte[]](0x4d, 0x5a))
     @('mullvad-split-tunnel.inf', 'mullvad-split-tunnel.sys', 'mullvad-split-tunnel.cat') |
         ForEach-Object { Set-Content -LiteralPath (Join-Path $mullvad $_) -Value 'fixture' }

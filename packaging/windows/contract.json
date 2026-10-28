@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "target": {
     "operatingSystem": "Windows Server 2022",
     "build": 20348,
@@ -23,6 +23,7 @@
     "daemonService": "C05707E1-C3A4-482D-B634-975B99A7F8AB",
     "cli": "D0351CF1-25F6-423B-ABCE-9C7F57FFD162",
     "pathEnvironment": "B715470A-24CC-4B31-B642-F097B7604A5C",
+    "currentUserAdminAccess": "98DCEEC8-F20B-45B4-A5EC-1E34C42D698F",
     "desktopApp": "C3E680A8-1629-4788-8A31-765AF7D06C6A",
     "desktopAppAutoStart": "CE97A2C4-E435-497A-BD0E-8211A38CF6B9",
     "wintun": "E029577A-A19D-4F4D-B5C3-666186CF4BE5",
@@ -95,8 +96,16 @@
     "localGroup": "Almagest Administrators",
     "machinePipeAccess": ["LocalSystem", "Administrators", "Almagest Administrators"],
     "groupPreservedOnUninstall": true,
-    "installerSelectsMembers": false,
-    "inferInteractiveUser": false
+    "currentUserAccessFeature": "CurrentUserAdminAccessFeature",
+    "currentUserAccessByDefault": true,
+    "membershipActivation": "Sign out and sign in again before an unelevated process uses the administration pipe.",
+    "groupMembershipPreservedOnUninstall": true
+  },
+  "installerLicense": {
+    "source": "LICENSE",
+    "uiFormat": "RTF",
+    "shownBeforeFeatureSelection": true,
+    "installedCopy": "%ProgramFiles%\\Almagest\\LICENSE.txt"
   },
   "logging": {
     "serviceOnly": true,
