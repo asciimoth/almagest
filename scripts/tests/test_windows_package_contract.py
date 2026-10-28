@@ -245,6 +245,8 @@ class WindowsPackageContractTests(unittest.TestCase):
             {("ProgramMenuFolder", "Almagest"),
              ("DesktopFolder", "Almagest")},
         )
+        self.assertTrue(all(item.attrib["Advertise"] == "no"
+                            for item in shortcuts))
         auto_start = self._component(self.wix, "DesktopAppAutoStartComponent")
         self.assertEqual(auto_start.attrib["Guid"],
                          self.contract["components"]["desktopAppAutoStart"])
@@ -409,6 +411,9 @@ class WindowsPackageContractTests(unittest.TestCase):
                           'NOT (REMOVE ~= "ALL")'),
         })
         membership = actions["AddCurrentUserAdminAccess"]
+        self.assertEqual(membership.attrib["Directory"], "System64Folder")
+        self.assertTrue(membership.attrib["ExeCommand"].startswith(
+            r'"[System64Folder]WindowsPowerShell\v1.0\powershell.exe"'))
         self.assertIn("[ALMAGEST_ACCESS_SID]", membership.attrib["ExeCommand"])
         self.assertIn("Get-LocalGroupMember", membership.attrib["ExeCommand"])
         self.assertIn("S-1-5-18", membership.attrib["ExeCommand"])

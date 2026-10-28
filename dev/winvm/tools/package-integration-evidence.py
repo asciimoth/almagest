@@ -39,7 +39,7 @@ def main() -> None:
         assert all(smoke["preconditions"].values())
         assert smoke["service"]["state"] == "Running"
         assert smoke["elevatedCli"] == "passed"
-        assert smoke["administrationGroup"]["initialMemberCount"] == 0
+        assert smoke["administrationGroup"]["initialMemberCount"] == 1
         assert smoke["administrationGroup"]["pipeAccess"] == "passed"
         assert user["suite"] == "windows-msi-package-smoke-user"
         assert user["outcome"] == "passed"

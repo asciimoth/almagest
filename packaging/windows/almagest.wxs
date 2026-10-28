@@ -157,13 +157,13 @@
                   Name="Almagest"
                   Description="Almagest desktop app"
                   WorkingDirectory="INSTALLFOLDER"
-                  Advertise="yes" />
+                  Advertise="no" />
         <Shortcut Id="DesktopAppDesktopShortcut"
                   Directory="DesktopFolder"
                   Name="Almagest"
                   Description="Almagest desktop app"
                   WorkingDirectory="INSTALLFOLDER"
-                  Advertise="yes" />
+                  Advertise="no" />
       </File>
       <File Id="WebView2Loader"
             Source="$(var.PayloadDir)\WebView2Loader.dll" />
@@ -290,8 +290,8 @@
          membership on uninstall or rollback, as with administrator-managed
          members and the durable local group. -->
     <CustomAction Id="AddCurrentUserAdminAccess"
-                  Directory="SystemFolder"
-                  ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$sid = '[ALMAGEST_ACCESS_SID]'; if ($sid -ne 'S-1-5-18' -and -not (Get-LocalGroupMember -Group 'Almagest Administrators' | Where-Object { $_.SID.Value -eq $sid })) { $sidObject = New-Object -TypeName System.Security.Principal.SecurityIdentifier -ArgumentList $sid; $accountType = (New-Object -TypeName System.Security.Principal.NTAccount -ArgumentList 'placeholder').GetType(); $account = $sidObject.Translate($accountType).Value; Add-LocalGroupMember -Group 'Almagest Administrators' -Member $account -ErrorAction Stop }&quot;"
+                  Directory="System64Folder"
+                  ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command &quot;$sid = '[ALMAGEST_ACCESS_SID]'; if ($sid -ne 'S-1-5-18' -and -not (Get-LocalGroupMember -Group 'Almagest Administrators' | Where-Object { $_.SID.Value -eq $sid })) { $sidObject = New-Object -TypeName System.Security.Principal.SecurityIdentifier -ArgumentList $sid; $accountType = (New-Object -TypeName System.Security.Principal.NTAccount -ArgumentList 'placeholder').GetType(); $account = $sidObject.Translate($accountType).Value; Add-LocalGroupMember -Group 'Almagest Administrators' -Member $account -ErrorAction Stop }&quot;"
                   Execute="deferred"
                   Impersonate="no"
                   Return="check" />

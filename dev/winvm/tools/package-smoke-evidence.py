@@ -42,7 +42,7 @@ def main() -> None:
         assert smoke["desktopApp"]["autoStartCommand"].endswith(
             'almagest-app.exe" --background'
         )
-        assert smoke["administrationGroup"]["initialMemberCount"] == 0
+        assert smoke["administrationGroup"]["initialMemberCount"] == 1
         assert smoke["administrationGroup"]["pipeAccess"] == "passed"
         assert user["suite"] == "windows-msi-package-smoke-user"
         assert user["outcome"] == "passed"

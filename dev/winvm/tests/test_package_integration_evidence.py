@@ -43,7 +43,7 @@ class PackageIntegrationEvidenceTests(unittest.TestCase):
                 "preconditions": {"clean": True}, "service": {"state": "Running"},
                 "elevatedCli": "passed", "package": package,
                 "administrationGroup": {
-                    "initialMemberCount": 0, "pipeAccess": "passed"},
+                    "initialMemberCount": 1, "pipeAccess": "passed"},
             }).encode(),
             "artifacts/package-user-smoke.json": json.dumps({
                 "schemaVersion": 1, "suite": "windows-msi-package-smoke-user",
