@@ -655,6 +655,11 @@ class WindowsPackageContractTests(unittest.TestCase):
             text=True,
         )
 
+    def test_payload_excludes_development_only_locales(self):
+        payload = PAYLOAD_WIX_PATH.read_text()
+        self.assertIn(r"locales\en\manifest.json", payload)
+        self.assertNotIn("locales\\lorem\\", payload)
+
     def test_build_manifest_identities_are_deterministic_and_input_bound(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -666,10 +671,20 @@ class WindowsPackageContractTests(unittest.TestCase):
                          "dev/winvm/almagestd.exe", "dev/winvm/almagest-cli.exe",
                          "dev/winvm/almagest-app.exe", "dev/winvm/WebView2Loader.dll",
                          "dev/winvm/LICENSE.rtf",
-                         "locales/value.json", "examples/example.hujson"):
+                         "examples/example.hujson"):
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(name)
+            for locale, development_only in (("en", False), ("lorem", True)):
+                directory = root / "locales" / locale
+                directory.mkdir()
+                (directory / "manifest.json").write_text(json.dumps({
+                    "format": 1,
+                    "locale": locale,
+                    "name": locale,
+                    "development_only": development_only,
+                }))
+                (directory / "value.json").write_text(locale)
             source = root / "source.json"
             source.write_text(json.dumps({
                 "sha256": "1" * 64,
@@ -689,7 +704,13 @@ class WindowsPackageContractTests(unittest.TestCase):
             first = json.loads(output.read_text())
             subprocess.run(command, check=True)
             self.assertEqual(first, json.loads(output.read_text()))
-            (root / "locales/value.json").write_text("changed")
+            paths = [value["path"] for value in first["inputs"]["files"]]
+            self.assertIn("locales/en/value.json", paths)
+            self.assertNotIn("locales/lorem/value.json", paths)
+            (root / "locales/lorem/value.json").write_text("changed fixture")
+            subprocess.run(command, check=True)
+            self.assertEqual(first, json.loads(output.read_text()))
+            (root / "locales/en/value.json").write_text("changed")
             subprocess.run(command, check=True)
             changed = json.loads(output.read_text())
             self.assertEqual(first["productCode"], changed["productCode"])

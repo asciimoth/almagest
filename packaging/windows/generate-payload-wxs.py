@@ -3,6 +3,7 @@
 
 import argparse
 import hashlib
+import json
 import subprocess
 import uuid
 from pathlib import Path
@@ -23,7 +24,18 @@ def tracked_files(tree: str) -> list[str]:
         capture_output=True,
         text=True,
     )
-    return [line for line in result.stdout.splitlines() if line]
+    paths = [line for line in result.stdout.splitlines() if line]
+    if tree != "locales":
+        return paths
+    excluded = set()
+    for manifest_path in ROOT.glob("locales/*/manifest.json"):
+        manifest = json.loads(manifest_path.read_text())
+        if manifest.get("development_only") is True:
+            excluded.add(manifest_path.parent.relative_to(ROOT).as_posix())
+    return [
+        path for path in paths
+        if not any(path == prefix or path.startswith(prefix + "/") for prefix in excluded)
+    ]
 
 
 def wix_id(prefix: str, path: str) -> str:

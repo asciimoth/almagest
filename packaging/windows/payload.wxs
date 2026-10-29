@@ -457,78 +457,6 @@
                Guid="252C1231-8584-5C19-AA20-742E79C44221" Subdirectory="en">
       <File Id="File_26b71009012cdc8d638eb521" Source="$(var.SourceDir)\locales\en\panel.json" KeyPath="yes" />
     </Component>
-    <Component Id="Locales_14d5a1941c9c4fc208aac21d" Directory="LOCALESFOLDER"
-               Guid="5BDDAB41-A6EC-5198-8B04-343CFDA989F9" Subdirectory="lorem\docs">
-      <File Id="File_14d5a1941c9c4fc208aac21d" Source="$(var.SourceDir)\locales\lorem\docs\index.json" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_ee857f80b30c90be2d383a46" Directory="LOCALESFOLDER"
-               Guid="13B0C8B1-D798-5B41-AE55-07F2580B769D" Subdirectory="lorem\docs\pages\guides">
-      <File Id="File_ee857f80b30c90be2d383a46" Source="$(var.SourceDir)\locales\lorem\docs\pages\guides\markdown-features.md" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_8e4361f8881f8dc1072be752" Directory="LOCALESFOLDER"
-               Guid="F9C29C4F-E5ED-546D-85CD-01BFF516BCF1" Subdirectory="lorem\docs\pages\guides">
-      <File Id="File_8e4361f8881f8dc1072be752" Source="$(var.SourceDir)\locales\lorem\docs\pages\guides\welcome.md" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_3f6504b9f960222b81f2cf4d" Directory="LOCALESFOLDER"
-               Guid="B38DEE6B-CA42-5793-BB19-0C8DDB1314F7" Subdirectory="lorem\docs\pages\guides">
-      <File Id="File_3f6504b9f960222b81f2cf4d" Source="$(var.SourceDir)\locales\lorem\docs\pages\guides\workspaces.md" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_41f884e92b290ceb30bc45ef" Directory="LOCALESFOLDER"
-               Guid="30F30535-B0CA-5CFF-963E-564101AA65BF" Subdirectory="lorem\docs\pages\nodes\almagest">
-      <File Id="File_41f884e92b290ceb30bc45ef" Source="$(var.SourceDir)\locales\lorem\docs\pages\nodes\almagest\Command.md" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_d364ef5bba0af8a94856aa41" Directory="LOCALESFOLDER"
-               Guid="D785E96B-DAB1-54CF-B354-63931BF7BC95" Subdirectory="lorem\docs\pages\nodes\almagest">
-      <File Id="File_d364ef5bba0af8a94856aa41" Source="$(var.SourceDir)\locales\lorem\docs\pages\nodes\almagest\DnsClient.md" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_20d15d8c75d4c6f25b9323f4" Directory="LOCALESFOLDER"
-               Guid="850BDC6C-347C-54B3-9A1D-8685B5AFF862" Subdirectory="lorem\docs\pages\nodes\almagest">
-      <File Id="File_20d15d8c75d4c6f25b9323f4" Source="$(var.SourceDir)\locales\lorem\docs\pages\nodes\almagest\HttpServer.md" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_d7cf601a9f03451b49961bdb" Directory="LOCALESFOLDER"
-               Guid="7A6AABF4-EFE2-52A6-BE48-A4CBC316B3CB" Subdirectory="lorem\docs\pages\nodes\almagest">
-      <File Id="File_d7cf601a9f03451b49961bdb" Source="$(var.SourceDir)\locales\lorem\docs\pages\nodes\almagest\SocksClient.md" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_a93cc889198f0a7046f750e9" Directory="LOCALESFOLDER"
-               Guid="BB0CF25F-D001-54C2-8872-F10548A7632A" Subdirectory="lorem\docs\pages\nodes\almagest">
-      <File Id="File_a93cc889198f0a7046f750e9" Source="$(var.SourceDir)\locales\lorem\docs\pages\nodes\almagest\TimeTrigger.md" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_f32dff083cd6a6223ad47f1a" Directory="LOCALESFOLDER"
-               Guid="2C44409B-E03A-594E-847D-5F1D9B75E6DC" Subdirectory="lorem\docs\pages\nodes\almagest">
-      <File Id="File_f32dff083cd6a6223ad47f1a" Source="$(var.SourceDir)\locales\lorem\docs\pages\nodes\almagest\TorDriver.md" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_322752be05f6487f76180517" Directory="LOCALESFOLDER"
-               Guid="7409C205-D464-5EE8-B89C-04142F56C58D" Subdirectory="lorem\docs\pages\nodes\almagest">
-      <File Id="File_322752be05f6487f76180517" Source="$(var.SourceDir)\locales\lorem\docs\pages\nodes\almagest\Tun.md" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_9bd0721e5b0e4c8ed18a1558" Directory="LOCALESFOLDER"
-               Guid="6382B0AD-7523-51CB-9CF4-442B4FADC929" Subdirectory="lorem\docs\pages\nodes\almagest">
-      <File Id="File_9bd0721e5b0e4c8ed18a1558" Source="$(var.SourceDir)\locales\lorem\docs\pages\nodes\almagest\WireGuard.md" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_3c5ec93a2cfc2820888bb38d" Directory="LOCALESFOLDER"
-               Guid="254C70D2-4292-5EC7-8497-42CF0338BE9E" Subdirectory="lorem\docs\pages\nodes\pasta">
-      <File Id="File_3c5ec93a2cfc2820888bb38d" Source="$(var.SourceDir)\locales\lorem\docs\pages\nodes\pasta\BoolConstant.md" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_63172e49c989957840eea055" Directory="LOCALESFOLDER"
-               Guid="6806098B-52F5-5D32-8A42-FD6E293FEA72" Subdirectory="lorem\docs\pages\nodes\pasta">
-      <File Id="File_63172e49c989957840eea055" Source="$(var.SourceDir)\locales\lorem\docs\pages\nodes\pasta\PopUp.md" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_2e2101e8ecacb6fe2a32e8b8" Directory="LOCALESFOLDER"
-               Guid="19D7787D-FF97-5344-A3D2-D5942CD5986A" Subdirectory="lorem">
-      <File Id="File_2e2101e8ecacb6fe2a32e8b8" Source="$(var.SourceDir)\locales\lorem\manifest.json" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_f547b57efb2cdd977fd92df9" Directory="LOCALESFOLDER"
-               Guid="35FC009B-4401-5945-8B0E-F3BBA16C4046" Subdirectory="lorem">
-      <File Id="File_f547b57efb2cdd977fd92df9" Source="$(var.SourceDir)\locales\lorem\menus.json" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_be9ce3c178d709dd8f6c098f" Directory="LOCALESFOLDER"
-               Guid="5D6AAA59-72E0-5EB3-BDB3-E0163718ED4E" Subdirectory="lorem">
-      <File Id="File_be9ce3c178d709dd8f6c098f" Source="$(var.SourceDir)\locales\lorem\nodes.json" KeyPath="yes" />
-    </Component>
-    <Component Id="Locales_01524c76b580238e592a91f8" Directory="LOCALESFOLDER"
-               Guid="D2086F1C-777C-57BE-83E2-EACDA66A80B4" Subdirectory="lorem">
-      <File Id="File_01524c76b580238e592a91f8" Source="$(var.SourceDir)\locales\lorem\panel.json" KeyPath="yes" />
-    </Component>
     <Component Id="Examples_49337704c743b3857f6b72b7" Directory="EXAMPLESFOLDER"
                Guid="1F86FA8A-4E0A-5B25-AAE2-06E4C2789B9D" Subdirectory="001-hello-network">
       <File Id="File_49337704c743b3857f6b72b7" Source="$(var.SourceDir)\examples\001-hello-network\config.hujson" KeyPath="yes" />
@@ -1007,24 +935,6 @@
       <ComponentRef Id="Locales_c8ff4faa60a08465f85646fd" />
       <ComponentRef Id="Locales_42aefda1271a8d52240797fa" />
       <ComponentRef Id="Locales_26b71009012cdc8d638eb521" />
-      <ComponentRef Id="Locales_14d5a1941c9c4fc208aac21d" />
-      <ComponentRef Id="Locales_ee857f80b30c90be2d383a46" />
-      <ComponentRef Id="Locales_8e4361f8881f8dc1072be752" />
-      <ComponentRef Id="Locales_3f6504b9f960222b81f2cf4d" />
-      <ComponentRef Id="Locales_41f884e92b290ceb30bc45ef" />
-      <ComponentRef Id="Locales_d364ef5bba0af8a94856aa41" />
-      <ComponentRef Id="Locales_20d15d8c75d4c6f25b9323f4" />
-      <ComponentRef Id="Locales_d7cf601a9f03451b49961bdb" />
-      <ComponentRef Id="Locales_a93cc889198f0a7046f750e9" />
-      <ComponentRef Id="Locales_f32dff083cd6a6223ad47f1a" />
-      <ComponentRef Id="Locales_322752be05f6487f76180517" />
-      <ComponentRef Id="Locales_9bd0721e5b0e4c8ed18a1558" />
-      <ComponentRef Id="Locales_3c5ec93a2cfc2820888bb38d" />
-      <ComponentRef Id="Locales_63172e49c989957840eea055" />
-      <ComponentRef Id="Locales_2e2101e8ecacb6fe2a32e8b8" />
-      <ComponentRef Id="Locales_f547b57efb2cdd977fd92df9" />
-      <ComponentRef Id="Locales_be9ce3c178d709dd8f6c098f" />
-      <ComponentRef Id="Locales_01524c76b580238e592a91f8" />
     </ComponentGroup>
   </Fragment>
 

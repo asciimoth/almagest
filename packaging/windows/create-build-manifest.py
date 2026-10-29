@@ -13,6 +13,20 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def package_files(root: Path, directory: str) -> list[Path]:
+    base = root / directory
+    if directory != "locales":
+        return [path for path in base.rglob("*") if path.is_file()]
+    files = [path for path in base.iterdir() if path.is_file()]
+    for entry in base.iterdir():
+        if not entry.is_dir():
+            continue
+        manifest = json.loads((entry / "manifest.json").read_text())
+        if manifest.get("development_only") is not True:
+            files.extend(path for path in entry.rglob("*") if path.is_file())
+    return files
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True)
@@ -40,7 +54,7 @@ def main() -> None:
         args.root / "packaging/windows/README.md",
     ]
     for directory in ("locales", "examples", "dev/winvm/package-inputs"):
-        paths.extend(path for path in (args.root / directory).rglob("*") if path.is_file())
+        paths.extend(package_files(args.root, directory))
     for path in sorted(path for path in paths if path.is_file()):
         included.append({
             "path": path.relative_to(args.root).as_posix(),

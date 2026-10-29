@@ -84,8 +84,8 @@ An interactive install selects **Allow current user to use the admin API** by
 default. This option adds the user who started the installer to the local
 `Almagest Administrators` group. Clear the option in the feature tree if the
 current user must not get access. For a silent install, omit
-`CurrentUserAdminAccessFeature` from `ADDLOCAL` to disable this access.
-An unattended install that runs as LocalSystem does not add LocalSystem to the
+`CurrentUserAdminAccessFeature` from `ADDLOCAL` to disable this access. An
+unattended install that runs as LocalSystem does not add LocalSystem to the
 group. Set `ALMAGEST_ACCESS_SID` to the intended user SID when deployment
 software runs the MSI as LocalSystem and selects this feature.
 

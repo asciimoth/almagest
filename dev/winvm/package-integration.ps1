@@ -147,6 +147,8 @@ try {
     $null = Invoke-PackageJson @('workers', 'snapshot')
     Assert-True (Test-Path -LiteralPath (Join-Path $script:ProgramFiles 'locales\en\docs\index.json')) `
         'Installed English documentation index is absent'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $script:ProgramFiles 'locales\lorem'))) `
+        'Installed package contains the development-only Lorem locale'
     Assert-True (@(Get-ChildItem (Join-Path $script:ProgramFiles 'examples') -Filter manifest.json `
         -File -Recurse).Count -gt 0) `
         'Installed example manifest is absent'

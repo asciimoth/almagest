@@ -369,7 +369,8 @@ stage_daemon_payload() {
 	install -m 0644 "$repo_root/packaging/linux/almagestd.service" "$stage/usr/lib/systemd/system/almagestd.service"
 	install -m 0644 "$repo_root/packaging/linux/almagest.sysusers" "$stage/usr/lib/sysusers.d/almagest.conf"
 	install -m 0644 "$repo_root/packaging/linux/almagest.tmpfiles" "$stage/usr/lib/tmpfiles.d/almagest.conf"
-	cp -R "$repo_root/locales/." "$stage/usr/share/almagest/locales/"
+	go -C "$repo_root/bin" run ./cmd/package-locales \
+		"$repo_root/locales" "$stage/usr/share/almagest/locales"
 	cp -R "$repo_root/examples/." "$stage/usr/share/almagest/examples/"
 	install -m 0644 "$repo_root/README.md" "$stage/usr/share/doc/almagest/README.md"
 	install -m 0644 "$repo_root/LICENSE" "$stage/usr/share/licenses/almagest/LICENSE"

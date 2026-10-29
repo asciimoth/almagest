@@ -69,6 +69,17 @@
             "target"
           ]);
       };
+      localeEntries = builtins.readDir ./locales;
+      productionLocaleNames = builtins.filter (name:
+        localeEntries.${name} == "directory"
+        && !(builtins.fromJSON (builtins.readFile (./locales + "/${name}/manifest.json"))).development_only
+      ) (builtins.attrNames localeEntries);
+      productionLocales = pkgs.runCommand "almagest-production-locales" {} ''
+        mkdir "$out"
+        ${pkgs.lib.concatMapStringsSep "\n" (name: ''
+          cp -r ${./locales + "/${name}"} "$out/${name}"
+        '') productionLocaleNames}
+      '';
 
       linuxIsolationLaunchers = pkgs.stdenv.mkDerivation {
         pname = "almagest-linux-isolation-launchers";
@@ -162,7 +173,7 @@
         postInstall = ''
           mkdir -p "$out/share/almagest"
           cp -r ${./examples} "$out/share/almagest/examples"
-          cp -r ${./locales} "$out/share/almagest/locales"
+          cp -r ${productionLocales} "$out/share/almagest/locales"
           mkdir -p "$out/libexec/almagest"
           mv "$out/bin/almagestd" "$out/libexec/almagest/almagestd"
           ${pkgs.lib.optionalString linuxIsolationSupported ''
@@ -181,10 +192,11 @@
         doInstallCheck = true;
         installCheckPhase = ''
           runHook preInstallCheck
-          diff --brief --recursive ${./locales} "$out/share/almagest/locales"
+          diff --brief --recursive ${productionLocales} "$out/share/almagest/locales"
           diff --brief --recursive ${./examples} "$out/share/almagest/examples"
           test -f "$out/share/almagest/locales/en/manifest.json"
           test -f "$out/share/almagest/locales/en/docs/index.json"
+          test ! -e "$out/share/almagest/locales/lorem"
           test -x "$out/bin/almagest-cli"
           test -x "$out/libexec/almagest/almagestd"
           ${pkgs.lib.optionalString linuxIsolationSupported ''
