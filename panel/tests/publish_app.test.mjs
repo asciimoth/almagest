@@ -18,6 +18,7 @@ test("desktop publication retains the panel document and uses its native entry p
     appDocument.querySelector("script[type='module']")?.getAttribute("src") ?? "",
     /^\.\/public\/build\/desktop\.js\?v=[a-f0-9]{16}$/,
   );
+  assert.equal(appDocument.querySelector("link[rel='icon']")?.getAttribute("href"), "./favicon.svg");
   assert.match(
     appDocument.querySelector("link[rel='modulepreload']")?.getAttribute("href") ?? "",
     /^\.\/public\/build\/desktop-docs\.js\?v=[a-f0-9]{16}$/,
@@ -28,10 +29,15 @@ test("desktop publication retains the panel document and uses its native entry p
     /^\.\.\/public\/build\/desktop-docs\.js\?v=[a-f0-9]{16}$/);
   assert.match(docsDocument.querySelector("link[rel='modulepreload']")?.getAttribute("href") ?? "",
     /^\.\.\/public\/build\/desktop\.js\?v=[a-f0-9]{16}$/);
+  assert.equal(docsDocument.querySelector("link[rel='icon']")?.getAttribute("href"), "../favicon.svg");
   assert.equal(docsDocument.querySelector("meta[http-equiv='Content-Security-Policy']"), null);
   await access(published("vendor/litegraph/litegraph.js"));
   await access(published("vendor/formular-menu/formular-menu.js"));
   await access(published("LUCIDE_LICENSE.txt"));
+  assert.deepEqual(
+    await readFile(published("favicon.svg")),
+    await readFile(new URL("../../logo-light.svg", import.meta.url)),
+  );
 });
 
 test("desktop publication permits only isolated Tauri IPC", async () => {

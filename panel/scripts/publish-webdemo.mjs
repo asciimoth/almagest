@@ -167,6 +167,7 @@ async function minifiedHTML(source, replacements = []) {
 await rm(target, { recursive: true, force: true });
 await mkdir(target, { recursive: true });
 await cp(new URL("logo-light.svg", repository), new URL("logo.svg", target));
+await cp(new URL("logo-light.svg", repository), new URL("favicon.svg", target));
 await cp(new URL("panel/LUCIDE_LICENSE.txt", repository), new URL("LUCIDE_LICENSE.txt", target));
 await cp(new URL("webdemo/main.css", repository), new URL("main.css", target));
 await cp(new URL("panel/style.css", repository), new URL("style.css", target));
@@ -178,6 +179,7 @@ await writeFile(new URL("demo/index.html", target), await minifiedHTML(new URL("
   ["</head>", "<meta name=\"almagest-site-base\" content=\"../\"></head>"],
   ["script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'"],
   ["class=\"header-logo-link\" href=\"./\"", "class=\"header-logo-link\" href=\"../\""],
+  ["href=\"./favicon.svg\"", "href=\"../favicon.svg\""],
   ["href=\"./vendor/", "href=\"../vendor/"],
   ["href=\"./style.css\"", "href=\"../style.css\""],
   ["src=\"./vendor/", "src=\"../vendor/"],
@@ -187,6 +189,7 @@ await writeFile(new URL("demo/index.html", target), await minifiedHTML(new URL("
 await mkdir(new URL("docs/", target), { recursive: true });
 await writeFile(new URL("docs/index.html", target), await minifiedHTML(new URL("panel/docs.html", repository), [
   ["content=\"/\"", "content=\"../../\""],
+  ["href=\"/favicon.svg\"", "href=\"../favicon.svg\""],
   ["href=\"/style.css\"", "href=\"../style.css\""],
   ["href=\"/vendor/", "href=\"../vendor/"],
   ["class=\"header-logo-link\" href=\"/\"", "class=\"header-logo-link\" href=\"../\""],

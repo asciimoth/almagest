@@ -14,6 +14,7 @@ await promisify(execFile)(process.execPath, ["scripts/publish-webdemo.mjs", "../
 test("web demo publication is a complete relative static tree", async () => {
   for (const path of [
     "index.html",
+    "favicon.svg",
     "LUCIDE_LICENSE.txt",
     "demo/index.html",
     "docs/index.html",
@@ -36,6 +37,9 @@ test("web demo publication is a complete relative static tree", async () => {
   }).window.document;
   assert.equal(landing.querySelector("a[href='./docs/']") !== null, true);
   assert.equal(landing.querySelector("a[href='./demo/']") !== null, true);
+  assert.equal(landing.querySelector("link[rel='icon']")?.getAttribute("href"), "./favicon.svg");
+  assert.equal(demo.querySelector("link[rel='icon']")?.getAttribute("href"), "../favicon.svg");
+  assert.equal(docs.querySelector("link[rel='icon']")?.getAttribute("href"), "../favicon.svg");
   assert.equal(demo.querySelector("meta[name='almagest-site-base']")?.getAttribute("content"), "../");
   assert.match(demo.querySelector("meta[name='viewport']")?.content ?? "", /viewport-fit=cover/);
   assert.equal(demo.querySelectorAll("meta[name='almagest-site-base']").length, 1);
@@ -57,6 +61,13 @@ test("web demo publication is a complete relative static tree", async () => {
     "https://example.test/almagest/vendor/litegraph/litegraph.css");
   assert.equal(docs.querySelector("script[src='../vendor/litegraph/litegraph.js']")?.src,
     "https://example.test/almagest/vendor/litegraph/litegraph.js");
+});
+
+test("web demo favicon is generated from the light logo", async () => {
+  assert.deepEqual(
+    await readFile(output("favicon.svg")),
+    await readFile(new URL("../../logo-light.svg", import.meta.url)),
+  );
 });
 
 test("web demo pages contain no root-relative local asset or navigation URLs", async () => {

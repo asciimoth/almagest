@@ -22,12 +22,23 @@ test("published panel assets are minified", async () => {
 
 test("published panel includes only compressed runtime assets", async () => {
   await access(published("index.html.gz"));
+  await access(published("favicon.svg.gz"));
   await access(published("LUCIDE_LICENSE.txt.gz"));
   await access(published("public/build/app.js.gz"));
   await assert.rejects(access(published("index.html")));
   await assert.rejects(access(published("public/build/app.js")));
   await assert.rejects(access(published("public/build/app.d.ts")));
   await assert.rejects(access(published("vendor/litegraph/litegraph.d.ts")));
+});
+
+test("daemon pages use the generated favicon", async () => {
+  const sourceFavicon = await readFile(new URL("../../logo-light.svg", import.meta.url));
+  assert.deepEqual(gunzipSync(await readFile(published("favicon.svg.gz"))), sourceFavicon);
+
+  const panel = new JSDOM(gunzipSync(await readFile(published("index.html.gz"))).toString("utf8")).window.document;
+  const docs = new JSDOM(gunzipSync(await readFile(published("docs/index.html.gz"))).toString("utf8")).window.document;
+  assert.equal(panel.querySelector("link[rel='icon']")?.getAttribute("href"), "./favicon.svg");
+  assert.equal(docs.querySelector("link[rel='icon']")?.getAttribute("href"), "/favicon.svg");
 });
 
 test("daemon publication retains the existing panel controls and uses the daemon entry point", async () => {

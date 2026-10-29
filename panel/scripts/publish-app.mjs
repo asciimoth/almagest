@@ -37,6 +37,7 @@ await mkdir(new URL("docs/", target), { recursive: true });
 await mkdir(new URL("vendor/formular-menu/", target), { recursive: true });
 await mkdir(new URL("vendor/litegraph/", target), { recursive: true });
 await cp(new URL("logo-light.svg", repository), new URL("logo.svg", target));
+await cp(new URL("logo-light.svg", repository), new URL("favicon.svg", target));
 await cp(new URL("LUCIDE_LICENSE.txt", panel), new URL("LUCIDE_LICENSE.txt", target));
 await cp(new URL("style.css", panel), new URL("style.css", target));
 await cp(new URL("vendor/formular-menu/formular-menu.js", panel), new URL("vendor/formular-menu/formular-menu.js", target));
@@ -85,6 +86,7 @@ const docsHTML = sourceDocsHTML
   // Use Tauri's response CSP for the same isolation-frame reason as index.html.
   .replace(/^\s*<meta http-equiv="Content-Security-Policy"[^>]*>\s*$/m, "")
   .replace('content="/"', 'content="../"')
+  .replaceAll('href="/favicon.svg"', 'href="../favicon.svg"')
   .replaceAll('href="/style.css"', 'href="../style.css"')
   .replaceAll('href="/vendor/', 'href="../vendor/')
   .replaceAll('src="/vendor/', 'src="../vendor/')
