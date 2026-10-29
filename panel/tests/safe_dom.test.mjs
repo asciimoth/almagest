@@ -1033,6 +1033,21 @@ test("panel source does not use script execution or HTML parser sinks", async ()
   }
 });
 
+test("pending node previews keep daemon text on the LiteGraph canvas path", async () => {
+  const source = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
+  const preview = source.slice(
+    source.indexOf("function addPendingNodePreview"),
+    source.indexOf("function selectGraphNodes"),
+  );
+  assert.match(preview, /node\.title = shortClass\(cls\.class\)/);
+  assert.match(preview, /node\.addInput\(port\.name, type, options\)/);
+  assert.match(preview, /node\.addOutput\(port\.name, type, options\)/);
+  assert.doesNotMatch(
+    preview,
+    /ContextMenu|createElement|textElement|\b(?:innerHTML|outerHTML|insertAdjacentHTML|DOMParser|srcdoc)\b/,
+  );
+});
+
 test("panel startup disables LiteGraph script nodes", async () => {
   const source = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
   assert.match(source, /LiteGraph\.allow_scripts\s*=\s*false/);

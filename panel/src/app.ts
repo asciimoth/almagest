@@ -355,6 +355,7 @@ type GraphViewportState = {
 type PendingNodePlacement = {
   className: string;
   position: string;
+  previewID: number;
   id?: number;
 };
 
@@ -466,6 +467,7 @@ let graph: any;
 let canvas: any;
 let rendering = false;
 let graphRenderPending = false;
+let graphRenderFrame = 0;
 let graphRenderFinishFrame = 0;
 let selectedMenu: {
   node: ID;
@@ -548,6 +550,7 @@ let liteGraphPointerGuardInstalled = false;
 let logStoreLimit = 0;
 const liteLinkToPasta = new Map<number, number>();
 const pendingNodePlacements: PendingNodePlacement[] = [];
+let nextPendingNodePreviewID = -2;
 const pendingNodePositions = new Map<number, string>();
 const CLASS_DRAG_MIME = "application/x-almagest-node-class";
 const GRAPH_VIEWPORT_STORAGE_KEY = "almagest.panel.graph.viewport.v1";
@@ -1755,18 +1758,21 @@ function centerPendingGraphContent(): void {
 
 /**
  * Rebuilding the graph replaces the objects that LiteGraph keeps in its
- * pointer state. Delay that rebuild until mouse-up so node movement and link
- * creation continue across daemon notifications. A deleted interaction node
- * is the exception and causes an immediate rebuild.
+ * pointer state. Coalesce notification bursts into one rebuild per frame, and
+ * delay that rebuild until mouse-up so node movement and link creation continue
+ * across daemon notifications. A deleted interaction node is the exception and
+ * can rebuild on the next frame.
  */
 function requestGraphRender(): void {
   if (!graph) return;
-  if (shouldDeferGraphUpdate(canvas, Object.keys(snapshot.nodes))) {
-    graphRenderPending = true;
-    return;
-  }
-  graphRenderPending = false;
-  renderGraph();
+  graphRenderPending = true;
+  if (graphRenderFrame) return;
+  graphRenderFrame = window.requestAnimationFrame(() => {
+    graphRenderFrame = 0;
+    if (!graphRenderPending || shouldDeferGraphUpdate(canvas, Object.keys(snapshot.nodes))) return;
+    graphRenderPending = false;
+    renderGraph();
+  });
 }
 
 function finishGraphPointerInteraction(): void {
@@ -1814,6 +1820,8 @@ function renderGraph(): void {
     graph.add(node);
   }
 
+  for (const placement of pendingNodePlacements) addPendingNodePreview(placement);
+
   for (const [idText, link] of Object.entries(snapshot.links)) {
     connectLink(Number(idText), link);
   }
@@ -1824,6 +1832,31 @@ function renderGraph(): void {
   }
   rendering = false;
   updateSidekick();
+}
+
+function addPendingNodePreview(placement: PendingNodePlacement): void {
+  if (!graph || (placement.id !== undefined && snapshot.nodes[String(placement.id)])) return;
+  const cls = nodeClassByName(snapshot, placement.className);
+  if (!cls || graph.getNodeById(placement.previewID)) return;
+
+  const node = LiteGraph.createNode("pasta/view");
+  node.id = placement.previewID;
+  node.title = shortClass(cls.class);
+  const primaryColor = typeColor(cls.primary_type);
+  node.color = primaryColor?.color ?? DEFAULT_NODE_TITLE_COLOR;
+  node.bgcolor = "#1e1e2e";
+  node.boxcolor = "#f9e2af";
+  node.pos = parsePosition(placement.position, 80, 80);
+  for (const port of cls.initial_ports) {
+    const type = liteGraphPortType(port.types);
+    const color = portTypeColor(port.types) ?? undefined;
+    const options = { label: port.name, pastaTypes: port.types, color_on: color, color_off: color };
+    if (port.direction === "left") node.addInput(port.name, type, options);
+    else if (port.direction === "right") node.addOutput(port.name, type, options);
+  }
+  node.size = node.computeSize();
+  graph.add(node);
+  graph.setDirtyCanvas(true, true);
 }
 
 function selectGraphNodes(ids: number[]): void {
@@ -2149,11 +2182,13 @@ function renderClassPanel(selectedCount: number): void {
 
 function addPastaNodeAt(className: string, pos: [number, number]): void {
   const position = formatPosition(pos);
-  const placement: PendingNodePlacement = { className, position };
+  const placement: PendingNodePlacement = { className, position, previewID: nextPendingNodePreviewID-- };
   pendingNodePlacements.push(placement);
+  addPendingNodePreview(placement);
   void tryBackend("addNode", { class: className, position }).then((id) => {
     if (id === null) {
       forgetPendingNodePlacement(placement);
+      requestGraphRender();
       return;
     }
     placement.id = id;

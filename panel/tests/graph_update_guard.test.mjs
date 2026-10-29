@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import {
   preservePendingNodePosition,
   preservePendingNodePositions,
   shouldDeferGraphUpdate,
 } from "../public/build/graph_update_guard.js";
+
+const appSource = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
 
 const node = (position, label = "") => ({
   class: "demo/node",
@@ -66,4 +69,34 @@ test("complete snapshots discard pending positions only for deleted nodes", () =
   const pending = new Map([[10, "one"], [20, "two"]]);
   preservePendingNodePositions({ 10: node("one") }, pending, true);
   assert.deepEqual([...pending], []);
+});
+
+test("graph notification bursts coalesce into one animation-frame render", () => {
+  const requestRender = appSource.slice(
+    appSource.indexOf("function requestGraphRender"),
+    appSource.indexOf("function finishGraphPointerInteraction"),
+  );
+  assert.match(requestRender, /graphRenderPending = true/);
+  assert.match(requestRender, /if \(graphRenderFrame\) return/);
+  assert.match(requestRender, /graphRenderFrame = window\.requestAnimationFrame/);
+  assert.match(requestRender, /shouldDeferGraphUpdate/);
+  assert.match(requestRender, /graphRenderPending = false;\s*renderGraph\(\)/);
+});
+
+test("node creation draws a local preview before the backend round trip", () => {
+  const addNode = appSource.slice(
+    appSource.indexOf("function addPastaNodeAt"),
+    appSource.indexOf("function openDocumentation"),
+  );
+  assert.match(addNode, /pendingNodePlacements\.push\(placement\);\s*addPendingNodePreview\(placement\);\s*void tryBackend/);
+
+  const preview = appSource.slice(
+    appSource.indexOf("function addPendingNodePreview"),
+    appSource.indexOf("function selectGraphNodes"),
+  );
+  assert.match(preview, /node\.id = placement\.previewID/);
+  assert.match(preview, /placement\.id !== undefined && snapshot\.nodes\[String\(placement\.id\)\]/);
+  assert.match(preview, /for \(const port of cls\.initial_ports\)/);
+  assert.match(preview, /graph\.add\(node\)/);
+  assert.match(addNode, /if \(id === null\) \{\s*forgetPendingNodePlacement\(placement\);\s*requestGraphRender\(\)/);
 });
