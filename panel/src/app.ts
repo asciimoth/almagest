@@ -237,7 +237,12 @@ import {
 } from "./localization.js";
 import { setupMobileNavigation } from "./mobile_navigation.js";
 import { tabHash, tabNameFromHash } from "./tab_navigation.js";
-import { applyStandardWheelZoom, GraphPinchZoom, redrawRevealedGraph } from "./graph_canvas_compat.js";
+import {
+  applyStandardWheelZoom,
+  GraphPinchZoom,
+  openGraphSearchOnBackgroundDoubleClick,
+  redrawRevealedGraph,
+} from "./graph_canvas_compat.js";
 import { apiReconnectDelay } from "./api_reconnect.js";
 import {
   preservePendingNodePosition,
@@ -488,6 +493,7 @@ let localClipboard = "";
 let graphShortcutsArmed = false;
 let graphPointerInside = false;
 let lastGraphPointer: { clientX: number; clientY: number } | null = null;
+let lastGraphPointerType: string | null = null;
 let lastPastePlacement: { key: string; count: number } | null = null;
 let nativePasteEvents = 0;
 let pasteShortcutActive = false;
@@ -1411,7 +1417,8 @@ function initGraph(): void {
   // LiteGraph 0.7 defaults to mouse events. Mobile browsers only synthesize
   // enough mouse input for a tap, so use Pointer Events to receive the full
   // touch drag sequence for canvas panning and node movement.
-  if (window.PointerEvent) LiteGraph.pointerevents_method = "pointer";
+  const usesPointerEvents = Boolean(window.PointerEvent);
+  if (usesPointerEvents) LiteGraph.pointerevents_method = "pointer";
   graph = new LGraph();
   canvas = new LGraphCanvas("#graph-canvas", graph, { skip_render: true });
   const graphPinchZoom = new GraphPinchZoom(canvas, el.graphCanvas);
@@ -1432,13 +1439,15 @@ function initGraph(): void {
   graph.start();
   if (currentPanelMode === "desktop") installDesktopGraphWheel();
   el.graphCanvas.addEventListener("pointerdown", (event) => {
+    lastGraphPointerType = event.pointerType;
     armGraphShortcuts(event);
     el.graphCanvas.focus({ preventScroll: true });
     if (graphPinchZoom.start(event)) {
       cancelLiteGraphPointerInteraction(canvas);
       event.preventDefault();
+      event.stopImmediatePropagation();
     }
-  });
+  }, { capture: true });
   el.graphCanvas.addEventListener("pointerenter", (event) => {
     graphPointerInside = true;
     rememberGraphPointer(event);
@@ -1455,6 +1464,14 @@ function initGraph(): void {
   el.graphCanvas.addEventListener("mousewheel", scheduleGraphViewportSave);
   el.graphCanvas.addEventListener("dragover", handleGraphCanvasDragOver);
   el.graphCanvas.addEventListener("drop", handleGraphCanvasDrop);
+  if (usesPointerEvents) {
+    // LiteGraph 0.7 reverses its PointerEvent.isPrimary test, so its legacy
+    // mouse-down timing code cannot recognize a normal mouse double-click.
+    el.graphCanvas.addEventListener("dblclick", (event) => {
+      if (lastGraphPointerType !== "mouse") return;
+      openGraphSearchOnBackgroundDoubleClick(canvas, event);
+    });
+  }
   document.addEventListener("mousemove", recoverLostGraphMouseUp, { capture: true });
   document.addEventListener("pointermove", (event) => {
     if (!graphPinchZoom.move(event)) return;
@@ -1523,11 +1540,13 @@ function disableOverlappingLiteGraphUI(): void {
   // selection already opens the Almagest node menu in the sidekick.
   canvas.onShowNodePanel = scheduleSidekickUpdate;
 
-  // Keep the Almagest canvas menu, but do not show LiteGraph's node and port
-  // menus. Those menus edit only the client-side mirror of an engine node.
+  // Keep the Almagest canvas menu for mouse input. Do not show it for touch,
+  // or show LiteGraph's node and port menus for any input. The node and port
+  // menus edit only the client-side mirror of an engine node.
   const processContextMenu = canvas.processContextMenu.bind(canvas);
   canvas.processContextMenu = (node: unknown, event: Event): void => {
     if (node) return;
+    if (lastGraphPointerType === "touch") return;
     processContextMenu(node, event);
   };
 }

@@ -44,15 +44,18 @@ test("desktop graph input uses standard wheel events without legacy duplicates",
 });
 
 test("graph input uses pointer events for touch dragging", () => {
-  const pointerSetup = app.indexOf('LiteGraph.pointerevents_method = "pointer"');
+  const pointerSetup = app.indexOf('if (usesPointerEvents) LiteGraph.pointerevents_method = "pointer"');
   const canvasSetup = app.indexOf('new LGraphCanvas("#graph-canvas"');
 
   assert.ok(pointerSetup >= 0);
   assert.ok(pointerSetup < canvasSetup);
   assert.match(app, /new GraphPinchZoom\(canvas, el\.graphCanvas\)/);
+  assert.match(app, /addEventListener\("pointerdown", \(event\) => \{[\s\S]*?graphPinchZoom\.start\(event\)[\s\S]*?event\.stopImmediatePropagation\(\);[\s\S]*?\}, \{ capture: true \}\)/);
   assert.match(app, /graphPinchZoom\.move\(event\)[\s\S]*?event\.stopImmediatePropagation\(\)/);
   assert.match(app, /addEventListener\("pointercancel", \(event\) => \{/);
   assert.match(app, /pointercancel[\s\S]*?cancelLiteGraphPointerInteraction\(canvas\)/);
+  assert.match(app, /addEventListener\("dblclick"[\s\S]*?lastGraphPointerType !== "mouse"[\s\S]*?openGraphSearchOnBackgroundDoubleClick\(canvas, event\)/);
+  assert.match(app, /canvas\.processContextMenu[\s\S]*?lastGraphPointerType === "touch"/);
 });
 
 test("returning to the graph tab waits for layout and forces a complete frame", () => {

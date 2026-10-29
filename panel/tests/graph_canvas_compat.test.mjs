@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   applyStandardWheelZoom,
   GraphPinchZoom,
+  openGraphSearchOnBackgroundDoubleClick,
   redrawRevealedGraph,
 } from "../public/build/graph_canvas_compat.js";
 
@@ -96,6 +97,53 @@ test("pinch zoom ignores mouse pointers and resets after cancellation", () => {
   pinch.start({ pointerId: 3, pointerType: "touch", clientX: 20, clientY: 0 });
   pinch.cancel();
   assert.equal(pinch.move({ pointerId: 2, pointerType: "touch", clientX: 2, clientY: 0 }), false);
+});
+
+test("background double-click opens search when pointer input bypasses LiteGraph detection", () => {
+  const calls = { search: 0, prevented: 0, stopped: 0 };
+  const canvas = {
+    allow_searchbox: true,
+    read_only: false,
+    visible_nodes: [],
+    graph: { getNodeOnPos: (x, y, nodes, margin) => {
+      assert.deepEqual([x, y, nodes, margin], [12, 34, [], 5]);
+      return null;
+    } },
+    convertEventToCanvasOffset: () => [12, 34],
+    showSearchBox: () => { calls.search += 1; },
+  };
+  const event = {
+    preventDefault: () => { calls.prevented += 1; },
+    stopPropagation: () => { calls.stopped += 1; },
+  };
+
+  assert.equal(openGraphSearchOnBackgroundDoubleClick(canvas, event), true);
+  assert.deepEqual(calls, { search: 1, prevented: 1, stopped: 1 });
+});
+
+test("double-click search ignores nodes and disabled canvases", () => {
+  let searches = 0;
+  const canvas = {
+    allow_searchbox: true,
+    read_only: false,
+    visible_nodes: [{}],
+    graph: { getNodeOnPos: () => ({}) },
+    convertEventToCanvasOffset: () => [0, 0],
+    showSearchBox: () => { searches += 1; },
+  };
+  const event = { preventDefault() {}, stopPropagation() {} };
+
+  assert.equal(openGraphSearchOnBackgroundDoubleClick(canvas, event), false);
+  canvas.graph.getNodeOnPos = () => null;
+  canvas.allow_searchbox = false;
+  assert.equal(openGraphSearchOnBackgroundDoubleClick(canvas, event), false);
+  canvas.allow_searchbox = true;
+  canvas.read_only = true;
+  assert.equal(openGraphSearchOnBackgroundDoubleClick(canvas, event), false);
+  canvas.read_only = false;
+  canvas.graph = null;
+  assert.equal(openGraphSearchOnBackgroundDoubleClick(canvas, event), false);
+  assert.equal(searches, 0);
 });
 
 test("revealing the graph dirties and draws both canvas layers", () => {

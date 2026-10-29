@@ -24,6 +24,17 @@ export interface PinchZoomGraphCanvas {
   graph: { change(): void } | null;
 }
 
+export interface SearchableGraphCanvas {
+  allow_searchbox: boolean;
+  read_only: boolean;
+  visible_nodes: unknown[];
+  graph: {
+    getNodeOnPos(x: number, y: number, nodes: unknown[], margin: number): unknown;
+  } | null;
+  convertEventToCanvasOffset(event: MouseEvent): [number, number] | Float32Array;
+  showSearchBox(event: MouseEvent): void;
+}
+
 type TouchPointer = Pick<PointerEvent, "pointerId" | "pointerType" | "clientX" | "clientY">;
 
 /** Add the two-pointer zoom behavior that LiteGraph 0.7 does not implement. */
@@ -108,6 +119,20 @@ export class GraphPinchZoom {
       distance: Math.hypot(second.x - first.x, second.y - first.y),
     };
   }
+}
+
+/** Restore LiteGraph's background double-click search when Pointer Events are active. */
+export function openGraphSearchOnBackgroundDoubleClick(
+  canvas: SearchableGraphCanvas,
+  event: MouseEvent,
+): boolean {
+  if (!canvas.graph || canvas.read_only || !canvas.allow_searchbox) return false;
+  const position = canvas.convertEventToCanvasOffset(event);
+  if (canvas.graph.getNodeOnPos(position[0], position[1], canvas.visible_nodes, 5)) return false;
+  canvas.showSearchBox(event);
+  event.preventDefault();
+  event.stopPropagation();
+  return true;
 }
 
 /**
