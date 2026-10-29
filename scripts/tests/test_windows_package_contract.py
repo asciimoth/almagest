@@ -88,6 +88,7 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertTrue(logging["serviceOnly"])
         self.assertEqual(logging["path"],
                          r"%ProgramData%\Almagest\logs\almagestd.log")
+        self.assertEqual(logging["level"], "debug")
         self.assertEqual(logging["timestamps"], "UTC")
         self.assertEqual(logging["rotationMaxBytes"], 20 * 1024 * 1024)
         self.assertEqual(logging["retainedOldFiles"], 5)
@@ -96,11 +97,32 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertTrue(logging["preserveInteractiveConsole"])
         self.assertTrue(logging["preserveOnUninstall"])
 
+        installer = self.contract["installerLogging"]
+        self.assertEqual(installer, {
+            "automatic": True,
+            "mode": "voicewarmupx!",
+            "path": r"%TEMP%\MSI*.LOG",
+            "collectedBySupportScript": True,
+        })
+        package = self.wix.find(f"{WIX}Package")
+        msi_logging = package.find(f"{WIX}Property[@Id='MsiLogging']")
+        self.assertEqual(msi_logging.attrib["Value"], installer["mode"])
+
+        app = self.contract["desktopAppLogging"]
+        self.assertEqual(app, {
+            "path": r"%LocalAppData%\Almagest\logs\almagest-app.log",
+            "rotationMaxBytes": 5 * 1024 * 1024,
+            "retainedOldFiles": 3,
+            "collectedBySupportScript": True,
+        })
+
     def test_mutable_state_is_retained(self):
         retention = self.contract["retention"]
         expected = ["config", "protectedConfig", "store", "logs"]
         for operation in ("repair", "upgrade", "uninstall"):
             self.assertEqual(retention[operation], expected)
+        self.assertEqual(retention["reconcileAclOn"],
+                         ["install", "repair", "upgrade"])
         self.assertFalse(retention["overwriteExistingConfig"])
         self.assertFalse(retention["purgeFeature"])
 
@@ -366,6 +388,45 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertEqual(permission.attrib,
                          {"Sddl": "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"})
 
+        actions = {item.attrib["Id"]: item for item in
+                   self.wix.findall(f".//{WIX}CustomAction")}
+        owner = actions["ReconcileProgramDataOwner"]
+        self.assertIn("/setowner *S-1-5-18 /T /C /L /Q",
+                      owner.attrib["ExeCommand"])
+        reset = actions["ResetProgramDataAcl"]
+        self.assertIn("/reset /T /C /L /Q", reset.attrib["ExeCommand"])
+        protect = actions["ProtectProgramDataAcl"]
+        self.assertIn("/inheritance:r /grant:r", protect.attrib["ExeCommand"])
+        self.assertIn("*S-1-5-18:(OI)(CI)(F)", protect.attrib["ExeCommand"])
+        self.assertIn("*S-1-5-32-544:(OI)(CI)(F)", protect.attrib["ExeCommand"])
+        rollback = actions["RollbackProtectProgramDataAcl"]
+        for action in (rollback, owner, reset, protect):
+            command = action.attrib["ExeCommand"]
+            self.assertEqual(action.attrib["Directory"], "System64Folder")
+            self.assertIn('"[System64Folder]icacls.exe"', command)
+            self.assertIn('"[PROGRAMDATAFOLDER]."', command)
+            self.assertNotIn('"[PROGRAMDATAFOLDER]"', command)
+        for action in (owner, reset, protect):
+            self.assertEqual(action.attrib["Execute"], "deferred")
+            self.assertEqual(action.attrib["Impersonate"], "no")
+            self.assertEqual(action.attrib["Return"], "check")
+        self.assertEqual(rollback.attrib["Execute"], "rollback")
+        self.assertEqual(rollback.attrib["Impersonate"], "no")
+        self.assertEqual(rollback.attrib["Return"], "ignore")
+        sequence = {item.attrib["Action"]: item for item in
+                    self.wix.findall(f".//{WIX}InstallExecuteSequence/{WIX}Custom")}
+        self.assertEqual(sequence["RollbackProtectProgramDataAcl"].attrib, {
+            "Action": "RollbackProtectProgramDataAcl",
+            "After": "ConfigureMullvadDriverService",
+            "Condition": 'NOT (REMOVE ~= "ALL")',
+        })
+        self.assertEqual(sequence["ReconcileProgramDataOwner"].attrib["After"],
+                         "RollbackProtectProgramDataAcl")
+        self.assertEqual(sequence["ResetProgramDataAcl"].attrib["After"],
+                         "ReconcileProgramDataOwner")
+        self.assertEqual(sequence["ProtectProgramDataAcl"].attrib["After"],
+                         "ResetProgramDataAcl")
+
     def test_wix_creates_and_preserves_administration_group(self):
         authorization = self.contract["authorization"]
         self.assertEqual(authorization, {
@@ -393,7 +454,7 @@ class WindowsPackageContractTests(unittest.TestCase):
                     self.wix.findall(f".//{WIX}InstallExecuteSequence/{WIX}Custom")}
         self.assertEqual(sequence["CreateAlmagestAdministrationGroup"].attrib, {
             "Action": "CreateAlmagestAdministrationGroup",
-            "After": "ConfigureMullvadDriverService",
+            "After": "ProtectProgramDataAcl",
             "Condition": 'NOT (REMOVE ~= "ALL")',
         })
         package = self.wix.find(f"{WIX}Package")
@@ -525,8 +586,19 @@ class WindowsPackageContractTests(unittest.TestCase):
             self.assertIn(token, prepare)
         for token in ("Stop-Process", "/fvomus", "msiexec-upgrade.log",
                       "msiexec-downgrade.log", "'/x'", "driverRemoved",
-                      "retainedStateUsable", "administrationGroupRetained"):
+                      "retainedStateUsable", "administrationGroupRetained",
+                      "Assert-PrivateProgramDataAcl", "aclReconciled"):
             self.assertIn(token, finish)
+
+    def test_windows_package_ships_unified_support_collector(self):
+        package_script = (ROOT / "scripts/package-windows.sh").read_text()
+        collector = (ROOT / "scripts/collect-windows-support.ps1").read_text()
+        self.assertIn("collect-windows-support.ps1", package_script)
+        for token in ("MSI*.LOG", "almagest-app.log*", "almagestd.log*",
+                      "Get-ProfilePathForSid", "OriginalSid"):
+            self.assertIn(token, collector)
+        self.assertIn("process command lines", collector)
+        self.assertNotIn("CommandLine", collector)
 
     def test_package_integration_uses_installed_service_and_native_tun(self):
         runner = (ROOT / "dev/winvm/run.sh").read_text()

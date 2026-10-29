@@ -17,6 +17,16 @@ pub(crate) enum PipeTrust {
     Machine,
 }
 
+impl Endpoint {
+    pub(crate) const fn diagnostic_kind(&self) -> &'static str {
+        match self {
+            Self::Unix(_) => "unix",
+            Self::Pipe { .. } => "pipe",
+            Self::Web(_) => "web",
+        }
+    }
+}
+
 impl PipeTrust {
     #[cfg(windows)]
     pub(crate) const fn as_str(self) -> &'static str {

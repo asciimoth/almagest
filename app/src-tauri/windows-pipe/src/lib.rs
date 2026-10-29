@@ -23,7 +23,10 @@ use windows_sys::Win32::{
         OWNER_SECURITY_INFORMATION, PSID, SECURITY_MAX_SID_SIZE, TOKEN_QUERY, TOKEN_USER,
         TokenUser, WinLocalSystemSid,
     },
-    System::Threading::{GetCurrentProcess, OpenProcessToken},
+    System::{
+        Pipes::PeekNamedPipe,
+        Threading::{GetCurrentProcess, OpenProcessToken},
+    },
 };
 
 const MACHINE_PIPE_NAME: &str = "almagest-admin";
@@ -63,6 +66,31 @@ pub fn connect(trust: &str, name: &str) -> io::Result<File> {
         io::Error::new(error.kind(), format!("verify owner of {path}: {error}"))
     })?;
     Ok(pipe)
+}
+
+/// Return the number of bytes that can be read without blocking.
+///
+/// The desktop transport uses one worker for both directions. A synchronous
+/// named-pipe read must start only when data is available, or it prevents the
+/// same pipe connection from sending its next request.
+pub fn available_bytes(pipe: &File) -> io::Result<usize> {
+    let mut available = 0_u32;
+    // SAFETY: `pipe` owns a live handle and `available` is a valid output
+    // pointer. The null buffer asks Windows only for the byte count.
+    if unsafe {
+        PeekNamedPipe(
+            pipe.as_raw_handle(),
+            ptr::null_mut(),
+            0,
+            ptr::null_mut(),
+            &raw mut available,
+            ptr::null_mut(),
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    usize::try_from(available).map_err(|_| io::Error::other("pipe byte count is too large"))
 }
 
 struct SidBuffer {

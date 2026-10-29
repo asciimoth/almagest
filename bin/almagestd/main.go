@@ -32,9 +32,20 @@ func main() {
 	// enough timestamp precision to correlate the daemon log with host network
 	// captures and admin API actions.
 	golog.SetTimeFormat("2006/01/02 15:04:05.000000")
+	if err := platform.RunLifecycle(runDaemonProcess); err != nil {
+		os.Exit(1)
+	}
+}
+
+// runDaemonProcess runs all service initialization after the SCM dispatcher
+// starts. An early configuration or logging failure then becomes a service
+// error instead of an SCM dispatcher timeout.
+func runDaemonProcess(ctx context.Context, ready func()) (runErr error) {
 	serviceLog, windowsService, err := platform.OpenServiceLog()
 	if err != nil {
-		golog.Fatal("Prepare Windows service logging: ", err)
+		runErr = fmt.Errorf("prepare Windows service logging: %w", err)
+		golog.Error(runErr)
+		return runErr
 	}
 	if serviceLog != nil {
 		defer func() {
@@ -44,45 +55,49 @@ func main() {
 		}()
 		golog.SetOutput(serviceLog)
 	}
+	defer func() {
+		if runErr != nil {
+			golog.Error(runErr)
+		}
+	}()
 	if windowsService {
 		golog.Now = func() time.Time { return time.Now().UTC() }
 		golog.SetTimeFormat("2006-01-02T15:04:05.000000Z")
+		// Windows services have no useful console. Keep the rotating service log
+		// detailed enough to diagnose startup and administration-pipe failures.
+		golog.SetLevel("debug")
+		golog.Debugf("Windows service process started pid=%d argument_count=%d", os.Getpid(), len(os.Args)-1)
 	}
 	if isolatedSandboxSupervisorRole() {
 		if err := runIsolatedSandboxSupervisorRole(); err != nil {
-			golog.Fatal(err)
+			return err
 		}
-		return
+		return nil
 	}
 	if isolatedRuntimeRole() {
 		if err := runIsolatedRuntimeRole(); err != nil {
-			golog.Fatal(err)
+			return err
 		}
-		return
+		return nil
 	}
 
 	arguments, mode, err := parseDaemonArgs(os.Args[1:], os.Stdout)
 	if err != nil {
 		if errors.Is(err, arg.ErrHelp) {
-			return
+			return nil
 		}
-		golog.Fatal(err)
-		return
+		return err
 	}
 	if arguments.DumpWebdemoClasses {
 		if err := writeWebdemoNodeClassCache(os.Stdout); err != nil {
-			golog.Fatal(err)
+			return err
 		}
-		return
+		return nil
 	}
 	if mode == executionModeIsolation {
-		err = runIsolatedNetworkRole()
-	} else {
-		err = runDaemonApplication(arguments, mode)
+		return runIsolatedNetworkRole()
 	}
-	if err != nil {
-		golog.Fatal(err)
-	}
+	return runDaemonApplication(ctx, ready, arguments, mode)
 }
 
 func parseDaemonArgs(cliArgs []string, output io.Writer) (args.Args, executionMode, error) {
@@ -106,7 +121,7 @@ func parseDaemonArgs(cliArgs []string, output io.Writer) (args.Args, executionMo
 	return arguments, mode, err
 }
 
-func runDaemonApplication(arguments args.Args, mode executionMode) error {
+func runDaemonApplication(ctx context.Context, ready func(), arguments args.Args, mode executionMode) error {
 	golog.Infof("Execution mode: %s", mode)
 	for _, warning := range executionModeStartupWarnings(mode) {
 		golog.Warn(warning)
@@ -138,10 +153,8 @@ func runDaemonApplication(arguments args.Args, mode executionMode) error {
 	// result until the selected integration is known, so explicit debug mode
 	// remains usable without Windows runtime dependencies.
 	_, runtimeDependencyErr := platform.ValidateRuntimeDependencies()
-	return platform.RunLifecycle(func(ctx context.Context, ready func()) error {
-		return daemonruntime.Run(ctx, func(ctx context.Context, application *daemonruntime.Application) error {
-			return runDaemon(ctx, application, ready, arguments, mode, randomSeeds, runtimeDependencyErr, directDaemonIntegrations())
-		})
+	return daemonruntime.Run(ctx, func(ctx context.Context, application *daemonruntime.Application) error {
+		return runDaemon(ctx, application, ready, arguments, mode, randomSeeds, runtimeDependencyErr, directDaemonIntegrations())
 	})
 }
 

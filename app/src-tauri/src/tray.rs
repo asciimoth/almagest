@@ -51,23 +51,36 @@ pub(crate) fn setup(app: &mut App, background: bool) -> Result<(), Box<dyn std::
     let tray = match builder.build(app) {
         Ok(tray) => Some(tray),
         Err(error) => {
-            eprintln!("system tray is unavailable: {error}");
+            crate::logging::write(format_args!("system tray is unavailable: {error}"));
             None
         }
     };
     app.manage(TrayAvailability(tray.is_some()));
 
     if let Some(tray) = tray {
-        app.state::<AdminConnection>()
-            .set_status_handler(move |connected| {
-                if let Err(error) = status_item.set_text(status_text(connected)) {
-                    eprintln!("update tray connection status: {error}");
-                }
-                if let Err(error) = tray.set_tooltip(Some(tooltip_text(connected))) {
-                    eprintln!("update tray tooltip: {error}");
-                }
-            })
-            .map_err(std::io::Error::other)?;
+        // Register after setup returns to the event loop. Registration sends
+        // the current state immediately. Menu and tray setters wait for the
+        // event loop, so calling them synchronously during setup deadlocks on
+        // Windows.
+        let app_handle = app.handle().clone();
+        app.run_on_main_thread(move || {
+            if let Err(error) =
+                app_handle
+                    .state::<AdminConnection>()
+                    .set_status_handler(move |connected| {
+                        if let Err(error) = status_item.set_text(status_text(connected)) {
+                            crate::logging::write(format_args!(
+                                "update tray connection status: {error}"
+                            ));
+                        }
+                        if let Err(error) = tray.set_tooltip(Some(tooltip_text(connected))) {
+                            crate::logging::write(format_args!("update tray tooltip: {error}"));
+                        }
+                    })
+            {
+                crate::logging::write(format_args!("register tray connection status: {error}"));
+            }
+        })?;
     }
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         if !background || !app.state::<TrayAvailability>().0 {
@@ -95,7 +108,7 @@ pub(crate) fn handle_window_event(window: &Window, event: &WindowEvent) {
 
 fn hide_window<R: Runtime>(window: &Window<R>) {
     if let Err(error) = window.hide() {
-        eprintln!("hide main window: {error}");
+        crate::logging::write(format_args!("hide main window: {error}"));
     }
 }
 
@@ -109,13 +122,13 @@ fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
 
 fn restore_window<R: Runtime>(window: &WebviewWindow<R>) {
     if let Err(error) = window.unminimize() {
-        eprintln!("restore main window: {error}");
+        crate::logging::write(format_args!("restore main window: {error}"));
     }
     if let Err(error) = window.show() {
-        eprintln!("show main window: {error}");
+        crate::logging::write(format_args!("show main window: {error}"));
     }
     if let Err(error) = window.set_focus() {
-        eprintln!("focus main window: {error}");
+        crate::logging::write(format_args!("focus main window: {error}"));
     }
 }
 

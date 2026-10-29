@@ -32,6 +32,12 @@ Stop-Process -Id $recoveryPid -Force
 $afterRecovery = Wait-AlmagestService -TimeoutSeconds 120 -DifferentProcessId $recoveryPid
 Assert-LifecycleState $cli $programData
 
+$staleSid = 'S-1-5-32-545'
+& icacls.exe $programData /grant ("*$staleSid`:(OI)(CI)(F)") /T /C /L /Q
+Assert-True ($LASTEXITCODE -eq 0) 'Could not create the stale ProgramData ACL test condition'
+$staleAcl = (Get-Acl -LiteralPath $programData).Sddl
+Assert-True ($staleAcl -match [regex]::Escape($staleSid)) 'Stale ProgramData ACL test condition is absent'
+
 $repairLog = Join-Path $ArtifactDir 'msiexec-repair.log'
 $repairExit = Invoke-MSI @(
     '/fvomus', ('"{0}"' -f $baseMsi), '/qn', '/norestart', '/l*v', ('"{0}"' -f $repairLog)
@@ -42,6 +48,7 @@ Assert-True ((Get-FileSHA256 (Join-Path $programData 'alm.hujson')) -eq $prepare
     'Repair changed the regular configuration'
 Assert-True ((Get-FileSHA256 (Join-Path $programData 'protected_alm.hujson')) -eq $prepare.protectedConfigSHA256) `
     'Repair changed the protected configuration'
+Assert-PrivateProgramDataAcl $programData
 
 $beforeUpgradePid = $afterRepair.ProcessId
 $upgradeLog = Join-Path $ArtifactDir 'msiexec-upgrade.log'
@@ -149,7 +156,7 @@ Copy-Item (Join-Path $programData 'logs\almagestd.log') `
     upgradeVersion = $upgrade.version
     reboot = [ordered]@{ passed = $true; bootTimeUtcTicks = $bootTicks; serviceProcessId = $afterBoot.ProcessId }
     failureRecovery = [ordered]@{ passed = $true; processIdBefore = $recoveryPid; processIdAfter = $afterRecovery.ProcessId }
-    repair = [ordered]@{ passed = $true; exitCode = $repairExit }
+    repair = [ordered]@{ passed = $true; exitCode = $repairExit; aclReconciled = $true }
     upgrade = [ordered]@{ passed = $true; exitCode = $upgradeExit; processIdBefore = $beforeUpgradePid; processIdAfter = $afterUpgrade.ProcessId }
     downgrade = [ordered]@{ rejected = $true; exitCode = $downgrade.ExitCode }
     featureSelection = [ordered]@{

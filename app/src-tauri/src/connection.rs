@@ -16,6 +16,8 @@ use crate::endpoint::Endpoint;
 const MAX_MESSAGE_BYTES: usize = (32_usize << 20).div_ceil(3) * 4 + (1 << 20);
 const MAX_MESSAGE_READ_BYTES: u64 = (32_u64 << 20).div_ceil(3) * 4 + (1 << 20) + 1;
 const WEB_POLL_INTERVAL: Duration = Duration::from_millis(10);
+#[cfg(windows)]
+const PIPE_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 /// Match the panel's retry policy. A foreground window retries quickly. A
 /// background window reduces wakeups while the daemon is intentionally absent.
@@ -51,7 +53,7 @@ enum Outgoing {
     #[cfg(unix)]
     Unix(Mutex<std::os::unix::net::UnixStream>),
     #[cfg(windows)]
-    Pipe(Mutex<std::fs::File>),
+    Pipe(mpsc::SyncSender<String>),
     Web(mpsc::SyncSender<String>),
 }
 
@@ -62,10 +64,7 @@ enum PendingConnection {
         writer: std::os::unix::net::UnixStream,
     },
     #[cfg(windows)]
-    Pipe {
-        reader: std::fs::File,
-        writer: std::fs::File,
-    },
+    Pipe(std::fs::File),
     Web(Box<WebSocket<MaybeTlsStream<std::net::TcpStream>>>),
 }
 
@@ -144,16 +143,18 @@ impl Frontend {
             .state
             .lock()
             .map_err(|_| "frontend state lock is poisoned")?;
-        eprintln!(
+        crate::logging::write(format_args!(
             "panel admin IPC: register listener (native connected={})",
             state.connected
-        );
+        ));
         channel
             .send(FrontendEvent::ConnectionStatus {
                 connected: state.connected,
             })
             .map_err(|error| format!("send initial connection status: {error}"))?;
-        eprintln!("panel admin IPC: initial connection status queued");
+        crate::logging::write(format_args!(
+            "panel admin IPC: initial connection status queued"
+        ));
         state.channel = Some(channel);
         Ok(())
     }
@@ -276,7 +277,9 @@ impl AdminConnection {
                 #[cfg(unix)]
                 Outgoing::Unix(stream) => write_stream(stream, &message),
                 #[cfg(windows)]
-                Outgoing::Pipe(stream) => write_stream(stream, &message),
+                Outgoing::Pipe(sender) => sender
+                    .try_send(message)
+                    .map_err(|error| format!("queue admin API pipe message: {error}")),
                 Outgoing::Web(sender) => sender
                     .try_send(message)
                     .map_err(|error| format!("queue admin API message: {error}")),
@@ -344,7 +347,7 @@ fn spawn_supervisor(
                                     Ok(transport) => transport,
                                     Err(error) => {
                                         let message = format!("connect to admin API: {error}");
-                                        eprintln!("{message}");
+                                        crate::logging::write(format_args!("{message}"));
                                         frontend.connection_error(message);
                                         schedule_retry(
                                             &mut next_attempt,
@@ -359,6 +362,9 @@ fn spawn_supervisor(
                                 *slot = Some(ActiveOutgoing { id, transport });
                                 active = Some(id);
                                 retry_attempt = 0;
+                                crate::logging::write(format_args!(
+                                    "admin API connected transport_id={id}"
+                                ));
                                 frontend.connected();
                             } else {
                                 break;
@@ -366,7 +372,7 @@ fn spawn_supervisor(
                         }
                         Err(error) => {
                             let message = format!("connect to admin API: {error}");
-                            eprintln!("{message}");
+                            crate::logging::write(format_args!("{message}"));
                             frontend.connection_error(message);
                             schedule_retry(
                                 &mut next_attempt,
@@ -394,13 +400,14 @@ fn spawn_supervisor(
                         break;
                     }
                     active = None;
+                    crate::logging::write(format_args!("admin API disconnected transport_id={id}"));
                     frontend.disconnected();
                     schedule_retry(&mut next_attempt, &mut retry_attempt, interactive, policy);
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     if attempt.take().is_some() {
                         let message = "connect to admin API: attempt timed out".to_owned();
-                        eprintln!("{message}");
+                        crate::logging::write(format_args!("{message}"));
                         frontend.connection_error(message);
                         schedule_retry(&mut next_attempt, &mut retry_attempt, interactive, policy);
                     } else {
@@ -451,12 +458,9 @@ fn connect_endpoint(endpoint: &Endpoint) -> Result<PendingConnection, String> {
         )),
         #[cfg(windows)]
         Endpoint::Pipe { trust, name } => {
-            let reader = almagest_windows_pipe::connect(trust.as_str(), name)
+            let stream = almagest_windows_pipe::connect(trust.as_str(), name)
                 .map_err(|error| format!("connect to trusted {} pipe: {error}", trust.as_str()))?;
-            let writer = reader
-                .try_clone()
-                .map_err(|error| format!("clone Windows pipe: {error}"))?;
-            Ok(PendingConnection::Pipe { reader, writer })
+            Ok(PendingConnection::Pipe(stream))
         }
         #[cfg(not(windows))]
         Endpoint::Pipe { .. } => {
@@ -482,9 +486,10 @@ fn activate_connection(
             Ok(Outgoing::Unix(Mutex::new(writer)))
         }
         #[cfg(windows)]
-        PendingConnection::Pipe { reader, writer } => {
-            spawn_stream_reader(reader, id, supervisor);
-            Ok(Outgoing::Pipe(Mutex::new(writer)))
+        PendingConnection::Pipe(stream) => {
+            let (sender, receiver) = mpsc::sync_channel(64);
+            spawn_pipe_worker(stream, receiver, id, supervisor);
+            Ok(Outgoing::Pipe(sender))
         }
         PendingConnection::Web(mut socket) => {
             // The handshake is complete before nonblocking polling starts.
@@ -534,6 +539,114 @@ fn write_stream<W: Write>(stream: &Mutex<W>, message: &str) -> Result<(), String
         .and_then(|()| stream.write_all(b"\n"))
         .and_then(|()| stream.flush())
         .map_err(|error| format!("write admin API message: {error}"))
+}
+
+#[cfg(windows)]
+fn spawn_pipe_worker(
+    mut stream: std::fs::File,
+    outgoing: mpsc::Receiver<String>,
+    id: u64,
+    supervisor: mpsc::Sender<SupervisorEvent>,
+) {
+    thread::spawn(move || {
+        let mut incoming = Vec::new();
+        let mut sent_first_request = false;
+        let mut received_first_response = false;
+        crate::logging::write(format_args!(
+            "admin API pipe worker started transport_id={id}"
+        ));
+        'connection: loop {
+            match outgoing.recv_timeout(PIPE_POLL_INTERVAL) {
+                Ok(message) => {
+                    if let Err(error) = stream
+                        .write_all(message.as_bytes())
+                        .and_then(|()| stream.write_all(b"\n"))
+                        .and_then(|()| stream.flush())
+                    {
+                        crate::logging::write(format_args!(
+                            "admin API pipe write failed transport_id={id}: {error}"
+                        ));
+                        break;
+                    }
+                    if !sent_first_request {
+                        sent_first_request = true;
+                        crate::logging::write(format_args!(
+                            "admin API pipe first request written transport_id={id}"
+                        ));
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+            }
+
+            loop {
+                let available = match almagest_windows_pipe::available_bytes(&stream) {
+                    Ok(0) => break,
+                    Ok(available) => available,
+                    Err(error) => {
+                        crate::logging::write(format_args!(
+                            "admin API pipe poll failed transport_id={id}: {error}"
+                        ));
+                        break 'connection;
+                    }
+                };
+                let remaining = MAX_MESSAGE_BYTES
+                    .saturating_add(1)
+                    .saturating_sub(incoming.len());
+                if remaining == 0 {
+                    break 'connection;
+                }
+                let count = available.min(remaining);
+                let offset = incoming.len();
+                incoming.resize(offset + count, 0);
+                match stream.read(&mut incoming[offset..]) {
+                    Ok(0) => break 'connection,
+                    Err(error) => {
+                        crate::logging::write(format_args!(
+                            "admin API pipe read failed transport_id={id}: {error}"
+                        ));
+                        break 'connection;
+                    }
+                    Ok(read) => incoming.truncate(offset + read),
+                }
+
+                while let Some(newline) = incoming.iter().position(|byte| *byte == b'\n') {
+                    let mut line = incoming.drain(..=newline).collect::<Vec<_>>();
+                    while line
+                        .last()
+                        .is_some_and(|byte| matches!(byte, b'\n' | b'\r'))
+                    {
+                        line.pop();
+                    }
+                    let Ok(message) = String::from_utf8(line) else {
+                        crate::logging::write(format_args!(
+                            "admin API pipe returned invalid UTF-8 transport_id={id}"
+                        ));
+                        break 'connection;
+                    };
+                    if !received_first_response {
+                        received_first_response = true;
+                        crate::logging::write(format_args!(
+                            "admin API pipe first response received transport_id={id}"
+                        ));
+                    }
+                    if supervisor
+                        .send(SupervisorEvent::Message { id, message })
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+                if incoming.len() > MAX_MESSAGE_BYTES {
+                    crate::logging::write(format_args!(
+                        "admin API pipe message is too large transport_id={id}"
+                    ));
+                    break 'connection;
+                }
+            }
+        }
+        let _ = supervisor.send(SupervisorEvent::TransportClosed(id));
+    });
 }
 
 fn spawn_stream_reader<R: Read + Send + 'static>(

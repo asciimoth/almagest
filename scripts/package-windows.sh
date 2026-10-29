@@ -59,4 +59,6 @@ install -m 0644 "$checksum" "$output_dir/$name.msi.sha256"
 install -m 0644 "$evidence" "$output_dir/$name.build.json"
 install -m 0644 "$repo_root/packaging/windows/README.md" \
 	"$output_dir/WINDOWS_PACKAGE_CONTENTS.md"
+install -m 0644 "$repo_root/scripts/collect-windows-support.ps1" \
+	"$output_dir/collect-windows-support.ps1"
 printf 'Windows package artifacts: %s\n' "$output_dir"

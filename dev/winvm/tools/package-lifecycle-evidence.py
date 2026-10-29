@@ -57,6 +57,7 @@ def main() -> None:
                       "uninstall", "reinstall"):
             assert lifecycle[phase]["passed"]
         assert lifecycle["failureRecovery"]["processIdBefore"] != lifecycle["failureRecovery"]["processIdAfter"]
+        assert lifecycle["repair"]["aclReconciled"]
         assert lifecycle["upgrade"]["processIdBefore"] != lifecycle["upgrade"]["processIdAfter"]
         assert lifecycle["downgrade"]["rejected"]
         assert lifecycle["downgrade"]["exitCode"] not in (0, 3010)

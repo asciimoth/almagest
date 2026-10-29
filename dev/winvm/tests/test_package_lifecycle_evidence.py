@@ -55,7 +55,7 @@ class PackageLifecycleEvidenceTests(unittest.TestCase):
                 "baseVersion": "1.2.3", "upgradeVersion": "1.2.4",
                 "reboot": {"passed": True},
                 "failureRecovery": {"passed": True, "processIdBefore": 11, "processIdAfter": 12},
-                "repair": {"passed": True},
+                "repair": {"passed": True, "aclReconciled": True},
                 "upgrade": {"passed": True, "processIdBefore": 12, "processIdAfter": 13},
                 "downgrade": {"rejected": True, "exitCode": 1638},
                 "uninstall": {"passed": True, "programDataRetained": True, "driverRemoved": True},

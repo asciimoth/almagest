@@ -54,6 +54,10 @@
     </Feature>
     <ui:WixUI Id="WixUI_FeatureTree" />
     <WixVariable Id="WixUILicenseRtf" Value="$(var.PayloadDir)\LICENSE.rtf" />
+    <!-- Keep a verbose MSI*.LOG in the installing user's Temp directory even
+         when the transaction rolls back. The support collector includes only
+         recent MSI logs that identify Almagest. -->
+    <Property Id="MsiLogging" Value="voicewarmupx!" />
     <Property Id="ALMAGEST_ACCESS_SID" Secure="yes" />
     <SetProperty Id="ALMAGEST_ACCESS_SID"
                  Value="[UserSID]"
@@ -67,6 +71,10 @@
     <CustomActionRef Id="ConfigureMullvadDriverService" />
     <CustomActionRef Id="DeleteMullvadDriverService" />
     <CustomActionRef Id="CreateAlmagestAdministrationGroup" />
+    <CustomActionRef Id="RollbackProtectProgramDataAcl" />
+    <CustomActionRef Id="ReconcileProgramDataOwner" />
+    <CustomActionRef Id="ResetProgramDataAcl" />
+    <CustomActionRef Id="ProtectProgramDataAcl" />
   </Package>
 
   <Fragment>
@@ -285,6 +293,38 @@
                   Execute="deferred"
                   Impersonate="no"
                   Return="check" />
+    <!-- ProgramData is permanent package state. Reconcile its ACL on every
+         install, repair, and upgrade because Windows Installer does not
+         reapply CreateFolder permissions to an already installed permanent
+         component. Reset retained children to inheritance, then protect the
+         root. Windows propagates the new inheritable root ACL to the children.
+         /L changes a reparse point itself instead of following it.
+         MSI directory properties end in a backslash. Add a dot so that the
+         backslash cannot escape the closing quote in the process command. -->
+    <CustomAction Id="RollbackProtectProgramDataAcl"
+                  Directory="System64Folder"
+                  ExeCommand="&quot;[System64Folder]icacls.exe&quot; &quot;[PROGRAMDATAFOLDER].&quot; /inheritance:r /grant:r &quot;*S-1-5-18:(OI)(CI)(F)&quot; &quot;*S-1-5-32-544:(OI)(CI)(F)&quot; /L /Q"
+                  Execute="rollback"
+                  Impersonate="no"
+                  Return="ignore" />
+    <CustomAction Id="ReconcileProgramDataOwner"
+                  Directory="System64Folder"
+                  ExeCommand="&quot;[System64Folder]icacls.exe&quot; &quot;[PROGRAMDATAFOLDER].&quot; /setowner *S-1-5-18 /T /C /L /Q"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+    <CustomAction Id="ResetProgramDataAcl"
+                  Directory="System64Folder"
+                  ExeCommand="&quot;[System64Folder]icacls.exe&quot; &quot;[PROGRAMDATAFOLDER].&quot; /reset /T /C /L /Q"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+    <CustomAction Id="ProtectProgramDataAcl"
+                  Directory="System64Folder"
+                  ExeCommand="&quot;[System64Folder]icacls.exe&quot; &quot;[PROGRAMDATAFOLDER].&quot; /inheritance:r /grant:r &quot;*S-1-5-18:(OI)(CI)(F)&quot; &quot;*S-1-5-32-544:(OI)(CI)(F)&quot; /L /Q"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
     <!-- Group membership is effective in new access tokens only. The feature
          description tells an interactive user to sign out and sign in. Keep
          membership on uninstall or rollback, as with administrator-managed
@@ -308,8 +348,20 @@
       <Custom Action="ConfigureMullvadDriverService"
               After="CreateMullvadDriverService"
               Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
-      <Custom Action="CreateAlmagestAdministrationGroup"
+      <Custom Action="RollbackProtectProgramDataAcl"
               After="ConfigureMullvadDriverService"
+              Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
+      <Custom Action="ReconcileProgramDataOwner"
+              After="RollbackProtectProgramDataAcl"
+              Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
+      <Custom Action="ResetProgramDataAcl"
+              After="ReconcileProgramDataOwner"
+              Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
+      <Custom Action="ProtectProgramDataAcl"
+              After="ResetProgramDataAcl"
+              Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
+      <Custom Action="CreateAlmagestAdministrationGroup"
+              After="ProtectProgramDataAcl"
               Condition="NOT (REMOVE ~= &quot;ALL&quot;)" />
       <Custom Action="AddCurrentUserAdminAccess"
               After="CreateAlmagestAdministrationGroup"

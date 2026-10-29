@@ -57,3 +57,23 @@ function Invoke-MSI([string[]]$Arguments, [string]$Description) {
 function Get-FileSHA256([string]$Path) {
     (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
 }
+
+function Assert-PrivateProgramDataAcl([string]$ProgramData) {
+    $trusted = @('S-1-5-18', 'S-1-5-32-544')
+    foreach ($path in @(
+        $ProgramData,
+        (Join-Path $ProgramData 'alm.hujson'),
+        (Join-Path $ProgramData 'protected_alm.hujson'),
+        (Join-Path $ProgramData 'store'),
+        (Join-Path $ProgramData 'logs')
+    )) {
+        $acl = Get-Acl -LiteralPath $path
+        $owner = New-Object Security.Principal.NTAccount($acl.Owner)
+        $ownerSid = $owner.Translate([Security.Principal.SecurityIdentifier]).Value
+        Assert-True ($ownerSid -eq 'S-1-5-18') "ProgramData owner was not reconciled: $path ($ownerSid)"
+        foreach ($entry in $acl.Access) {
+            $sid = $entry.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+            Assert-True ($sid -in $trusted) "ProgramData ACL contains an untrusted SID: $path ($sid)"
+        }
+    }
+}

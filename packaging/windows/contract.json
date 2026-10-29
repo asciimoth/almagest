@@ -110,6 +110,7 @@
   "logging": {
     "serviceOnly": true,
     "path": "%ProgramData%\\Almagest\\logs\\almagestd.log",
+    "level": "debug",
     "timestamps": "UTC",
     "rotationMaxBytes": 20971520,
     "retainedOldFiles": 5,
@@ -117,10 +118,23 @@
     "preserveInteractiveConsole": true,
     "preserveOnUninstall": true
   },
+  "installerLogging": {
+    "automatic": true,
+    "mode": "voicewarmupx!",
+    "path": "%TEMP%\\MSI*.LOG",
+    "collectedBySupportScript": true
+  },
+  "desktopAppLogging": {
+    "path": "%LocalAppData%\\Almagest\\logs\\almagest-app.log",
+    "rotationMaxBytes": 5242880,
+    "retainedOldFiles": 3,
+    "collectedBySupportScript": true
+  },
   "retention": {
     "repair": ["config", "protectedConfig", "store", "logs"],
     "upgrade": ["config", "protectedConfig", "store", "logs"],
     "uninstall": ["config", "protectedConfig", "store", "logs"],
+    "reconcileAclOn": ["install", "repair", "upgrade"],
     "overwriteExistingConfig": false,
     "purgeFeature": false
   },

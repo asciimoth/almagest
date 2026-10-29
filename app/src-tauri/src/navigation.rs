@@ -22,12 +22,15 @@ pub(crate) fn plugin<R: Runtime>() -> TauriPlugin<R> {
                     .opener()
                     .open_url(url.as_str(), None::<&str>)
                 {
-                    eprintln!("open external URL: {error}");
+                    crate::logging::write(format_args!("open external URL: {error}"));
                 }
                 false
             }
             Navigation::Blocked => {
-                eprintln!("blocked webview navigation to scheme {}", url.scheme());
+                crate::logging::write(format_args!(
+                    "blocked webview navigation to scheme {}",
+                    url.scheme()
+                ));
                 false
             }
         })

@@ -67,6 +67,11 @@ uninstall removes the service and immutable files but keeps all files under
 group and its administrator-managed membership. There is no purge option in the
 first package.
 
+Install, repair, and upgrade reconcile the retained ProgramData owner and ACL
+before the service starts. They remove stale access entries and grant full
+control only to LocalSystem and built-in administrators. This repair keeps all
+configuration, logs, and daemon state.
+
 ## Administration access
 
 The package creates the local `Almagest Administrators` security group. The
@@ -119,26 +124,46 @@ The installer stops the service before it replaces files. It starts the service
 after a successful install, repair, or upgrade. Uninstall stops and removes the
 service before it removes immutable files.
 
-During startup and shutdown, the daemon reports a new SCM checkpoint every two
-seconds and a 30-second wait hint. Stop and system-shutdown controls cancel the
-same daemon context. Normal cleanup has at most two minutes to finish before the
-service returns a failure to SCM. Startup and cleanup errors also return a
-failure, but an expected stop that completes normally returns success. The
-daemon reports `Running` only after the admin API and engine are ready.
+The daemon enters its SCM dispatcher before it prepares logging, parses
+arguments, or reads configuration. During startup and shutdown, it reports a new
+SCM checkpoint every two seconds and a 30-second wait hint. Stop and
+system-shutdown controls cancel the same daemon context. Normal cleanup has at
+most two minutes to finish before the service returns a failure to SCM. Startup
+and cleanup errors also return a failure, but an expected stop that completes
+normally returns success. The daemon reports `Running` only after the admin API
+and engine are ready.
 
 ## Service log
 
 An SCM service writes its detailed operator stream to
 `%ProgramData%\Almagest\logs\almagestd.log`. The sink starts before argument
 parsing and runtime dependency checks, so startup failures are retained. Log
-timestamps use UTC. A file rotates at 20 MiB and the daemon keeps five old files
-(`almagestd.log.1` through `almagestd.log.5`). The current file and its
-directory grant access only to LocalSystem and administrators.
+timestamps use UTC, and packaged Windows services use debug level. A file
+rotates at 20 MiB and the daemon keeps five old files (`almagestd.log.1` through
+`almagestd.log.5`). The current file and its directory grant access only to
+LocalSystem and administrators.
 
 The daemon writes synchronously to this sink and flushes it during normal
 shutdown. A normal uninstall keeps the log directory and all rotated files. An
 interactive daemon continues to write to its console and does not open the
 service log.
+
+## Installer and desktop-app logs
+
+The MSI enables verbose logging automatically. Windows Installer keeps a
+randomly named `MSI*.LOG` file in the installing user's Temp directory. This
+file remains available when setup fails and rolls back.
+
+The desktop app writes its connection, tray, navigation, startup, and panic
+diagnostics to `%LocalAppData%\Almagest\logs\almagest-app.log`. It rotates the
+file at 5 MiB and keeps three old files. A non-admin app does not write into the
+protected daemon log directory.
+
+The Windows package output includes `collect-windows-support.ps1`. Run it from
+the same directory as the MSI. It requests UAC elevation and creates one ZIP
+that contains recent Almagest MSI logs, daemon logs, the original signed-in
+user's desktop-app logs, event logs, and the diagnostic report. Add
+`-RunExperiments` to include a controlled service restart and monitor period.
 
 ## Runtime dependencies
 
