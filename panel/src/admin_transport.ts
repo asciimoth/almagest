@@ -15,7 +15,10 @@ export interface AdminTransport {
 
 export type AdminTransportFactory = () => AdminTransport;
 
-export const ADMIN_API_CONNECT_TIMEOUT_MS = 3_000;
+// Firefox can queue a loopback WebSocket connection for tens of seconds before
+// it sends the handshake. Keep the deadline above that browser delay. A refused
+// connection still reports an error immediately and uses the normal retry path.
+export const ADMIN_API_CONNECT_TIMEOUT_MS = 60_000;
 
 let transportFactory: AdminTransportFactory = () => new WebSocketAdminTransport();
 

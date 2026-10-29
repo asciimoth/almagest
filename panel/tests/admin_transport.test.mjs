@@ -229,7 +229,7 @@ test("WebSocket transport cancels a stuck connection after a short timeout", asy
   assert.equal(socket?.readyState, MockWebSocket.CLOSED);
   assert.equal(transport.connected, false);
   assert.equal(closes, 1);
-  assert.equal(ADMIN_API_CONNECT_TIMEOUT_MS, 3_000);
+  assert.equal(ADMIN_API_CONNECT_TIMEOUT_MS, 60_000);
 });
 
 test("WebSocket transport ignores close events from a replaced socket", async () => {
