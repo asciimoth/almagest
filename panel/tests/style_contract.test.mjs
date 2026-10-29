@@ -57,6 +57,19 @@ test("SPA tab and locale icons use one fixed control width", () => {
   }
 });
 
+test("SPA and documentation headers align the logo", () => {
+  const appHeaderRule = cssRule(".app-header");
+  const docsHeaderRule = cssRule(".docs-header");
+  const logoRule = cssRule(".header-logo");
+
+  for (const rule of [appHeaderRule, docsHeaderRule]) {
+    assert.match(rule, /padding:\s*12px 16px;/);
+    assert.match(rule, /align-items:\s*center;/);
+  }
+  assert.match(logoRule, /width:\s*42px;/);
+  assert.match(logoRule, /height:\s*42px;/);
+});
+
 test("SPA tab icons use a consistent line style", () => {
   const rule = cssRule(".tab-icon");
 
