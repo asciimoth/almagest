@@ -246,8 +246,11 @@ Admin panel:
   selection boundary.
 - `panel/src/desktop_admin_transport.ts`: isolated Tauri admin channel adapter.
 - `panel/src/wasm_transport.ts`: in-process web demo transport.
-- `panel/src/docs.ts`: dedicated documentation page using the read-only HTTP
-  documentation API.
+- `panel/src/docs.ts`: documentation surface shared by daemon, static, and
+  desktop clients.
+- `panel/src/embedded_docs_client.ts` and `embedded_docs_protocol.ts`: desktop
+  documentation bridge that keeps the panel document and its native API
+  session alive while docs are visible.
 - `panel/src/pasta_model.ts`: snapshot/notification helpers.
 - `panel/scripts/`: dependency vendoring and static publish scripts.
 

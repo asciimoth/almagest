@@ -253,12 +253,14 @@ import { createAdminTransport, type AdminTransport } from "./admin_transport.js"
 import { docsClient } from "./docs_client.js";
 import { documentationURL } from "./site_navigation.js";
 import { applyPanelMode, panelMode, showsRuntimeSecurityStatus } from "./panel_mode.js";
+import { EMBEDDED_DOCS_SOURCE, parseEmbeddedDocsMessage } from "./embedded_docs_protocol.js";
 import {
-  navigateDesktopSurface,
   rememberDesktopDocsPage,
   rememberDesktopPanelTab,
   rememberDesktopSurface,
+  rememberedDesktopDocsPage,
   rememberedDesktopPanelTab,
+  rememberedDesktopSurface,
 } from "./desktop_route_memory.js";
 
 const SECRET_NODE_AUTOCOMPLETE_LIMIT = 8;
@@ -578,10 +580,11 @@ let snapshotMutationPending = false;
 let snapshotEntries: SnapshotInfo[] = [];
 
 const currentPanelMode = panelMode(document.documentElement);
-const reuseDesktopSurfaceCache = currentPanelMode === "desktop" && navigator.userAgent.includes("Windows");
 applyPanelMode(document, currentPanelMode);
 
 const el = {
+  appShell: document.querySelector<HTMLElement>(".app-shell")!,
+  desktopDocsFrame: document.querySelector<HTMLIFrameElement>("#desktop-docs-frame")!,
   status: document.querySelector<HTMLElement>("#backend-status")!,
   projectVersion: document.querySelector<HTMLElement>("#project-version")!,
   isolationStatus: document.querySelector<HTMLElement>("#isolation-status")!,
@@ -2223,18 +2226,95 @@ function openDocumentation(page = ""): void {
   if (currentPanelMode === "desktop") {
     if (page) rememberDesktopDocsPage(window.localStorage, page);
     rememberDesktopSurface(window.localStorage, "docs");
-    navigateDesktopSurface(
-      window.sessionStorage,
-      window.history,
-      window.location,
-      "panel",
-      "docs",
-      url,
-      reuseDesktopSurfaceCache,
-    );
+    showDesktopDocumentation(page);
   } else {
     window.open(url, "_blank");
   }
+}
+
+let desktopDocsLoaded = false;
+let pendingDesktopDocsPage = "";
+
+function loadDesktopDocumentation(page = ""): void {
+  if (page) pendingDesktopDocsPage = page;
+  if (!el.desktopDocsFrame.src) {
+    const docsURL = new URL("./docs/index.html", window.location.href);
+    docsURL.searchParams.set("embedded", "1");
+    const initialPage = pendingDesktopDocsPage || rememberedDesktopDocsPage(window.localStorage);
+    if (initialPage) docsURL.searchParams.set("page", initialPage);
+    el.desktopDocsFrame.src = docsURL.href;
+    return;
+  }
+  if (!desktopDocsLoaded || !pendingDesktopDocsPage) return;
+  el.desktopDocsFrame.contentWindow?.postMessage({
+    source: EMBEDDED_DOCS_SOURCE,
+    kind: "docs-navigate",
+    page: pendingDesktopDocsPage,
+  }, window.location.origin);
+  pendingDesktopDocsPage = "";
+}
+
+function showDesktopDocumentation(page = ""): void {
+  el.appShell.hidden = true;
+  el.desktopDocsFrame.hidden = false;
+  loadDesktopDocumentation(page);
+}
+
+function hideDesktopDocumentation(tab = ""): void {
+  el.desktopDocsFrame.hidden = true;
+  el.appShell.hidden = false;
+  rememberDesktopSurface(window.localStorage, "panel");
+  if (tab) setTab(tab);
+  window.requestAnimationFrame(() => {
+    resizeGraphCanvas();
+    redrawRevealedGraph(canvas);
+  });
+}
+
+const apiConnectionWaiters = new Set<() => void>();
+
+function waitForAPIConnection(): Promise<void> {
+  if (apiTransport?.connected) return Promise.resolve();
+  return new Promise((resolve) => { apiConnectionWaiters.add(resolve); });
+}
+
+function installDesktopDocsBridge(): void {
+  el.desktopDocsFrame.addEventListener("load", () => {
+    desktopDocsLoaded = true;
+    loadDesktopDocumentation();
+  });
+  window.addEventListener("message", (event) => {
+    if (currentPanelMode !== "desktop"
+      || event.origin !== window.location.origin
+      || event.source !== el.desktopDocsFrame.contentWindow) return;
+    const message = parseEmbeddedDocsMessage(event.data);
+    if (!message) return;
+    if (message.kind === "docs-close") {
+      hideDesktopDocumentation(message.tab);
+      return;
+    }
+    void (async () => {
+      try {
+        await waitForAPIConnection();
+        const result = message.surface === "admin"
+          ? await setLocaleFromEmbeddedDocs(String(message.payload.locale))
+          : await request(message.surface, message.method, message.payload);
+        event.source?.postMessage({
+          source: EMBEDDED_DOCS_SOURCE,
+          kind: "docs-response",
+          id: message.id,
+          result,
+        }, { targetOrigin: event.origin });
+      } catch (error) {
+        event.source?.postMessage({
+          source: EMBEDDED_DOCS_SOURCE,
+          kind: "docs-response",
+          id: message.id,
+          error: errorMessage(error),
+        }, { targetOrigin: event.origin });
+      }
+    })();
+  });
 }
 
 function visibleCanvasSpawnPosition(): [number, number] {
@@ -6985,6 +7065,8 @@ async function initializeAPISession(quiet = false): Promise<void> {
   if (!apiTransport?.connected) {
     throw new Error("Admin API disconnected during initialization");
   }
+  for (const resolve of apiConnectionWaiters) resolve();
+  apiConnectionWaiters.clear();
 }
 
 async function initializeAuxiliaryAPISession(): Promise<void> {
@@ -7037,9 +7119,15 @@ function boot(): void {
   window.name = adminPanelWindowName(window.location.origin);
   resetAPIReconnectBackoff();
   wireUI();
+  installDesktopDocsBridge();
   initGraph();
   installTestHooks();
   void startAPIConnection();
+  if (currentPanelMode === "desktop" && rememberedDesktopSurface(window.localStorage) === "docs") {
+    showDesktopDocumentation(rememberedDesktopDocsPage(window.localStorage));
+  } else if (currentPanelMode === "desktop") {
+    loadDesktopDocumentation();
+  }
 }
 
 boot();
@@ -7103,17 +7191,29 @@ async function changeLocale(locale: string): Promise<void> {
   el.locale.disabled = true;
   try {
     const localized = await backend("setLocale", { locale });
-    installLocale(localized);
-    try { window.localStorage.setItem(LOCALE_STORAGE_KEY, localized.requested); } catch { /* Storage can be disabled. */ }
-    destroyMenu();
-    await requestSnapshot();
-    updateSidekick();
-    snapshotEntries = [];
-    if (activeTab === "snapshots") await loadSnapshots();
-    rerenderLocalizedPanels();
+    await applyPanelLocaleChange(localized, true);
   } finally {
     el.locale.disabled = false;
   }
+}
+
+async function setLocaleFromEmbeddedDocs(locale: string): Promise<LocaleSnapshot> {
+  const previousLocale = document.documentElement.lang;
+  const localized = await backend("setLocale", { locale });
+  await applyPanelLocaleChange(localized, localized.effective !== previousLocale);
+  return localized;
+}
+
+async function applyPanelLocaleChange(localized: LocaleSnapshot, refreshData: boolean): Promise<void> {
+  installLocale(localized);
+  try { window.localStorage.setItem(LOCALE_STORAGE_KEY, localized.requested); } catch { /* Storage can be disabled. */ }
+  if (!refreshData) return;
+  destroyMenu();
+  await requestSnapshot();
+  updateSidekick();
+  snapshotEntries = [];
+  if (activeTab === "snapshots") await loadSnapshots();
+  rerenderLocalizedPanels();
 }
 
 function rerenderLocalizedPanels(): void {

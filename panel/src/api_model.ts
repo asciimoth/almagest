@@ -4,6 +4,7 @@ export const API_SURFACES = [
   "admin",
   "config",
   "dns",
+  "docs",
   "engine",
   "kv",
   "log",

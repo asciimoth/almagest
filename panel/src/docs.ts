@@ -18,11 +18,11 @@ import {
   type TypePalette,
 } from "./pasta_model.js";
 import { docsClient } from "./docs_client.js";
+import { EMBEDDED_DOCS_SOURCE } from "./embedded_docs_protocol.js";
 import { renderGraphPreview } from "./graph_preview.js";
 import { panelMode } from "./panel_mode.js";
 import { panelTabURL } from "./site_navigation.js";
 import {
-  navigateDesktopSurface,
   rememberDesktopDocsPage,
   rememberDesktopDocsScroll,
   rememberDesktopPanelTab,
@@ -54,7 +54,7 @@ const navigationToggle = document.querySelector<HTMLButtonElement>("#docs-naviga
 const navigationScrim = document.querySelector<HTMLButtonElement>("#docs-navigation-scrim")!;
 const parameters = new URLSearchParams(window.location.search);
 const desktopMode = panelMode(document.documentElement) === "desktop";
-const reuseDesktopSurfaceCache = desktopMode && navigator.userAgent.includes("Windows");
+const embeddedDesktop = desktopMode && window.parent !== window && parameters.get("embedded") === "1";
 let urlLocale = parameters.get("locale") || "";
 const requestedLocale = urlLocale || readLocaleCookie() || savedLocale() || navigator.language || "en";
 let currentPage = parameters.get("page")
@@ -126,6 +126,17 @@ if (desktopMode) {
   adminPanelLink.target = adminPanelWindowName(window.location.origin);
 }
 adminPanelLink.addEventListener("click", (event) => {
+  if (embeddedDesktop) {
+    event.preventDefault();
+    saveCurrentDesktopDocsScroll();
+    rememberDesktopDocsPage(window.localStorage, currentPage);
+    window.parent.postMessage({
+      source: EMBEDDED_DOCS_SOURCE,
+      kind: "docs-close",
+      tab: "",
+    }, window.location.origin);
+    return;
+  }
   if (desktopMode) {
     // Modifier keys must not create another native webview. The desktop app
     // has one page surface, so all packaged-page navigation uses that surface.
@@ -133,15 +144,7 @@ adminPanelLink.addEventListener("click", (event) => {
     saveCurrentDesktopDocsScroll();
     rememberDesktopDocsPage(window.localStorage, currentPage);
     rememberDesktopSurface(window.localStorage, "panel");
-    navigateDesktopSurface(
-      window.sessionStorage,
-      window.history,
-      window.location,
-      "docs",
-      "panel",
-      adminPanelLink.href,
-      reuseDesktopSurfaceCache,
-    );
+    window.location.replace(adminPanelLink.href);
     return;
   }
   // Keep standard browser behavior when the user requests a separate tab or window.
@@ -258,6 +261,18 @@ function currentPanelTabURL(tab: string): string {
 }
 
 function navigateToPanelTab(event: MouseEvent, tab: string, href: string): void {
+  if (embeddedDesktop) {
+    event.preventDefault();
+    saveCurrentDesktopDocsScroll();
+    rememberDesktopDocsPage(window.localStorage, currentPage);
+    rememberDesktopPanelTab(window.localStorage, tab);
+    window.parent.postMessage({
+      source: EMBEDDED_DOCS_SOURCE,
+      kind: "docs-close",
+      tab,
+    }, window.location.origin);
+    return;
+  }
   if (desktopMode) {
     // The desktop package has one webview. Persist the requested tab before
     // navigation because its panel entry point restores the saved route.
@@ -266,15 +281,7 @@ function navigateToPanelTab(event: MouseEvent, tab: string, href: string): void 
     rememberDesktopDocsPage(window.localStorage, currentPage);
     rememberDesktopPanelTab(window.localStorage, tab);
     rememberDesktopSurface(window.localStorage, "panel");
-    navigateDesktopSurface(
-      window.sessionStorage,
-      window.history,
-      window.location,
-      "docs",
-      "panel",
-      href,
-      reuseDesktopSurfaceCache,
-    );
+    window.location.replace(href);
     return;
   }
   // Preserve native modifier-key behavior. For a normal click, route and
@@ -538,6 +545,17 @@ window.addEventListener("pageshow", (event) => {
   if (!desktopMode || !event.persisted) return;
   const page = rememberedDesktopDocsPage(window.localStorage);
   if (page && page !== currentPage) void openPage(page, true);
+});
+
+window.addEventListener("message", (event) => {
+  if (!embeddedDesktop || event.origin !== window.location.origin || event.source !== window.parent) return;
+  const value: unknown = event.data;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const message = value as Record<string, unknown>;
+  if (message.source !== EMBEDDED_DOCS_SOURCE || message.kind !== "docs-navigate") return;
+  if (typeof message.page === "string" && message.page && message.page !== currentPage) {
+    void openPage(message.page, true);
+  }
 });
 
 void loadTree(requestedLocale);

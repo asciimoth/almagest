@@ -64,6 +64,7 @@ test("desktop publication permits only isolated Tauri IPC", async () => {
   assert.deepEqual(tauri.app.security.csp, {
     "default-src": "'none'",
     "connect-src": "ipc: http://ipc.localhost",
+    "frame-src": "'self'",
     "img-src": "'self' data:",
     "script-src": "'self'",
     "style-src": "'self'",

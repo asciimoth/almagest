@@ -4,7 +4,6 @@ const SURFACE_KEY = "almagest.desktop.surface.v1";
 const PANEL_TAB_KEY = "almagest.desktop.panel-tab.v1";
 const DOCS_PAGE_KEY = "almagest.desktop.docs-page.v1";
 const DOCS_SCROLL_KEY = "almagest.desktop.docs-scroll.v1";
-const CACHED_DOCS_KEY = "almagest.desktop.cached-docs.v1";
 
 /** Persist only small route identifiers. No document or API data is stored. */
 export function rememberDesktopSurface(storage: Storage, surface: DesktopSurface): void {
@@ -49,41 +48,6 @@ export function rememberedDesktopDocsScroll(storage: Storage, page: string): num
   } catch {
     return null;
   }
-}
-
-/**
- * Reuse the two desktop documents after their first navigation. Chromium keeps
- * both documents in its back-forward cache, including the parsed modules and
- * rendered DOM. Other desktop engines can reject the cache and transparently
- * fall back to a normal history navigation.
- */
-export function navigateDesktopSurface(
-  storage: Storage,
-  history: Pick<History, "back" | "forward" | "length">,
-  location: Pick<Location, "assign" | "replace">,
-  from: DesktopSurface,
-  to: DesktopSurface,
-  url: string,
-  reuseCache: boolean,
-): void {
-  if (!reuseCache) {
-    location.replace(url);
-    return;
-  }
-  if (from === "panel" && to === "docs") {
-    if (read(storage, CACHED_DOCS_KEY) === "forward") {
-      history.forward();
-    } else {
-      write(storage, CACHED_DOCS_KEY, "forward");
-      location.assign(url);
-    }
-    return;
-  }
-  if (from === "docs" && to === "panel" && read(storage, CACHED_DOCS_KEY) === "forward" && history.length > 1) {
-    history.back();
-    return;
-  }
-  location.replace(url);
 }
 
 function validRoutePart(value: string): boolean {
