@@ -19,12 +19,4 @@ export function applyPanelMode(document: Document, mode: PanelMode): void {
   for (const panel of document.querySelectorAll<HTMLElement>("[data-panel]")) {
     panel.hidden = webDemo && WEB_DEMO_EXCLUDED_TABS.has(panel.dataset.panel ?? "");
   }
-  const runtimeStatus = document.querySelector<HTMLElement>("#ps-runtime-status");
-  if (runtimeStatus) {
-    runtimeStatus.hidden = webDemo;
-  }
-}
-
-export function showsRuntimeSecurityStatus(mode: PanelMode): boolean {
-  return mode !== "webdemo";
 }

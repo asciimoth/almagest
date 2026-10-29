@@ -252,7 +252,8 @@ import {
 import { createAdminTransport, type AdminTransport } from "./admin_transport.js";
 import { docsClient } from "./docs_client.js";
 import { documentationURL } from "./site_navigation.js";
-import { applyPanelMode, panelMode, showsRuntimeSecurityStatus } from "./panel_mode.js";
+import { applyPanelMode, panelMode } from "./panel_mode.js";
+import { setRuntimeStatusVisibility } from "./runtime_status.js";
 import { EMBEDDED_DOCS_SOURCE, parseEmbeddedDocsMessage } from "./embedded_docs_protocol.js";
 import {
   rememberDesktopDocsPage,
@@ -587,6 +588,7 @@ const el = {
   desktopDocsFrame: document.querySelector<HTMLIFrameElement>("#desktop-docs-frame")!,
   status: document.querySelector<HTMLElement>("#backend-status")!,
   projectVersion: document.querySelector<HTMLElement>("#project-version")!,
+  runtimeStatus: document.querySelector<HTMLElement>("#ps-runtime-status")!,
   isolationStatus: document.querySelector<HTMLElement>("#isolation-status")!,
   sandboxStatus: document.querySelector<HTMLElement>("#sandbox-status")!,
   locale: document.querySelector<HTMLSelectElement>("#locale-select")!,
@@ -6963,6 +6965,8 @@ function wireUI(): void {
     if (document.visibilityState === "visible") requestImmediateAPIReconnect();
   });
   el.docs.addEventListener("click", () => openDocumentation());
+  el.isolationStatus.addEventListener("click", () => openDocumentation("almagest/security"));
+  el.sandboxStatus.addEventListener("click", () => openDocumentation("almagest/security"));
   el.secPanel.addEventListener("scroll", rememberSecScrollState);
   el.dnsPanel.addEventListener("scroll", rememberDNSScrollState);
   el.tlsPanel.addEventListener("scroll", rememberTLSScrollState);
@@ -7060,10 +7064,15 @@ async function initializeAPISession(quiet = false): Promise<void> {
   if (!quiet) setBackendStatus("app.status.initializing", "Initializing admin API");
   const hello = await backend("hello");
   applyProjectVersionStatus(hello.project_version_status);
-  if (showsRuntimeSecurityStatus(currentPanelMode)) {
-    applyIsolationStatus(hello);
-    applySandboxStatus(hello);
-  }
+  applyIsolationStatus(hello);
+  applySandboxStatus(hello);
+  setRuntimeStatusVisibility(
+    el.runtimeStatus,
+    el.isolationStatus,
+    el.sandboxStatus,
+    hello.isolation !== undefined,
+    hello.subprogram_sandbox !== undefined,
+  );
   await restoreLocale(hello);
   if (currentPanelMode === "webdemo") {
     const colormap = await backend("colormap");
@@ -7244,7 +7253,6 @@ function rerenderLocalizedPanels(): void {
 
 function applySandboxStatus(hello: HelloResponse): void {
   const status = hello.subprogram_sandbox;
-  el.sandboxStatus.hidden = status === undefined;
   if (!status) return;
   const templates = Object.values(status.templates);
   const reduced = templates.some((template) => !template.full_boundary);
@@ -7263,14 +7271,8 @@ function applySandboxStatus(hello: HelloResponse): void {
 }
 
 function applyIsolationStatus(hello: HelloResponse): void {
-  el.isolationStatus.hidden = false;
-  if (!hello.isolation) {
-    el.isolationStatus.textContent = localizedText("runtime.isolation.off", "Isolation off");
-    el.isolationStatus.dataset.reduced = "true";
-    el.isolationStatus.title = localizedText("runtime.isolation.off.title", "The graph runtime shares the daemon process and its host authority.");
-    return;
-  }
   const status = hello.isolation;
+  if (!status) return;
   const profile = status.profile_id ?? localizedText("runtime.isolation.legacy_profile", "legacy profile");
   const reduced = status.reduced === true;
   el.isolationStatus.textContent = reduced

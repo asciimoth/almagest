@@ -1839,13 +1839,21 @@ h1 {
 #sandbox-status {
   display: inline-flex;
   align-items: center;
+  min-height: 0;
   padding: 7px 10px;
+  border: 0;
   border-left: 3px solid var(--green);
   border-radius: 4px;
   background: color-mix(in srgb, var(--green), var(--mantle) 92%);
   color: var(--text);
   font-size: 12px;
   font-weight: 600;
+}
+
+#isolation-status:hover:not(:disabled),
+#sandbox-status:hover:not(:disabled) {
+  border-left-color: var(--blue);
+  background: color-mix(in srgb, var(--blue), var(--mantle) 90%);
 }
 
 #isolation-status[data-reduced="true"],

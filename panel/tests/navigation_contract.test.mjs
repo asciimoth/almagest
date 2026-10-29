@@ -171,6 +171,8 @@ test("runtime security status is reported in the Processes tab", () => {
 
   assert.equal(header?.querySelector("#isolation-status"), null);
   assert.equal(header?.querySelector("#sandbox-status"), null);
-  assert.ok(processes?.querySelector(".ps-runtime-status > #isolation-status"));
-  assert.ok(processes?.querySelector(".ps-runtime-status > #sandbox-status"));
+  assert.equal(processes?.querySelector(".ps-runtime-status > #isolation-status")?.tagName, "BUTTON");
+  assert.equal(processes?.querySelector(".ps-runtime-status > #sandbox-status")?.tagName, "BUTTON");
+  assert.match(app, /isolationStatus\.addEventListener\("click", \(\) => openDocumentation\("almagest\/security"\)\)/);
+  assert.match(app, /sandboxStatus\.addEventListener\("click", \(\) => openDocumentation\("almagest\/security"\)\)/);
 });

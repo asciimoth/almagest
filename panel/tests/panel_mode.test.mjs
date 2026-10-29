@@ -7,12 +7,11 @@ import {
   applyPanelMode,
   panelMode,
   setPanelMode,
-  showsRuntimeSecurityStatus,
 } from "../public/build/panel_mode.js";
 
 const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
 
-test("web demo hides unsupported tabs and runtime security status", () => {
+test("web demo hides unsupported tabs and leaves empty runtime status hidden", () => {
   const document = new JSDOM(html).window.document;
   setPanelMode(document.documentElement, "webdemo");
   const mode = panelMode(document.documentElement);
@@ -24,10 +23,9 @@ test("web demo hides unsupported tabs and runtime security status", () => {
   assert.equal(document.querySelector("[data-panel='snapshots']")?.hidden, true);
   assert.equal(document.querySelector("[data-tab='ps']")?.hidden, false);
   assert.equal(document.querySelector("#ps-runtime-status")?.hidden, true);
-  assert.equal(showsRuntimeSecurityStatus(mode), false);
 });
 
-test("admin panel keeps all tabs and runtime security status", () => {
+test("admin panel keeps all tabs and leaves empty runtime status hidden", () => {
   const document = new JSDOM(html).window.document;
   const mode = panelMode(document.documentElement);
   applyPanelMode(document, mode);
@@ -35,11 +33,10 @@ test("admin panel keeps all tabs and runtime security status", () => {
   assert.equal(mode, "admin");
   assert.equal([...document.querySelectorAll("[data-tab]")].every((tab) => !tab.hidden), true);
   assert.equal([...document.querySelectorAll("[data-panel]")].every((panel) => !panel.hidden), true);
-  assert.equal(document.querySelector("#ps-runtime-status")?.hidden, false);
-  assert.equal(showsRuntimeSecurityStatus(mode), true);
+  assert.equal(document.querySelector("#ps-runtime-status")?.hidden, true);
 });
 
-test("desktop panel keeps the complete UI and native runtime status", () => {
+test("desktop panel keeps the complete UI and leaves empty runtime status hidden", () => {
   const document = new JSDOM(html).window.document;
   setPanelMode(document.documentElement, "desktop");
   const mode = panelMode(document.documentElement);
@@ -48,6 +45,5 @@ test("desktop panel keeps the complete UI and native runtime status", () => {
   assert.equal(mode, "desktop");
   assert.equal([...document.querySelectorAll("[data-tab]")].every((tab) => !tab.hidden), true);
   assert.equal([...document.querySelectorAll("[data-panel]")].every((panel) => !panel.hidden), true);
-  assert.equal(document.querySelector("#ps-runtime-status")?.hidden, false);
-  assert.equal(showsRuntimeSecurityStatus(mode), true);
+  assert.equal(document.querySelector("#ps-runtime-status")?.hidden, true);
 });
