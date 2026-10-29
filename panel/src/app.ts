@@ -296,6 +296,7 @@ type FormularMenuConstructor = new (
   menuID: string,
   send: (message: unknown) => void,
   options?: {
+    defaultTheme?: boolean;
     selectors?: FormularSelectorProvider;
     renderMultilineTextInput?: ReturnType<typeof createFormularMultilineHighlightRenderer>;
   },
@@ -2575,6 +2576,7 @@ function mountMenu(nodeID: number): void {
     menu: new FormularMenu("node-menu", nodeMenuID(nodeID), (message: unknown) => {
       tryBackend("formular", { id: nodeID, message });
     }, {
+      defaultTheme: false,
       selectors: (selector: string) => formularSelectorValues(nodeID, selector),
       renderMultilineTextInput: createFormularMultilineHighlightRenderer(),
     }),

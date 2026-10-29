@@ -1,4 +1,4 @@
-import { cp, mkdir } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 
 await mkdir("vendor/litegraph", { recursive: true });
 await mkdir("vendor/formular-menu", { recursive: true });
@@ -11,3 +11,13 @@ await cp("node_modules/litegraph.js/src/litegraph.d.ts", "vendor/litegraph/liteg
 
 await cp("node_modules/@asciimoth/formular-menu/src/formular-menu.js", "vendor/formular-menu/formular-menu.js");
 await cp("node_modules/@asciimoth/formular-menu/types/formular-menu.d.ts", "vendor/formular-menu/formular-menu.d.ts");
+
+// Formular includes its default theme in the JavaScript module so simple web
+// clients need only one file. The desktop CSP intentionally blocks injected
+// styles, so publish the same theme as a regular stylesheet.
+const formularSource = await readFile("node_modules/@asciimoth/formular-menu/src/formular-menu.js", "utf8");
+const formularTheme = formularSource.match(/const DEFAULT_THEME = `([\s\S]*?)`;/)?.[1];
+if (!formularTheme || formularTheme.includes("${")) {
+  throw new Error("could not extract the Formular default theme");
+}
+await writeFile("vendor/formular-menu/formular-menu.css", `${formularTheme.trim()}\n`);

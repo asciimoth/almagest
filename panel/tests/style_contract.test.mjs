@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 const css = await readFile(new URL("../style.css", import.meta.url), "utf8");
+const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+const app = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
 
 function cssRule(selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -10,6 +12,11 @@ function cssRule(selector) {
   assert.ok(match?.groups?.body, `missing CSS rule for ${selector}`);
   return match.groups.body;
 }
+
+test("Formular uses its external theme under the desktop CSP", () => {
+  assert.match(html, /href="\.\/vendor\/formular-menu\/formular-menu\.css"/);
+  assert.match(app, /new FormularMenu[\s\S]*defaultTheme: false/);
+});
 
 test("links use the interface palette and focus treatment", () => {
   assert.match(cssRule("a"), /color:\s*var\(--blue\);/);

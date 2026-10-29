@@ -7,6 +7,7 @@ const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const litegraph = await readFile(new URL("../vendor/litegraph/litegraph.js", import.meta.url), "utf8");
 const app = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
 const webdemo = await readFile(new URL("../src/webdemo.ts", import.meta.url), "utf8");
+const tauri = JSON.parse(await readFile(new URL("../../app/src-tauri/tauri.conf.json", import.meta.url), "utf8"));
 
 test("the panel has a restrictive content security policy", () => {
   const dom = new JSDOM(html);
@@ -43,7 +44,11 @@ test("desktop graph input uses standard wheel events without legacy duplicates",
   assert.match(app, /applyStandardWheelZoom\(canvas, el\.graphCanvas, event\)/);
 });
 
-test("graph drag-over accepts protected WebView2 drag payloads by type", () => {
+test("desktop disables native drag-and-drop so Windows WebView2 delivers HTML5 drag events", () => {
+  assert.equal(tauri.app.windows[0].dragDropEnabled, false);
+});
+
+test("graph drag-over accepts protected Chromium drag payloads by type", () => {
   assert.match(app, /const types = event\.dataTransfer\?\.types/);
   assert.match(app, /type === CLASS_DRAG_MIME \|\| type === "text\/plain"/);
   assert.match(app, /function handleGraphCanvasDrop[\s\S]*dragEventClassName\(event\)/);

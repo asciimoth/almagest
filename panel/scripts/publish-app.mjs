@@ -40,6 +40,7 @@ await cp(new URL("logo-light.svg", repository), new URL("logo.svg", target));
 await cp(new URL("logo-light.svg", repository), new URL("favicon.svg", target));
 await cp(new URL("LUCIDE_LICENSE.txt", panel), new URL("LUCIDE_LICENSE.txt", target));
 await cp(new URL("style.css", panel), new URL("style.css", target));
+await cp(new URL("vendor/formular-menu/formular-menu.css", panel), new URL("vendor/formular-menu/formular-menu.css", target));
 await cp(new URL("vendor/formular-menu/formular-menu.js", panel), new URL("vendor/formular-menu/formular-menu.js", target));
 await cp(new URL("vendor/litegraph/litegraph.css", panel), new URL("vendor/litegraph/litegraph.css", target));
 await cp(new URL("vendor/litegraph/litegraph.js", panel), new URL("vendor/litegraph/litegraph.js", target));
@@ -75,11 +76,11 @@ const appHTML = sourceHTML
   // HTTP cache when the webview does not retain a back-forward entry.
   .replace("</head>", `  <link rel="modulepreload" href="./public/build/desktop-docs.js?v=${docsVersion}">\n  </head>`)
   .replace("./public/build/app.js", `./public/build/desktop.js?v=${version}`);
-await writeFile(new URL("index.html", target), await minifyHTML(appHTML, {
+await writeFile(new URL("index.html", target), (await minifyHTML(appHTML, {
   collapseWhitespace: true,
   conservativeCollapse: true,
   removeComments: true,
-}));
+})).trim());
 
 const sourceDocsHTML = await readFile(new URL("docs.html", panel), "utf8");
 const docsHTML = sourceDocsHTML
@@ -94,8 +95,8 @@ const docsHTML = sourceDocsHTML
   .replace('href="/"', 'href="../index.html"')
   .replace("</head>", `  <link rel="modulepreload" href="../public/build/desktop.js?v=${version}">\n  </head>`)
   .replace('src="/public/build/docs.js"', `src="../public/build/desktop-docs.js?v=${docsVersion}"`);
-await writeFile(new URL("docs/index.html", target), await minifyHTML(docsHTML, {
+await writeFile(new URL("docs/index.html", target), (await minifyHTML(docsHTML, {
   collapseWhitespace: true,
   conservativeCollapse: true,
   removeComments: true,
-}));
+})).trim());

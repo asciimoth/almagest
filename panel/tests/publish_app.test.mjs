@@ -32,6 +32,7 @@ test("desktop publication retains the panel document and uses its native entry p
   assert.equal(docsDocument.querySelector("link[rel='icon']")?.getAttribute("href"), "../favicon.svg");
   assert.equal(docsDocument.querySelector("meta[http-equiv='Content-Security-Policy']"), null);
   await access(published("vendor/litegraph/litegraph.js"));
+  await access(published("vendor/formular-menu/formular-menu.css"));
   await access(published("vendor/formular-menu/formular-menu.js"));
   await access(published("LUCIDE_LICENSE.txt"));
   assert.deepEqual(
@@ -59,6 +60,7 @@ test("desktop publication permits only isolated Tauri IPC", async () => {
   assert.equal(tauri.app.security.pattern.use, "isolation");
   assert.equal(tauri.app.security.freezePrototype, true);
   assert.equal(tauri.app.security.assetProtocol.enable, false);
+  assert.equal(tauri.app.windows[0].dragDropEnabled, false);
   assert.deepEqual(tauri.app.security.csp, {
     "default-src": "'none'",
     "connect-src": "ipc: http://ipc.localhost",
