@@ -15,7 +15,16 @@ enum Navigation {
 pub(crate) fn plugin<R: Runtime>() -> TauriPlugin<R> {
     tauri::plugin::Builder::new("navigation-boundary")
         .on_navigation(|webview, url| match classify(url) {
-            Navigation::Internal => true,
+            Navigation::Internal => {
+                #[cfg(windows)]
+                if url.path().starts_with("/docs/") {
+                    crate::logging::write(format_args!(
+                        "webview navigation [windows]: loading internal documentation frame path={}",
+                        url.path()
+                    ));
+                }
+                true
+            }
             Navigation::External => {
                 if let Err(error) = webview
                     .app_handle()

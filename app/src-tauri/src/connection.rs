@@ -35,6 +35,16 @@ pub(crate) enum FrontendEvent {
     Message { message: String },
 }
 
+impl FrontendEvent {
+    fn diagnostic_kind(&self) -> &'static str {
+        match self {
+            Self::ConnectionStatus { .. } => "connection_status",
+            Self::ConnectionError { .. } => "connection_error",
+            Self::Message { .. } => "message",
+        }
+    }
+}
+
 /// Owns the admin transport and its retry supervisor. The frontend can only
 /// send and receive validated API JSON. Endpoint, retry, and transport details
 /// stay in native code.
@@ -89,6 +99,8 @@ struct FrontendState {
     channel: Option<Channel<FrontendEvent>>,
     connected: bool,
     status_handler: Option<Arc<dyn Fn(bool) + Send + Sync>>,
+    channel_generation: u64,
+    channel_events_sent: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -117,6 +129,8 @@ impl Frontend {
                 channel: None,
                 connected: false,
                 status_handler: None,
+                channel_generation: 0,
+                channel_events_sent: 0,
             }),
         }
     }
@@ -143,8 +157,11 @@ impl Frontend {
             .state
             .lock()
             .map_err(|_| "frontend state lock is poisoned")?;
+        state.channel_generation = state.channel_generation.wrapping_add(1);
+        state.channel_events_sent = 0;
+        let generation = state.channel_generation;
         crate::logging::write(format_args!(
-            "panel admin IPC: register listener (native connected={})",
+            "panel admin IPC: register listener generation={generation} (native connected={})",
             state.connected
         ));
         channel
@@ -152,8 +169,13 @@ impl Frontend {
                 connected: state.connected,
             })
             .map_err(|error| format!("send initial connection status: {error}"))?;
+        state.channel_events_sent = 1;
         crate::logging::write(format_args!(
-            "panel admin IPC: initial connection status queued"
+            "panel admin IPC: initial connection status queued generation={generation}"
+        ));
+        #[cfg(windows)]
+        crate::logging::write(format_args!(
+            "panel admin IPC [windows]: WebView channel accepted initial status generation={generation}"
         ));
         state.channel = Some(channel);
         Ok(())
@@ -205,12 +227,25 @@ impl Frontend {
     }
 
     fn send_locked(state: &mut FrontendState, event: FrontendEvent) {
-        if state
-            .channel
-            .as_ref()
-            .is_some_and(|channel| channel.send(event).is_err())
-        {
+        let kind = event.diagnostic_kind();
+        let Some(channel) = state.channel.as_ref() else {
+            return;
+        };
+        if let Err(error) = channel.send(event) {
+            crate::logging::write(format_args!(
+                "panel admin IPC: channel send failed generation={} event={kind}: {error}",
+                state.channel_generation
+            ));
             state.channel = None;
+            return;
+        }
+        state.channel_events_sent = state.channel_events_sent.saturating_add(1);
+        #[cfg(windows)]
+        if state.channel_events_sent == 2 {
+            crate::logging::write(format_args!(
+                "panel admin IPC [windows]: WebView channel accepted first follow-up event generation={} event={kind}",
+                state.channel_generation
+            ));
         }
     }
 }

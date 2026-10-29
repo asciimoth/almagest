@@ -67,6 +67,10 @@ test("desktop surface changes preserve routes in persistent panel and docs docum
   assert.match(desktopDocsEntry, /new EmbeddedDocsClient\(\)/);
   assert.match(appSource, /currentPanelMode === "desktop"\) rememberDesktopPanelTab/);
   assert.match(appSource, /rememberDesktopSurface\(window\.localStorage, "docs"\);\s*showDesktopDocumentation/);
+  assert.match(appSource, /documentation iframe load deferred until the admin API is connected/);
+  assert.match(appSource, /currentPanelMode === "desktop" && desktopDocsLoadRequested/);
+  const boot = appSource.slice(appSource.indexOf("function boot"), appSource.indexOf("boot();"));
+  assert.doesNotMatch(boot, /else if \(currentPanelMode === "desktop"\)[\s\S]*loadDesktopDocumentation\(\)/);
   assert.match(appSource, /function installDesktopDocsBridge\(\)/);
   assert.match(appSource, /event\.source !== el\.desktopDocsFrame\.contentWindow/);
   assert.match(appSource, /await request\(message\.surface, message\.method, message\.payload\)/);

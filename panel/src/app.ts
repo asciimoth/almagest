@@ -2234,14 +2234,26 @@ function openDocumentation(page = ""): void {
 
 let desktopDocsLoaded = false;
 let pendingDesktopDocsPage = "";
+let desktopDocsLoadRequested = false;
+let desktopDocsLoadDeferredLogged = false;
 
 function loadDesktopDocumentation(page = ""): void {
   if (page) pendingDesktopDocsPage = page;
+  desktopDocsLoadRequested = true;
+  if (!apiTransport?.connected) {
+    if (!desktopDocsLoadDeferredLogged) {
+      log("desktop-api", "debug", "documentation iframe load deferred until the admin API is connected");
+      desktopDocsLoadDeferredLogged = true;
+    }
+    return;
+  }
+  desktopDocsLoadDeferredLogged = false;
   if (!el.desktopDocsFrame.src) {
     const docsURL = new URL("./docs/index.html", window.location.href);
     docsURL.searchParams.set("embedded", "1");
     const initialPage = pendingDesktopDocsPage || rememberedDesktopDocsPage(window.localStorage);
     if (initialPage) docsURL.searchParams.set("page", initialPage);
+    log("desktop-api", "debug", "loading the documentation iframe after the admin API connected");
     el.desktopDocsFrame.src = docsURL.href;
     return;
   }
@@ -2281,6 +2293,9 @@ function waitForAPIConnection(): Promise<void> {
 function installDesktopDocsBridge(): void {
   el.desktopDocsFrame.addEventListener("load", () => {
     desktopDocsLoaded = true;
+    if (currentPanelMode === "desktop") {
+      log("desktop-api", "debug", "documentation iframe load completed");
+    }
     loadDesktopDocumentation();
   });
   window.addEventListener("message", (event) => {
@@ -7093,6 +7108,9 @@ async function startAPIConnection(quiet = false): Promise<void> {
       setTab(tabNameFromLocation(), false);
     }
     void initializeAuxiliaryAPISession();
+    if (currentPanelMode === "desktop" && desktopDocsLoadRequested) {
+      loadDesktopDocumentation();
+    }
   } catch (error) {
     const failedTransport = apiTransport;
     failedTransport?.close();
@@ -7125,8 +7143,6 @@ function boot(): void {
   void startAPIConnection();
   if (currentPanelMode === "desktop" && rememberedDesktopSurface(window.localStorage) === "docs") {
     showDesktopDocumentation(rememberedDesktopDocsPage(window.localStorage));
-  } else if (currentPanelMode === "desktop") {
-    loadDesktopDocumentation();
   }
 }
 
