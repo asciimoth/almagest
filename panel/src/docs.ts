@@ -62,6 +62,7 @@ let currentPage = parameters.get("page")
   || docsClient().pageFromLocation(window.location);
 let effectiveLocale = requestedLocale;
 let orderedPageIDs: string[] = [];
+let pageTransition = 0;
 const pageNames = new Map<string, string>();
 const pageAvailability = new Map<string, boolean>();
 const pageMarks = new Map<string, PageMark[]>();
@@ -100,6 +101,16 @@ treeElement.addEventListener("wheel", (event) => {
     : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? treeElement.clientHeight : 1);
   if (handoffBoundaryScroll(treeElement, pageElement, deltaY)) event.preventDefault();
 }, { passive: false });
+
+pageElement.addEventListener("click", (event) => {
+  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  if (!(event.target instanceof Element)) return;
+  const link = event.target.closest<HTMLAnchorElement>("a.markdown-link-docs[data-documentation-id]");
+  const id = link?.dataset.documentationId;
+  if (!id) return;
+  event.preventDefault();
+  void openPage(id, true);
+});
 
 function pageMark(value: unknown): PageMark | null {
   return value === "available" || value === "unavailable" || value === "deprecated" ? value : null;
@@ -325,13 +336,19 @@ function renderPageNavigation(id: string): HTMLElement | null {
 
 async function openPage(id: string, updateHistory: boolean): Promise<void> {
   if (desktopMode && currentPage && currentPage !== id) saveCurrentDesktopDocsScroll();
-  pageElement.replaceChildren(textElement("p", "Loading documentation."));
+  const transition = ++pageTransition;
+  const locale = effectiveLocale;
+  const loadPreview = id.startsWith("node/")
+    && (pageAvailability.get(id) !== false || docsClient().previewsUnavailableNodes);
+  pageElement.setAttribute("aria-busy", "true");
   try {
-    const contentText = await docsClient().raw(effectiveLocale, id);
+    const [contentText, nodeClass] = await Promise.all([
+      docsClient().raw(locale, id),
+      loadPreview ? loadNodePreview(locale, id) : Promise.resolve(null),
+    ]);
+    if (transition !== pageTransition) return;
+
     const name = pageNames.get(id) || id;
-    currentPage = id;
-    if (desktopMode) rememberDesktopDocsPage(window.localStorage, id);
-    document.title = `${name} — Almagest Documentation`;
     const title = textElement("h1", name);
     const content = document.createElement("div");
     renderNodeDescription(
@@ -356,10 +373,16 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
       ? textElement("div", markMessages.deprecated, "docs-node-warning docs-node-deprecated")
       : null;
     const navigation = renderPageNavigation(id);
+    const preview = nodeClass ? renderNodePreview(nodeClass) : null;
     if (unavailable) unavailable.setAttribute("role", "status");
     if (deprecated) deprecated.setAttribute("role", "status");
+
+    currentPage = id;
+    if (desktopMode) rememberDesktopDocsPage(window.localStorage, id);
+    document.title = `${name} — Almagest Documentation`;
     pageElement.replaceChildren(
       title,
+      ...(preview ? [preview] : []),
       ...(unavailable ? [unavailable] : []),
       ...(deprecated ? [deprecated] : []),
       content,
@@ -376,13 +399,15 @@ async function openPage(id: string, updateHistory: boolean): Promise<void> {
     }
     if (window.location.hash) scrollToCurrentAnchor();
     else restoreDesktopDocsScroll(id);
-    if (!unavailable || docsClient().previewsUnavailableNodes) void loadNodePreview(id, title);
     selectPageInTree(treeElement, id);
   } catch (error) {
+    if (transition !== pageTransition) return;
     pageElement.replaceChildren(
       textElement("h1", "Documentation unavailable"),
       textElement("p", error instanceof Error ? error.message : String(error)),
     );
+  } finally {
+    if (transition === pageTransition) pageElement.removeAttribute("aria-busy");
   }
 }
 
@@ -420,45 +445,46 @@ function saveCurrentDesktopDocsScroll(): void {
 
 function restoreDesktopDocsScroll(id: string): void {
   const top = rememberedDesktopDocsScroll(window.localStorage, id) ?? 0;
-  // Wait for layout so the browser does not clamp the saved value against the
-  // short loading placeholder that preceded the rendered document.
+  // Wait until the staged document has its final layout before restoring it.
   window.requestAnimationFrame(() => {
     if (currentPage === id) pageElement.scrollTop = top;
   });
 }
 
-async function loadNodePreview(id: string, title: HTMLElement): Promise<void> {
-  if (!id.startsWith("node/")) return;
+async function loadNodePreview(locale: string, id: string): Promise<NodeClassResponse | null> {
   try {
-    const response = parseNodeClassResponse(await docsClient().nodeClass(effectiveLocale, id));
+    const response = parseNodeClassResponse(await docsClient().nodeClass(locale, id));
     if (!response) throw new Error("Invalid node class response");
-    if (currentPage !== id || !title.isConnected) return;
-
-    const colors: Record<string, { color: string; textColor: string }> = {};
-    for (const [type, palette] of Object.entries(response.colormap)) {
-      const color = palette.type ?? palette.color;
-      const textColor = palette.text ?? palette.textColor ?? DEFAULT_NODE_TEXT_COLOR;
-      if (color) colors[type] = { color, textColor };
-    }
-    setTypeColors(colors);
-
-    const container = document.createElement("div");
-    container.className = "docs-node-preview";
-    const primaryColor = colors[response.snapshot.primary_type];
-    if (primaryColor) {
-      container.classList.add("class-preview-primary");
-      container.style.setProperty("--class-primary-color", safeCSSColor(primaryColor.color, DEFAULT_NODE_TITLE_COLOR));
-      container.style.setProperty("--class-primary-text-color", safeCSSColor(primaryColor.textColor, DEFAULT_NODE_TEXT_COLOR));
-    }
-    container.append(createClassPreview(
-      response.snapshot,
-      classPreviewPorts(response.snapshot, "left"),
-      classPreviewPorts(response.snapshot, "right"),
-    ));
-    title.after(container);
+    return response;
   } catch (error) {
     console.error(`Could not load node preview for ${id}.`, error);
+    return null;
   }
+}
+
+function renderNodePreview(response: NodeClassResponse): HTMLElement {
+  const colors: Record<string, { color: string; textColor: string }> = {};
+  for (const [type, palette] of Object.entries(response.colormap)) {
+    const color = palette.type ?? palette.color;
+    const textColor = palette.text ?? palette.textColor ?? DEFAULT_NODE_TEXT_COLOR;
+    if (color) colors[type] = { color, textColor };
+  }
+  setTypeColors(colors);
+
+  const container = document.createElement("div");
+  container.className = "docs-node-preview";
+  const primaryColor = colors[response.snapshot.primary_type];
+  if (primaryColor) {
+    container.classList.add("class-preview-primary");
+    container.style.setProperty("--class-primary-color", safeCSSColor(primaryColor.color, DEFAULT_NODE_TITLE_COLOR));
+    container.style.setProperty("--class-primary-text-color", safeCSSColor(primaryColor.textColor, DEFAULT_NODE_TEXT_COLOR));
+  }
+  container.append(createClassPreview(
+    response.snapshot,
+    classPreviewPorts(response.snapshot, "left"),
+    classPreviewPorts(response.snapshot, "right"),
+  ));
+  return container;
 }
 
 function parseNodeClassResponse(input: unknown): NodeClassResponse | null {

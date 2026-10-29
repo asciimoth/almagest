@@ -839,6 +839,7 @@ test("documentation links resolve for the panel and open in a new tab", () => {
   assert.equal(link?.target, "_blank");
   assert.equal(link?.rel, "noopener noreferrer");
   assert.equal(link?.className, "markdown-link-docs");
+  assert.equal(link?.dataset.documentationId, "node/almagest/MeshNames");
   assert.equal(link?.title, "Mesh resolver");
 });
 
@@ -985,6 +986,7 @@ test("custom Markdown links reject unknown types and unsafe documentation IDs", 
   ].join(" "));
 
   assert.equal(root.querySelector("a"), null);
+  assert.equal(root.querySelector("[data-documentation-id]"), null);
   assertNoParsedPayload(root);
   assert.match(root.textContent ?? "", /Unknown <img/);
 });
@@ -996,6 +998,7 @@ test("documentation link paths encode scheme-like page IDs", () => {
 
   const link = root.querySelector("a");
   assert.equal(link?.getAttribute("href"), "./docs/javascript%3Aalert");
+  assert.equal(link?.dataset.documentationId, "javascript:alert");
   assert.equal(link?.protocol, "https:");
 });
 

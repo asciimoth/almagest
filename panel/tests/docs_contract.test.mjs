@@ -88,14 +88,14 @@ test("documentation panel links route to a requested admin or web demo tab", () 
 
 test("documentation loads localized pages over HTTP without a WebSocket", () => {
   assert.match(docsSource, /docsClient\(\)\.tree\(locale\)/);
-  assert.match(docsSource, /docsClient\(\)\.raw\(effectiveLocale, id\)/);
+  assert.match(docsSource, /docsClient\(\)\.raw\(locale, id\)/);
   assert.match(docsSource, /renderNodeDescription\([\s\S]*?contentText,[\s\S]*?"docs",[\s\S]*?renderDocumentationGraph/);
   assert.match(docsSource, /scrollToCurrentAnchor\(\)/);
   assert.match(docsSource, /decodeURIComponent\(window\.location\.hash\.slice\(1\)\)/);
   assert.match(docsSource, /docsURL\(currentPage, window\.location\.hash\)/);
-  assert.match(docsSource, /docsClient\(\)\.nodeClass\(effectiveLocale, id\)/);
+  assert.match(docsSource, /docsClient\(\)\.nodeClass\(locale, id\)/);
   assert.match(docsSource, /docsClient\(\)\.nodeClass\(locale, `node\/\$\{className\}`\)/);
-  assert.match(docsSource, /void loadNodePreview\(id, title\)/);
+  assert.match(docsSource, /loadPreview \? loadNodePreview\(locale, id\)/);
   assert.match(docsSource, /port\.dataset\.portSide === side && port\.dataset\.portName === name/);
   assert.match(docsSource, /port\.classList\.toggle\("class-preview-port-highlighted", highlighted\)/);
   assert.match(docsSource, /renderPageMarks\(page\.marks/);
@@ -108,7 +108,7 @@ test("documentation loads localized pages over HTTP without a WebSocket", () => 
   assert.match(docsSource, /if \(deprecated\) deprecated\.setAttribute\("role", "status"\)/);
   assert.match(panelStyle, /\.docs-node-warning\s*\{/);
   assert.doesNotMatch(docsSource, /innerHTML/);
-  assert.match(docsSource, /if \(!unavailable \|\| docsClient\(\)\.previewsUnavailableNodes\) void loadNodePreview/);
+  assert.match(docsSource, /pageAvailability\.get\(id\) !== false \|\| docsClient\(\)\.previewsUnavailableNodes/);
   assert.match(docsClientSource, /readonly previewsUnavailableNodes = false/);
   assert.match(docsSource, /console\.error\(`Could not load node preview/);
   assert.match(docsSource, /writeLocaleCookie/);
@@ -126,6 +126,24 @@ test("documentation loads localized pages over HTTP without a WebSocket", () => 
   assert.match(docsSource, /handoffBoundaryScroll\(treeElement, pageElement, deltaY\)/);
   assert.match(docsSource, /defaultPageID\(tree\.topics\)/);
   assert.doesNotMatch(docsSource + docsClientSource, /WebSocket/);
+});
+
+test("documentation swaps a staged page only after its content and node preview are ready", () => {
+  const loadingReplacement = /pageElement\.replaceChildren\(textElement\("p", "Loading documentation\."\)\)/;
+  const loadStart = docsSource.indexOf("const [contentText, nodeClass] = await Promise.all");
+  const previewRender = docsSource.indexOf("const preview = nodeClass ? renderNodePreview(nodeClass) : null;");
+  const pageSwap = docsSource.indexOf("pageElement.replaceChildren(\n      title,");
+
+  assert.doesNotMatch(docsSource, loadingReplacement);
+  assert.ok(loadStart >= 0);
+  assert.ok(previewRender > loadStart);
+  assert.ok(pageSwap > previewRender);
+  assert.match(docsSource, /const transition = \+\+pageTransition/);
+  assert.match(docsSource, /if \(transition !== pageTransition\) return/);
+  assert.match(docsSource, /pageElement\.setAttribute\("aria-busy", "true"\)/);
+  assert.match(docsSource, /pageElement\.removeAttribute\("aria-busy"\)/);
+  assert.match(docsSource, /a\.markdown-link-docs\[data-documentation-id\]/);
+  assert.match(docsSource, /void openPage\(id, true\)/);
 });
 
 test("documentation links adjacent pages in sidebar order", () => {

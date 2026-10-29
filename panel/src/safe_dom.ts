@@ -1172,6 +1172,7 @@ function renderMarkdownDocumentationLink(
   const anchor = document.createElement("a");
   anchor.append(...markdownInlineText(label));
   anchor.className = "markdown-link-docs";
+  anchor.dataset.documentationId = destination;
   anchor.href = context.documentationURL
     ? context.documentationURL(destination)
     : context.mode === "docs"
