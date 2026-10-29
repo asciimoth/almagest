@@ -43,6 +43,12 @@ test("desktop graph input uses standard wheel events without legacy duplicates",
   assert.match(app, /applyStandardWheelZoom\(canvas, el\.graphCanvas, event\)/);
 });
 
+test("graph drag-over accepts protected WebView2 drag payloads by type", () => {
+  assert.match(app, /const types = event\.dataTransfer\?\.types/);
+  assert.match(app, /type === CLASS_DRAG_MIME \|\| type === "text\/plain"/);
+  assert.match(app, /function handleGraphCanvasDrop[\s\S]*dragEventClassName\(event\)/);
+});
+
 test("graph input uses pointer events for touch dragging", () => {
   const pointerSetup = app.indexOf('if (usesPointerEvents) LiteGraph.pointerevents_method = "pointer"');
   const canvasSetup = app.indexOf('new LGraphCanvas("#graph-canvas"');

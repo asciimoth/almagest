@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import {
+  navigateDesktopSurface,
   rememberDesktopDocsPage,
   rememberDesktopDocsScroll,
   rememberDesktopPanelTab,
@@ -60,17 +61,43 @@ test("desktop docs scroll belongs only to its saved page", () => {
   assert.equal(rememberedDesktopDocsScroll(storage, "guide/welcome"), 418);
 });
 
-test("desktop surface changes use one immediate navigation", () => {
+test("desktop surface navigation reuses the two cached documents", () => {
+  const storage = new MemoryStorage();
+  const calls = [];
+  const history = {
+    length: 2,
+    back: () => calls.push("back"),
+    forward: () => calls.push("forward"),
+  };
+  const location = {
+    assign: (url) => calls.push(["assign", url]),
+    replace: (url) => calls.push(["replace", url]),
+  };
+
+  navigateDesktopSurface(storage, history, location, "panel", "docs", "./docs/index.html", true);
+  navigateDesktopSurface(storage, history, location, "docs", "panel", "../index.html", true);
+  navigateDesktopSurface(storage, history, location, "panel", "docs", "./docs/index.html", true);
+  assert.deepEqual(calls, [["assign", "./docs/index.html"], "back", "forward"]);
+
+  navigateDesktopSurface(new MemoryStorage(), { ...history, length: 1 }, location, "docs", "panel", "../index.html", true);
+  assert.deepEqual(calls.at(-1), ["replace", "../index.html"]);
+
+  navigateDesktopSurface(storage, history, location, "panel", "docs", "./docs/index.html", false);
+  assert.deepEqual(calls.at(-1), ["replace", "./docs/index.html"]);
+});
+
+test("desktop surface changes preserve routes around cached navigation", () => {
   assert.match(desktopEntry, /rememberedDesktopSurface\(window\.localStorage\) === "docs"/);
   assert.match(desktopEntry, /rememberedDesktopPanelTab\(window\.localStorage\)/);
   assert.match(desktopEntry, /window\.location\.hash !== savedHash/);
   assert.doesNotMatch(desktopDocsEntry, /performance\.getEntriesByType|sessionStorage/);
   assert.match(appSource, /currentPanelMode === "desktop"\) rememberDesktopPanelTab/);
-  assert.match(appSource, /rememberDesktopSurface\(window\.localStorage, "docs"\);[\s\S]*window\.location\.replace\(url\)/);
+  assert.match(appSource, /rememberDesktopSurface\(window\.localStorage, "docs"\);[\s\S]*navigateDesktopSurface/);
   assert.match(appSource, /if \(currentPanelMode !== "desktop"\) return;[\s\S]*apiTransport\?\.close\(\)/);
-  assert.match(docsSource, /rememberDesktopSurface\(window\.localStorage, "panel"\);\s*window\.location\.replace\(adminPanelLink\.href\)/);
+  assert.match(docsSource, /rememberDesktopSurface\(window\.localStorage, "panel"\);\s*navigateDesktopSurface/);
   assert.match(docsSource, /if \(desktopMode\) \{[\s\S]*window\.history\.replaceState\(\{ page: id \}/);
   assert.match(docsSource, /window\.addEventListener\("pagehide", saveCurrentDesktopDocsScroll\)/);
+  assert.match(docsSource, /window\.addEventListener\("pageshow"[\s\S]*event\.persisted/);
   assert.match(docsSource, /if \(window\.location\.hash\) scrollToCurrentAnchor\(\);\s*else restoreDesktopDocsScroll\(id\)/);
-  assert.doesNotMatch(appSource + docsSource + routeMemorySource, /restoreDesktopHistory|docs-depth|docs-forward|docs-target/);
+  assert.doesNotMatch(appSource + docsSource + routeMemorySource, /restoreDesktopHistory|docs-depth|docs-target/);
 });

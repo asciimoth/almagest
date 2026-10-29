@@ -254,9 +254,11 @@ import { docsClient } from "./docs_client.js";
 import { documentationURL } from "./site_navigation.js";
 import { applyPanelMode, panelMode, showsRuntimeSecurityStatus } from "./panel_mode.js";
 import {
+  navigateDesktopSurface,
   rememberDesktopDocsPage,
   rememberDesktopPanelTab,
   rememberDesktopSurface,
+  rememberedDesktopPanelTab,
 } from "./desktop_route_memory.js";
 
 const SECRET_NODE_AUTOCOMPLETE_LIMIT = 8;
@@ -575,6 +577,7 @@ let snapshotMutationPending = false;
 let snapshotEntries: SnapshotInfo[] = [];
 
 const currentPanelMode = panelMode(document.documentElement);
+const reuseDesktopSurfaceCache = currentPanelMode === "desktop" && navigator.userAgent.includes("Windows");
 applyPanelMode(document, currentPanelMode);
 
 const el = {
@@ -2219,9 +2222,15 @@ function openDocumentation(page = ""): void {
   if (currentPanelMode === "desktop") {
     if (page) rememberDesktopDocsPage(window.localStorage, page);
     rememberDesktopSurface(window.localStorage, "docs");
-    // The desktop has one surface. Replace it instead of building a hidden
-    // cross-document history stack that WebKit can restore asynchronously.
-    window.location.replace(url);
+    navigateDesktopSurface(
+      window.sessionStorage,
+      window.history,
+      window.location,
+      "panel",
+      "docs",
+      url,
+      reuseDesktopSurfaceCache,
+    );
   } else {
     window.open(url, "_blank");
   }
@@ -2257,7 +2266,12 @@ function dragEventClassName(event: DragEvent): string {
 }
 
 function handleGraphCanvasDragOver(event: DragEvent): void {
-  if (!dragEventClassName(event)) return;
+  // Chromium protects drag data until `drop`. WebView2 therefore returns an
+  // empty string from getData() during `dragover`, even for a drag that starts
+  // in this document. The advertised types remain available and are enough to
+  // accept the drag; validate the class value when it is dropped.
+  const types = event.dataTransfer?.types;
+  if (!types || ![...types].some((type) => type === CLASS_DRAG_MIME || type === "text/plain")) return;
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
 }
@@ -6834,6 +6848,7 @@ function wireUI(): void {
     if (!event.persisted) return;
     if (currentPanelMode === "desktop") {
       desktopNavigationSuspended = false;
+      setTab(rememberedDesktopPanelTab(window.localStorage) || "graph");
       void startAPIConnection(true);
     } else {
       requestImmediateAPIReconnect();

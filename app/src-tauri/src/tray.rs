@@ -83,6 +83,7 @@ pub(crate) fn setup(app: &mut App, background: bool) -> Result<(), Box<dyn std::
         })?;
     }
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        normalize_windows_webview_scale(&window);
         if !background || !app.state::<TrayAvailability>().0 {
             restore_window(&window);
         }
@@ -101,9 +102,43 @@ pub(crate) fn handle_window_event(window: &Window, event: &WindowEvent) {
             hide_window(window);
         }
         WindowEvent::Resized(_) if window.is_minimized().unwrap_or(false) => hide_window(window),
+        #[cfg(windows)]
+        WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+            if let Some(webview) = window.app_handle().get_webview_window(MAIN_WINDOW_LABEL) {
+                set_windows_webview_scale(&webview, *scale_factor);
+            }
+        }
         _ => {}
     }
     update_window_retry_priority(window);
+}
+
+#[cfg(windows)]
+fn normalize_windows_webview_scale<R: Runtime>(window: &WebviewWindow<R>) {
+    match window.scale_factor() {
+        Ok(scale_factor) => set_windows_webview_scale(window, scale_factor),
+        Err(error) => crate::logging::write(format_args!("read main window scale factor: {error}")),
+    }
+}
+
+#[cfg(not(windows))]
+fn normalize_windows_webview_scale<R: Runtime>(_window: &WebviewWindow<R>) {}
+
+#[cfg(windows)]
+fn set_windows_webview_scale<R: Runtime>(window: &WebviewWindow<R>, scale_factor: f64) {
+    let zoom = windows_webview_zoom(scale_factor);
+    if let Err(error) = window.set_zoom(zoom) {
+        crate::logging::write(format_args!("set main webview zoom to {zoom}: {error}"));
+    }
+}
+
+#[cfg(any(windows, test))]
+fn windows_webview_zoom(scale_factor: f64) -> f64 {
+    if scale_factor.is_finite() && scale_factor > 0.0 {
+        1.0 / scale_factor
+    } else {
+        1.0
+    }
 }
 
 fn hide_window<R: Runtime>(window: &Window<R>) {
@@ -161,5 +196,19 @@ fn tooltip_text(connected: bool) -> &'static str {
         "Almagest — Admin API connected"
     } else {
         "Almagest — Admin API disconnected"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::windows_webview_zoom;
+
+    #[test]
+    fn windows_webview_zoom_cancels_monitor_scaling() {
+        assert_eq!(windows_webview_zoom(1.0), 1.0);
+        assert_eq!(windows_webview_zoom(1.25), 0.8);
+        assert_eq!(windows_webview_zoom(2.0), 0.5);
+        assert_eq!(windows_webview_zoom(0.0), 1.0);
+        assert_eq!(windows_webview_zoom(f64::NAN), 1.0);
     }
 }

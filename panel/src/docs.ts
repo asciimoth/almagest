@@ -22,6 +22,7 @@ import { renderGraphPreview } from "./graph_preview.js";
 import { panelMode } from "./panel_mode.js";
 import { panelTabURL } from "./site_navigation.js";
 import {
+  navigateDesktopSurface,
   rememberDesktopDocsPage,
   rememberDesktopDocsScroll,
   rememberDesktopPanelTab,
@@ -53,6 +54,7 @@ const navigationToggle = document.querySelector<HTMLButtonElement>("#docs-naviga
 const navigationScrim = document.querySelector<HTMLButtonElement>("#docs-navigation-scrim")!;
 const parameters = new URLSearchParams(window.location.search);
 const desktopMode = panelMode(document.documentElement) === "desktop";
+const reuseDesktopSurfaceCache = desktopMode && navigator.userAgent.includes("Windows");
 let urlLocale = parameters.get("locale") || "";
 const requestedLocale = urlLocale || readLocaleCookie() || savedLocale() || navigator.language || "en";
 let currentPage = parameters.get("page")
@@ -131,7 +133,15 @@ adminPanelLink.addEventListener("click", (event) => {
     saveCurrentDesktopDocsScroll();
     rememberDesktopDocsPage(window.localStorage, currentPage);
     rememberDesktopSurface(window.localStorage, "panel");
-    window.location.replace(adminPanelLink.href);
+    navigateDesktopSurface(
+      window.sessionStorage,
+      window.history,
+      window.location,
+      "docs",
+      "panel",
+      adminPanelLink.href,
+      reuseDesktopSurfaceCache,
+    );
     return;
   }
   // Keep standard browser behavior when the user requests a separate tab or window.
@@ -256,7 +266,15 @@ function navigateToPanelTab(event: MouseEvent, tab: string, href: string): void 
     rememberDesktopDocsPage(window.localStorage, currentPage);
     rememberDesktopPanelTab(window.localStorage, tab);
     rememberDesktopSurface(window.localStorage, "panel");
-    window.location.replace(href);
+    navigateDesktopSurface(
+      window.sessionStorage,
+      window.history,
+      window.location,
+      "docs",
+      "panel",
+      href,
+      reuseDesktopSurfaceCache,
+    );
     return;
   }
   // Preserve native modifier-key behavior. For a normal click, route and
@@ -516,5 +534,10 @@ window.addEventListener("popstate", () => {
 });
 
 window.addEventListener("pagehide", saveCurrentDesktopDocsScroll);
+window.addEventListener("pageshow", (event) => {
+  if (!desktopMode || !event.persisted) return;
+  const page = rememberedDesktopDocsPage(window.localStorage);
+  if (page && page !== currentPage) void openPage(page, true);
+});
 
 void loadTree(requestedLocale);
