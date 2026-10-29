@@ -197,6 +197,12 @@ certcat-clean:
 clean: certcat-clean
 	rm -f ./almagestd ./cli ./almagest-subprogram-launcher
 
+# Remove rebuildable outputs and stale test resources. DAYS controls the age
+# limit for retained artifacts and obsolete WinVM files; use 0 to remove all
+# inactive retained files. The default keeps the last seven days of evidence.
+cleanup days='7': clean
+  ./scripts/cleanup.sh {{quote(days)}}
+
 build-web:
   cd panel && npm ci && npm run build
 
