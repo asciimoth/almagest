@@ -256,6 +256,7 @@ package sign='true': build-web
   install -m 0644 packaging/linux/README.md dist/PACKAGE_CONTENTS.md
   install -m 0644 packaging/keys/ascii-moth.asc dist/ascii-moth.asc
   ./scripts/package-windows.sh
+  @if [[ {{quote(sign)}} == true ]]; then ./scripts/sign-windows-artifacts.sh dist; fi
 
 # Evaluate and build every package for the current system that the flake
 # exposes. Do not create result links or run the built programs.

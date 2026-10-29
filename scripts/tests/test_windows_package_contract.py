@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -629,6 +630,7 @@ class WindowsPackageContractTests(unittest.TestCase):
             self.assertIn(recipe, justfile)
         self.assertIn("RUN_WINDOWS_PKG_TESTS", justfile)
         self.assertIn("./scripts/package-windows.sh", justfile)
+        self.assertIn("./scripts/sign-windows-artifacts.sh dist", justfile)
         self.assertIn('selector.startswith("winpkg:")', selected)
         for name in ("build", "smoke", "lifecycle", "integration"):
             self.assertIn(f'"{name}"', selected)
@@ -645,6 +647,34 @@ class WindowsPackageContractTests(unittest.TestCase):
             text=True,
         )
         self.assertEqual(version.stdout, "7.8.9\n")
+
+    def test_release_signing_includes_all_windows_artifacts(self):
+        signer = ROOT / "scripts/sign-windows-artifacts.sh"
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            base = output / "almagest_1.2.3_windows_amd64"
+            artifacts = [
+                Path(f"{base}.msi"),
+                output / "almagest_1.2.3_windows_amd64.msi.sha256",
+                Path(f"{base}.build.json"),
+                output / "WINDOWS_PACKAGE_CONTENTS.md",
+                output / "collect-windows-support.ps1",
+            ]
+            for artifact in artifacts:
+                artifact.write_text(artifact.name)
+            fake_gpg = output / "gpg"
+            fake_gpg.write_text("#!/bin/sh\ntouch \"$5\"\n")
+            fake_gpg.chmod(0o755)
+
+            subprocess.run(
+                ["bash", str(signer), str(output)],
+                cwd=ROOT,
+                check=True,
+                env={**os.environ, "GPG_COMMAND": str(fake_gpg)},
+            )
+
+            for artifact in artifacts:
+                self.assertTrue(Path(f"{artifact}.sig").is_file())
 
     def test_wix_linter_accepts_tracked_package_sources(self):
         subprocess.run(

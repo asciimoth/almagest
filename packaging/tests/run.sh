@@ -49,6 +49,20 @@ if [[ -f "${archives[amd64]}.sig" ]]; then
 	for package in dist/*.deb dist/*.rpm dist/*.pkg.tar.zst; do
 		verify_artifact "$package"
 	done
+	mapfile -t windows_installers < <(
+		find dist -maxdepth 1 -type f -name 'almagest_*_windows_amd64.msi' -print
+	)
+	if ((${#windows_installers[@]} != 1)); then
+		printf 'expected one Windows MSI, found %d\n' "${#windows_installers[@]}" >&2
+		exit 1
+	fi
+	windows_installer=${windows_installers[0]}
+	for artifact in "$windows_installer" "$windows_installer.sha256" \
+		"${windows_installer%.msi}.build.json" \
+		dist/WINDOWS_PACKAGE_CONTENTS.md \
+		dist/collect-windows-support.ps1; do
+		verify_artifact "$artifact"
+	done
 elif find dist -maxdepth 1 -type f -name '*.sig' -print -quit | grep -q .; then
 	printf 'release artifact signatures are incomplete\n' >&2
 	exit 1
