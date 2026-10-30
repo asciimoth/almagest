@@ -6,10 +6,9 @@ complete.
 
 [Value](@port/left/Value) accepts one Object connection. Each received value
 replaces the staged value, but it does not change the named variable yet. If no
-value is connected, the node uses the JSON
-value in its menu. The default is `null`, and a saved workspace restores the
-last configured or received value. Disconnecting Value resets the staged value
-to `null`.
+value is connected, the node uses the JSON value in its menu. The default is
+`null`, and a saved workspace restores the last configured or received value.
+Disconnecting Value resets the staged value to `null`.
 
 The menu value must be a valid JSON object, array, or `null`. A top-level
 string, number, or Boolean is not accepted. Applying invalid JSON restores the

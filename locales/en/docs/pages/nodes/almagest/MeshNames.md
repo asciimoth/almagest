@@ -12,8 +12,7 @@ The node supports these name formats:
   format does not send a DNS request.
 - `.pk.ygg` derives a [Yggdrasil](https://yggdrasil-network.github.io/) IPv6
   address from the [Ed25519](https://en.wikipedia.org/wiki/EdDSA#Ed25519) public
-  key
-  in the label before the suffix. This format does not send a DNS request.
+  key in the label before the suffix. This format does not send a DNS request.
 - `.ygg` uses the label before the suffix as a Yggdrasil authority. Straight
   hexadecimal, base32, and dashed
   [YggNS](https://github.com/ru-crypto-anarchy/YggNS) authority labels are

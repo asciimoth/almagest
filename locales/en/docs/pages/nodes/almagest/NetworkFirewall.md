@@ -1,6 +1,5 @@
-Filters TCP and UDP traffic from a source
-[Network](@port/right/Network). Connect clients or servers to its filtered
-[Network](@port/left/Network).
+Filters TCP and UDP traffic from a source [Network](@port/right/Network).
+Connect clients or servers to its filtered [Network](@port/left/Network).
 
 The default policy has these actions:
 
@@ -23,10 +22,9 @@ Each `exclude` or `include` entry can contain these fields:
   `tcp` and `udp` match both IP versions. An omitted value matches all
   protocols.
 - `hosts`: Remote hostnames, IP addresses, or
-  [CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing)
-  prefixes. Hostname matching is not case-sensitive. You can use patterns such
-  as `*.example.test`. An omitted
-  value matches all remote hosts.
+  [CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing) prefixes.
+  Hostname matching is not case-sensitive. You can use patterns such as
+  `*.example.test`. An omitted value matches all remote hosts.
 - `localHosts`: Local destination hostnames, IP addresses, or CIDR prefixes.
   This field applies only to `include` rules. An omitted value matches all local
   destinations.

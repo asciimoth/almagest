@@ -1,9 +1,8 @@
 Runs a small plain
 [HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Overview) server
-through
-the connected [Network](@port/right/Network). Use it to test a listening path,
-proxy forwarding, HTTP connectivity, or request routing. It is intended for
-debugging, not for an application service.
+through the connected [Network](@port/right/Network). Use it to test a listening
+path, proxy forwarding, HTTP connectivity, or request routing. It is intended
+for debugging, not for an application service.
 
 The default listen address is `127.0.0.1:8080`. Set [Host](@port/left/Host) and
 [Port](@port/left/Port) in the node menu, or supply them through their String

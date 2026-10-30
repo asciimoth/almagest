@@ -1,8 +1,7 @@
-Accepts [DNS](@docs/almagest/dns) requests over
-UDP through an attached Network and
-sends each request to an attached DNS resolver. Connect the listening network to
-[Network](@port/right/Network) and the resolver that will answer requests to
-[DNS](@port/right/DNS).
+Accepts [DNS](@docs/almagest/dns) requests over UDP through an attached Network
+and sends each request to an attached DNS resolver. Connect the listening
+network to [Network](@port/right/Network) and the resolver that will answer
+requests to [DNS](@port/right/DNS).
 
 This node provides a UDP listener only. It does not provide
 [DNS over TCP](https://en.wikipedia.org/wiki/Domain_Name_System#Protocol_transport)

@@ -4,9 +4,8 @@ reach the internet or other external hosts.
 
 Connect this [Network](@port/left/Network) to the client and server nodes that
 you want to test together. TCP and UDP communication can use IPv4 or IPv6
-loopback. Each MockNetwork is
-separate, so nodes that use different MockNetwork nodes cannot communicate with
-each other.
+loopback. Each MockNetwork is separate, so nodes that use different MockNetwork
+nodes cannot communicate with each other.
 
 ## Host addresses
 

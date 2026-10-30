@@ -1,8 +1,7 @@
 Sends an
 [HTTP or HTTPS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Overview)
-request through
-a connected [Network](@port/right/Network). Use this node to test a route or
-examine the response from a service.
+request through a connected [Network](@port/right/Network). Use this node to
+test a route or examine the response from a service.
 
 ## Request
 

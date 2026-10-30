@@ -4,8 +4,7 @@ an integer. The [input](@port/left/input) accepts one connection. The
 
 Length uses these rules:
 
-- A JSON object returns its number of
-  top-level members.
+- A JSON object returns its number of top-level members.
 - A JSON array returns its number of top-level elements.
 - A top-level string returns its byte length.
 - `null`, numbers, Booleans, and unsupported values return `0`.

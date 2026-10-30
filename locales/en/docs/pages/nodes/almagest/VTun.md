@@ -29,8 +29,8 @@ Address selection uses this priority:
 
 Enter one or more IP addresses in **Local addrs**, separated by spaces, commas,
 semicolons, or new lines.
-[CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing) values
-are accepted, but VTun uses only their IP address. The prefix does not create a
+[CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing) values are
+accepted, but VTun uses only their IP address. The prefix does not create a
 route. Automatically allocated addresses appear in **Effective** and are not
 saved as menu configuration.
 
@@ -95,8 +95,7 @@ negative reset to the defaults.
 
 Enable **Disable
 [TCP SACK](https://en.wikipedia.org/wiki/Transmission_Control_Protocol#Selective_acknowledgments)**
-only when
-the peer or carrier has a compatibility problem with TCP Selective
+only when the peer or carrier has a compatibility problem with TCP Selective
 Acknowledgment. Disabling it can reduce TCP performance when packets are lost.
 
 ## Configuration changes

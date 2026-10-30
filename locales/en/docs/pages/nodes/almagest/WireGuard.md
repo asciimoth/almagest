@@ -1,8 +1,7 @@
 [WireGuard](https://www.wireguard.com/#conceptual-overview) connects a
-[Tun](@port/left/Tun) packet
-path to an encrypted UDP tunnel. Connect the local IP stack or system TUN to
-[Tun](@port/left/Tun). Connect a UDP-capable Network to
-[Network](@port/right/Network). The node uses that
+[Tun](@port/left/Tun) packet path to an encrypted UDP tunnel. Connect the local
+IP stack or system TUN to [Tun](@port/left/Tun). Connect a UDP-capable Network
+to [Network](@port/right/Network). The node uses that
 [Network](@port/right/Network) for the listen socket and for the endpoints of
 peers configured in the menu or through [Peers](@port/left/Peers).
 

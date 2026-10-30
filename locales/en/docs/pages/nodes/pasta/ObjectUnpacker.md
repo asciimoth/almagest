@@ -9,9 +9,8 @@ necessary.
 
 ## Paths and types
 
-A path is a non-empty JSON array. A string
-selects a Map key, and a non-negative integer selects a Vector position. For
-example:
+A path is a non-empty JSON array. A string selects a Map key, and a non-negative
+integer selects a Vector position. For example:
 
 - `["user","name"]` selects the `name` key in the `user` Map.
 - `["items",0]` selects the first item in the `items` Vector.

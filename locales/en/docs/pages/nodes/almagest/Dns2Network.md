@@ -10,8 +10,7 @@ names. For example, if DNS was injected into the [Network](@port/right/Network),
 this node makes that injected resolver available again as a
 [DNS](@port/left/DNS) output.
 
-The node supports these
-Internet-class record types:
+The node supports these Internet-class record types:
 
 - `A` and `AAAA`;
 - `PTR` for complete IPv4 and IPv6 reverse names;

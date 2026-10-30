@@ -28,8 +28,8 @@ rules continue to operate.
 Use these predicates to describe an operation:
 
 - `DIAL`, `LISTEN`, and `LOOKUP` match the operation type. `DIAL` also matches
-  the route decision for each outgoing packet from an unconnected
-  UDP socket. `LISTEN` applies to TCP listeners.
+  the route decision for each outgoing packet from an unconnected UDP socket.
+  `LISTEN` applies to TCP listeners.
 - `TCP` and `UDP` match the transport. `NET4` and `NET6` match the address
   family.
 - `FQDN` matches a remote hostname instead of an IP address. `LFQDN` applies the

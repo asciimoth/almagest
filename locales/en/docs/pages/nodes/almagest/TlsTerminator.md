@@ -6,10 +6,9 @@ that leads to the plaintext service.
 
 The client must trust Almagest's local TLS CA. TlsTerminator uses that CA to
 generate a certificate for the
-[SNI](https://en.wikipedia.org/wiki/Server_Name_Indication)
-hostname in each connection. It supplies its [Network](@port/left/Network) only
-when the outbound [Network](@port/right/Network), local CA, and menu values are
-valid.
+[SNI](https://en.wikipedia.org/wiki/Server_Name_Indication) hostname in each
+connection. It supplies its [Network](@port/left/Network) only when the outbound
+[Network](@port/right/Network), local CA, and menu values are valid.
 
 The connection between TlsTerminator and the destination is plaintext. Use this
 node only when the destination expects plaintext, such as an HTTP service behind
@@ -46,9 +45,9 @@ reject a valid ClientHello with many extensions. A negative value is invalid.
 
 **Client-facing
 [ALPN](https://en.wikipedia.org/wiki/Application-Layer_Protocol_Negotiation)**
-lists the
-protocols that TlsTerminator can select for the TLS connection from the client.
-Separate values with spaces, commas, semicolons, or new lines. For example:
+lists the protocols that TlsTerminator can select for the TLS connection from
+the client. Separate values with spaces, commas, semicolons, or new lines. For
+example:
 
 ```text
 h2
@@ -66,10 +65,10 @@ destination. Enable **Use SNI hostname** to use the SNI hostname with the
 original destination port instead. A matching destination-remap rule takes
 priority over both defaults.
 
-**Destination remaps JSON** is an array of
-rules. Rules are checked in order, and the first matching rule selects its
-`dst`. In one rule, all configured fields must match. Multiple values in one
-field are alternatives. An omitted or empty match field matches any value.
+**Destination remaps JSON** is an array of rules. Rules are checked in order,
+and the first matching rule selects its `dst`. In one rule, all configured
+fields must match. Multiple values in one field are alternatives. An omitted or
+empty match field matches any value.
 
 This example sends TLS for `example.test` to a local plaintext service:
 

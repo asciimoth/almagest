@@ -1,5 +1,5 @@
-Runs a [SOCKS4, SOCKS4a, and SOCKS5](https://en.wikipedia.org/wiki/SOCKS)
-proxy. The [listen](@port/right/listen) Network accepts client connections. The
+Runs a [SOCKS4, SOCKS4a, and SOCKS5](https://en.wikipedia.org/wiki/SOCKS) proxy.
+The [listen](@port/right/listen) Network accepts client connections. The
 [proxy](@port/right/proxy) Network performs the connections, listeners, UDP
 operations, and name lookups that clients request.
 
@@ -22,9 +22,8 @@ gost -L "http://127.0.0.1:8080" \
 ```
 
 This command provides a local HTTP proxy at `127.0.0.1:8080` and sends its
-traffic through this node. Configure the
-same `user` and `pass` in **Users**. Remove `user:pass@` when the node has no
-users.
+traffic through this node. Configure the same `user` and `pass` in **Users**.
+Remove `user:pass@` when the node has no users.
 
 Alternatively, set **SOCKS+WS path** to `/ws`. GOST can then use its default
 path, so remove `path=/socks` from the forwarding URL. Keep `notls=true`; it

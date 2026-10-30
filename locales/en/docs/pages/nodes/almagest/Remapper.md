@@ -21,8 +21,7 @@ Use these action values:
 - `SRC` changes a listener address or an explicit local address of a connection
   operation.
 - `ADDR_PORT` replaces the complete host and port. Use `host:port`, and put an
-  IPv6 address in brackets, for
-  example `[::1]:8443`.
+  IPv6 address in brackets, for example `[::1]:8443`.
 - `ADDR` replaces only the host and keeps the current port.
 - `PORT` replaces only the port and keeps the current host.
 
@@ -47,8 +46,7 @@ address. `ADDR_S` and `LADDR_S` test an exact host string. `ADDR_RE` and
 `LADDR_RE` use a regular expression. The address-number predicates test one IP
 address, and the `SNET` predicates test a
 [CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing) subnet.
-`PORT` and `LPORT` take a
-numeric port from 0 through 65535.
+`PORT` and `LPORT` take a numeric port from 0 through 65535.
 
 Predicates use postfix order. Put each test before the operator that combines
 it. This predicate matches a connection to `service.test` on port 80:

@@ -20,19 +20,17 @@ Network path.
 
 For an intercepted connection, TlsMitm reads the ClientHello and uses its
 visible [SNI](https://en.wikipedia.org/wiki/Server_Name_Indication) hostname to
-generate a
-server certificate signed by the local CA. It then makes a new TLS connection to
-that hostname at the original network destination. The generated certificate is
-valid for the SNI hostname.
+generate a server certificate signed by the local CA. It then makes a new TLS
+connection to that hostname at the original network destination. The generated
+certificate is valid for the SNI hostname.
 
 The selected **TLS config** controls the connection to the real server. Use it
 to configure trusted roots, TLS version limits, and a client certificate. The
 SNI hostname and the client's offered
 [ALPN](https://en.wikipedia.org/wiki/Application-Layer_Protocol_Negotiation)
-protocols replace the server name
-and ALPN list in that config. If you do not select a config, the default TLS
-config applies. TlsMitm completes the server connection first and then offers
-its selected ALPN protocol to the client.
+protocols replace the server name and ALPN list in that config. If you do not
+select a config, the default TLS config applies. TlsMitm completes the server
+connection first and then offers its selected ALPN protocol to the client.
 
 The client-facing and server-facing connections are separate TLS sessions. They
 can use different TLS versions, cipher suites, and session state. A client
@@ -87,10 +85,10 @@ applications that require interception.
 - `exclusive` passes a connection through unchanged when at least one rule
   matches. With no rules, it intercepts all eligible TLS connections.
 
-Rules are JSON objects in an array. Rules
-are alternatives: a connection matches when any object matches. In one object,
-configured fields must all match. Multiple values in one field are alternatives.
-An omitted or empty field matches any value.
+Rules are JSON objects in an array. Rules are alternatives: a connection matches
+when any object matches. In one object, configured fields must all match.
+Multiple values in one field are alternatives. An omitted or empty field matches
+any value.
 
 This configuration intercepts only `example.com` and its subdomains:
 

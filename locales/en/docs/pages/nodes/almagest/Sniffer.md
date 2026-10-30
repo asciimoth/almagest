@@ -1,7 +1,6 @@
 Sniffer routes Network operations to as many as 16 backend slots. It can make an
 immediate routing decision, or it can inspect the first bytes that a client
-sends on an outgoing TCP connection
-before it selects a backend.
+sends on an outgoing TCP connection before it selects a backend.
 
 Connect consumers to [Network](@port/left/Network), and connect backend paths to
 the numbered slots. The node supplies [Network](@port/left/Network) only when
@@ -74,15 +73,13 @@ header.
 
 A TLS classifier examines the ClientHello. It can match `VERSION`,
 [SNI](https://en.wikipedia.org/wiki/Server_Name_Indication), `SNI_PATTERN`,
-`ALPN`,
-`ALPN_PATTERN`, `SNI_AVAILABLE`, or `SNI_ENCRYPTED`. SNI matching is not
+`ALPN`, `ALPN_PATTERN`, `SNI_AVAILABLE`, or `SNI_ENCRYPTED`. SNI matching is not
 case-sensitive.
 [ALPN](https://en.wikipedia.org/wiki/Application-Layer_Protocol_Negotiation)
 matching is case-sensitive. Sniffer does not decrypt TLS. With
 [Encrypted Client Hello](https://en.wikipedia.org/wiki/Encrypted_Client_Hello),
 it can detect the ECH signal but cannot read the encrypted inner hostname; an
-SNI rule sees
-only a visible outer hostname.
+SNI rule sees only a visible outer hostname.
 
 Patterns match the complete value. `*` matches any byte sequence, `?` matches
 one byte, and `\` escapes the next byte. When an option appears more than once,

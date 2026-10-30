@@ -23,8 +23,8 @@ or source address disappears. Linux name resolution checks the hosts file before
 it uses the original outbound DNS service. It does not fall back to DNS
 installed by [DefaultTun](@docs/node/almagest/DefaultTun).
 
-On Windows, each socket is bound to the selected physical network.
-IPv4 or IPv6 operations are available only
-when a network for that address family is selected. Operations fail after the
-selected network is lost; there is no unrestricted fallback. TCP and UDP unicast
-are supported. Multicast and raw sockets are not supported.
+On Windows, each socket is bound to the selected physical network. IPv4 or IPv6
+operations are available only when a network for that address family is
+selected. Operations fail after the selected network is lost; there is no
+unrestricted fallback. TCP and UDP unicast are supported. Multicast and raw
+sockets are not supported.

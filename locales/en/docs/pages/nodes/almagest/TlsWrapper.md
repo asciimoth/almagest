@@ -29,15 +29,14 @@ is removed, the node uses the default config and shows a warning.
 
 **Client server name** overrides the certificate-verification name and the
 [SNI](https://en.wikipedia.org/wiki/Server_Name_Indication) name from the
-selected TLS config.
-If this field is empty, TlsWrapper uses the server name from the selected
-config. If both are empty, it uses the host from the dial destination.
+selected TLS config. If this field is empty, TlsWrapper uses the server name
+from the selected config. If both are empty, it uses the host from the dial
+destination.
 
 Use **Client
 [ALPN](https://en.wikipedia.org/wiki/Application-Layer_Protocol_Negotiation)**
-to replace the
-ALPN protocol list from the selected TLS config. Separate values with spaces,
-commas, semicolons, or new lines. For example:
+to replace the ALPN protocol list from the selected TLS config. Separate values
+with spaces, commas, semicolons, or new lines. For example:
 
 ```text
 h2

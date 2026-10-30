@@ -26,11 +26,11 @@ the destination.
 
 It first uses the learned flow for packets from the
 [Internet protocol suite](https://en.wikipedia.org/wiki/Internet_protocol_suite):
-TCP, UDP, ICMP echo, and IP fragments. This lets
-different paths use the same local IPv4 or IPv6 address when their flow details
-are different. If there is no learned flow, it uses the path that most recently
-sent a packet from the destination IP address. If there is no learned address,
-it sends the packet to [Default](@port/left/Default).
+TCP, UDP, ICMP echo, and IP fragments. This lets different paths use the same
+local IPv4 or IPv6 address when their flow details are different. If there is no
+learned flow, it uses the path that most recently sent a packet from the
+destination IP address. If there is no learned address, it sends the packet to
+[Default](@port/left/Default).
 
 Malformed packets and packets with an unknown destination also go to
 [Default](@port/left/Default). If no default path is available, TunJoiner drops

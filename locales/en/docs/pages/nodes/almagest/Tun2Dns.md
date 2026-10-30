@@ -25,9 +25,8 @@ Tun2Dns accepts packets with all these properties:
 
 Some IPv6 extension headers are accepted, but an IPv6 Fragment header is not.
 DNS over TCP, DNS over TLS, DNS over HTTPS, and QUIC do not match these rules.
-Tun2Dns
-does not reassemble requests or fragment responses. Keep DNS packets within the
-usable TUN MTU.
+Tun2Dns does not reassemble requests or fragment responses. Keep DNS packets
+within the usable TUN MTU.
 
 Malformed packets, fragments, packets for another port, DNS responses, and
 invalid DNS messages are ignored. Tun2Dns does not send an error packet for

@@ -12,9 +12,9 @@ non-IP packets that it cannot parse.
 
 ## Policy format
 
-Enter **Firewall rules** as one JSON
-object. Use `{}` for the default policy. The node rejects empty input, invalid
-JSON, unknown fields, invalid port values, and non-positive response times.
+Enter **Firewall rules** as one JSON object. Use `{}` for the default policy.
+The node rejects empty input, invalid JSON, unknown fields, invalid port values,
+and non-positive response times.
 
 Each entry in `exclude` or `include` can contain these fields:
 
@@ -24,9 +24,8 @@ Each entry in `exclude` or `include` can contain these fields:
   all parsed IP protocols.
 - `hosts` selects the remote peer. Use an IP address,
   [CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing) prefix,
-  or hostname pattern.
-  For outgoing packets, this is the destination. For incoming packets, this is
-  the source. An omitted list matches every peer.
+  or hostname pattern. For outgoing packets, this is the destination. For
+  incoming packets, this is the source. An omitted list matches every peer.
 - `localHosts` selects the local destination of an incoming packet. It has no
   effect in an `exclude` rule. An omitted list matches every local address.
 - `ports` lists individual service ports. An `exclude` rule checks the remote
@@ -65,8 +64,8 @@ matches GRE in both IP versions, while `ip4:47` matches only IPv4 GRE.
 Each allowed outgoing packet records its reverse flow. A matching incoming
 packet is accepted without an `include` rule. Related
 [ICMP](https://en.wikipedia.org/wiki/Internet_Control_Message_Protocol) and
-ICMPv6 error packets are also accepted
-when they contain a recorded outgoing flow.
+ICMPv6 error packets are also accepted when they contain a recorded outgoing
+flow.
 
 `responseTTL` controls how long reply state is kept. Use a positive duration
 such as `"30s"` or `"5m"`. The default is two minutes. A policy change applies

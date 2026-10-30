@@ -4,12 +4,11 @@ ObjectPacker builds a new [output](@port/right/output) and does not change the
 base object. If [Base](@port/left/Base) is not connected, it starts with an
 empty Map or Vector, as selected by **Root**.
 
-Paths are JSON arrays. A string selects a
-Map key, and a non-negative integer selects a Vector index. For example,
-`["person","name"]` selects the `name` key in the `person` Map, and
-`["items",0]` selects the first item in the `items` Vector. Use **Containers**
-to explicitly declare a path as a Map or Vector when the path cannot infer the
-required structure.
+Paths are JSON arrays. A string selects a Map key, and a non-negative integer
+selects a Vector index. For example, `["person","name"]` selects the `name` key
+in the `person` Map, and `["items",0]` selects the first item in the `items`
+Vector. Use **Containers** to explicitly declare a path as a Map or Vector when
+the path cannot infer the required structure.
 
 The selected **Root** and **Containers** types have priority over the shape in
 [Base](@port/left/Base). If a base subtree has an incompatible type,

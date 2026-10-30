@@ -1,6 +1,6 @@
 Provides a Network that sends supported TCP and UDP operations through a
-[SOCKS](https://en.wikipedia.org/wiki/SOCKS) proxy. Connect the network used
-to reach the proxy to [out](@port/right/out). Connect clients or tunnel nodes to
+[SOCKS](https://en.wikipedia.org/wiki/SOCKS) proxy. Connect the network used to
+reach the proxy to [out](@port/right/out). Connect clients or tunnel nodes to
 the [Network](@port/left/Network) output. The node does not bypass the proxy for
 loopback or local addresses.
 
