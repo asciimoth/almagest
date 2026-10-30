@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "The main window can only exchange admin API messages with Rust.",
+  "description": "The main window can exchange admin API messages and fixed diagnostics with Rust.",
   "windows": ["main"],
-  "permissions": ["allow-listen-admin", "allow-send-admin-message"]
+  "permissions": ["allow-listen-admin", "allow-send-admin-message", "allow-log-desktop-event"]
 }

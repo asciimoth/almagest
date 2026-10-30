@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-log-desktop-event"
+description = "Enables the log_desktop_event command without any pre-configured scope."
+commands.allow = ["log_desktop_event"]
+
+[[permission]]
+identifier = "deny-log-desktop-event"
+description = "Denies the log_desktop_event command without any pre-configured scope."
+commands.deny = ["log_desktop_event"]

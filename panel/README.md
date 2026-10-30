@@ -10,18 +10,16 @@ embedded tree contains only gzip-compressed assets; the daemon serves them with
 their original URLs and content types.
 
 The same build publishes an uncompressed desktop tree to `app/frontend` for
-Tauri. Its `desktop` mode uses two fixed Tauri commands to pass admin API JSON
-through the isolation boundary. Native code owns the endpoint and retries. The
-desktop uses Tauri's response Content Security Policy. Tauri adds its isolation
-frame origin to this policy at runtime. Do not add a CSP meta element to the
-desktop output because it can block that frame. The policy permits only Tauri
-IPC and denies network connections. Do not add a general native API or a network
+Tauri. Its `desktop` mode uses fixed Tauri commands to pass admin API JSON and
+fixed diagnostic events. Native code owns the endpoint and retries. The desktop
+uses Tauri's brownfield IPC pattern because the isolation pattern makes all IPC
+depend on a hidden iframe that has failed intermittently in Windows WebView2. Do
+not restore that dependency. Tauri capabilities permit only the fixed commands,
+Rust validates each admin request, and the response Content Security Policy
+permits only Tauri IPC and same-origin documentation. Do not add a CSP meta
+element to the desktop output because it will intersect with the response policy
+and block the documentation frame. Do not add a general native API or a network
 transport for the desktop panel.
-
-The isolation hook also permits Tauri's internal channel-data fetch with an
-exact numeric channel ID. Tauri uses that fetch for channel messages larger than
-its direct-delivery limit. Keep this exception narrow; do not permit other
-plugin commands or request fields.
 
 Use `src/notification_center.ts` for transient action feedback. Do not add
 tab-specific copied, saved, or deleted message renderers.

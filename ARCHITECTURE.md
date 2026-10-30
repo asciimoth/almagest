@@ -244,7 +244,8 @@ Admin panel:
 - `panel/src/app.ts`: graph UI and transport-neutral admin API client.
 - `panel/src/admin_transport.ts`: daemon WebSocket transport and the transport
   selection boundary.
-- `panel/src/desktop_admin_transport.ts`: isolated Tauri admin channel adapter.
+- `panel/src/desktop_admin_transport.ts`: capability-restricted Tauri admin
+  channel adapter.
 - `panel/src/wasm_transport.ts`: in-process web demo transport.
 - `panel/src/docs.ts`: documentation surface shared by daemon, static, and
   desktop clients.

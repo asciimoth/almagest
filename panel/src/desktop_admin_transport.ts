@@ -17,8 +17,8 @@ export interface NativeAdminIPC {
 
 /**
  * Call the two fixed Tauri commands that pass the admin protocol through the
- * isolation boundary. Command names and payload shapes cannot come from panel
- * data.
+ * Tauri IPC boundary. Command names and payload shapes cannot come from panel
+ * data. Rust validates admin messages again before it writes to the transport.
  */
 export class TauriAdminIPC implements NativeAdminIPC {
   listen(handler: (event: unknown) => void): Promise<void> {

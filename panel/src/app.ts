@@ -255,6 +255,7 @@ import { documentationURL } from "./site_navigation.js";
 import { applyPanelMode, panelMode } from "./panel_mode.js";
 import { setRuntimeStatusVisibility } from "./runtime_status.js";
 import { EMBEDDED_DOCS_SOURCE, parseEmbeddedDocsMessage } from "./embedded_docs_protocol.js";
+import { logDesktopEvent } from "./desktop_event_log.js";
 import {
   rememberDesktopDocsPage,
   rememberDesktopPanelTab,
@@ -585,7 +586,6 @@ applyPanelMode(document, currentPanelMode);
 
 const el = {
   appShell: document.querySelector<HTMLElement>(".app-shell")!,
-  desktopDocsFrame: document.querySelector<HTMLIFrameElement>("#desktop-docs-frame")!,
   status: document.querySelector<HTMLElement>("#backend-status")!,
   projectVersion: document.querySelector<HTMLElement>("#project-version")!,
   runtimeStatus: document.querySelector<HTMLElement>("#ps-runtime-status")!,
@@ -2235,9 +2235,38 @@ function openDocumentation(page = ""): void {
 }
 
 let desktopDocsLoaded = false;
+let desktopDocsReady = false;
+let desktopDocsFrame: HTMLIFrameElement | null = null;
+let desktopDocsReadyTimer = 0;
 let pendingDesktopDocsPage = "";
 let desktopDocsLoadRequested = false;
 let desktopDocsLoadDeferredLogged = false;
+
+const DESKTOP_DOCS_READY_TIMEOUT_MS = 10_000;
+
+function createDesktopDocsFrame(url: URL): HTMLIFrameElement {
+  const frame = document.createElement("iframe");
+  frame.id = "desktop-docs-frame";
+  frame.className = "desktop-docs-frame";
+  frame.title = "Almagest documentation";
+  frame.hidden = !el.appShell.hidden;
+  frame.addEventListener("load", () => {
+    desktopDocsLoaded = true;
+    log("desktop-api", "debug", "documentation iframe load completed");
+    logDesktopEvent("docs_frame_loaded");
+    loadDesktopDocumentation();
+  });
+  frame.src = url.href;
+  desktopDocsFrame = frame;
+  document.body.append(frame);
+  logDesktopEvent("docs_frame_created");
+  desktopDocsReadyTimer = globalThis.setTimeout(() => {
+    if (desktopDocsReady || desktopDocsFrame !== frame) return;
+    log("desktop-api", "warn", "documentation iframe did not report readiness");
+    logDesktopEvent("docs_frame_timeout");
+  }, DESKTOP_DOCS_READY_TIMEOUT_MS);
+  return frame;
+}
 
 function loadDesktopDocumentation(page = ""): void {
   if (page) pendingDesktopDocsPage = page;
@@ -2250,17 +2279,17 @@ function loadDesktopDocumentation(page = ""): void {
     return;
   }
   desktopDocsLoadDeferredLogged = false;
-  if (!el.desktopDocsFrame.src) {
+  if (!desktopDocsFrame) {
     const docsURL = new URL("./docs/index.html", window.location.href);
     docsURL.searchParams.set("embedded", "1");
     const initialPage = pendingDesktopDocsPage || rememberedDesktopDocsPage(window.localStorage);
     if (initialPage) docsURL.searchParams.set("page", initialPage);
     log("desktop-api", "debug", "loading the documentation iframe after the admin API connected");
-    el.desktopDocsFrame.src = docsURL.href;
+    createDesktopDocsFrame(docsURL);
     return;
   }
   if (!desktopDocsLoaded || !pendingDesktopDocsPage) return;
-  el.desktopDocsFrame.contentWindow?.postMessage({
+  desktopDocsFrame.contentWindow?.postMessage({
     source: EMBEDDED_DOCS_SOURCE,
     kind: "docs-navigate",
     page: pendingDesktopDocsPage,
@@ -2270,12 +2299,12 @@ function loadDesktopDocumentation(page = ""): void {
 
 function showDesktopDocumentation(page = ""): void {
   el.appShell.hidden = true;
-  el.desktopDocsFrame.hidden = false;
   loadDesktopDocumentation(page);
+  if (desktopDocsFrame) desktopDocsFrame.hidden = false;
 }
 
 function hideDesktopDocumentation(tab = ""): void {
-  el.desktopDocsFrame.hidden = true;
+  if (desktopDocsFrame) desktopDocsFrame.hidden = true;
   el.appShell.hidden = false;
   rememberDesktopSurface(window.localStorage, "panel");
   if (tab) setTab(tab);
@@ -2293,19 +2322,20 @@ function waitForAPIConnection(): Promise<void> {
 }
 
 function installDesktopDocsBridge(): void {
-  el.desktopDocsFrame.addEventListener("load", () => {
-    desktopDocsLoaded = true;
-    if (currentPanelMode === "desktop") {
-      log("desktop-api", "debug", "documentation iframe load completed");
-    }
-    loadDesktopDocumentation();
-  });
   window.addEventListener("message", (event) => {
     if (currentPanelMode !== "desktop"
       || event.origin !== window.location.origin
-      || event.source !== el.desktopDocsFrame.contentWindow) return;
+      || event.source !== desktopDocsFrame?.contentWindow) return;
     const message = parseEmbeddedDocsMessage(event.data);
     if (!message) return;
+    if (message.kind === "docs-ready") {
+      desktopDocsReady = true;
+      globalThis.clearTimeout(desktopDocsReadyTimer);
+      desktopDocsReadyTimer = 0;
+      log("desktop-api", "debug", "documentation iframe reported readiness");
+      logDesktopEvent("docs_frame_ready");
+      return;
+    }
     if (message.kind === "docs-close") {
       hideDesktopDocumentation(message.tab);
       return;
@@ -2332,6 +2362,16 @@ function installDesktopDocsBridge(): void {
       }
     })();
   });
+}
+
+function reconnectDesktopDocumentation(): void {
+  if (!desktopDocsReady) return;
+  desktopDocsFrame?.contentWindow?.postMessage({
+    source: EMBEDDED_DOCS_SOURCE,
+    kind: "docs-reconnect",
+  }, window.location.origin);
+  log("desktop-api", "debug", "documentation iframe notified of the restored admin API session");
+  logDesktopEvent("docs_frame_reconnected");
 }
 
 function visibleCanvasSpawnPosition(): [number, number] {
@@ -7117,6 +7157,7 @@ async function startAPIConnection(quiet = false): Promise<void> {
       setTab(tabNameFromLocation(), false);
     }
     void initializeAuxiliaryAPISession();
+    if (currentPanelMode === "desktop") reconnectDesktopDocumentation();
     if (currentPanelMode === "desktop" && desktopDocsLoadRequested) {
       loadDesktopDocumentation();
     }

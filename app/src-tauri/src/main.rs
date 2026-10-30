@@ -32,6 +32,30 @@ fn send_admin_message(
     result
 }
 
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn log_desktop_event(event: String) -> Result<(), String> {
+    if !is_desktop_event(&event) {
+        return Err("unknown desktop diagnostic event".into());
+    }
+    #[cfg(windows)]
+    logging::write(format_args!("desktop frontend [windows]: {event}"));
+    #[cfg(not(windows))]
+    logging::write(format_args!("desktop frontend: {event}"));
+    Ok(())
+}
+
+fn is_desktop_event(event: &str) -> bool {
+    matches!(
+        event,
+        "docs_frame_created"
+            | "docs_frame_loaded"
+            | "docs_frame_ready"
+            | "docs_frame_reconnected"
+            | "docs_frame_timeout"
+    )
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     match logging::initialize() {
         Ok(path) => logging::write(format_args!(
@@ -81,7 +105,31 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .manage(connection)
         .setup(move |app| tray::setup(app, background))
         .on_window_event(tray::handle_window_event)
-        .invoke_handler(tauri::generate_handler![listen_admin, send_admin_message])
+        .invoke_handler(tauri::generate_handler![
+            listen_admin,
+            send_admin_message,
+            log_desktop_event
+        ])
         .run(tauri::generate_context!())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_desktop_event;
+
+    #[test]
+    fn desktop_log_accepts_only_fixed_events() {
+        for event in [
+            "docs_frame_created",
+            "docs_frame_loaded",
+            "docs_frame_ready",
+            "docs_frame_reconnected",
+            "docs_frame_timeout",
+        ] {
+            assert!(is_desktop_event(event));
+        }
+        assert!(!is_desktop_event("arbitrary message"));
+        assert!(!is_desktop_event("docs_frame_ready\nforged log line"));
+    }
 }

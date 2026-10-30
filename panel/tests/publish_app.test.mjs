@@ -25,6 +25,7 @@ test("desktop publication retains the panel document and uses its native entry p
   );
   assert.deepEqual((await readdir(published("public/build/"))).sort(), ["desktop-docs.js", "desktop.js"]);
   const docsDocument = new JSDOM(await readFile(published("docs/index.html"), "utf8").then(String)).window.document;
+  assert.equal(appDocument.querySelector("#desktop-docs-frame"), null);
   assert.match(docsDocument.querySelector("script[type='module']")?.getAttribute("src") ?? "",
     /^\.\.\/public\/build\/desktop-docs\.js\?v=[a-f0-9]{16}$/);
   assert.match(docsDocument.querySelector("link[rel='modulepreload']")?.getAttribute("href") ?? "",
@@ -41,7 +42,7 @@ test("desktop publication retains the panel document and uses its native entry p
   );
 });
 
-test("desktop publication permits only isolated Tauri IPC", async () => {
+test("desktop publication permits only the restricted Tauri IPC surface", async () => {
   const appDocument = new JSDOM(await readFile(published("index.html"), "utf8")).window.document;
   const desktopEntry = await readFile(source("src/desktop.ts"), "utf8");
   const appSource = await readFile(source("src/app.ts"), "utf8");
@@ -49,7 +50,7 @@ test("desktop publication permits only isolated Tauri IPC", async () => {
   const capability = JSON.parse(await readFile(new URL("../../app/src-tauri/capabilities/main.json", import.meta.url), "utf8"));
 
   // A second meta policy would intersect with Tauri's response policy and can
-  // block the isolation iframe that carries all IPC requests.
+  // block the desktop documentation frame.
   assert.equal(appDocument.querySelector("meta[http-equiv='Content-Security-Policy']"), null);
   assert.match(desktopEntry, /setPanelMode\(document\.documentElement, "desktop"\)/);
   assert.match(desktopEntry, /configureAdminTransport\(\(\) => new DesktopAdminTransport\(\)\)/);
@@ -57,7 +58,9 @@ test("desktop publication permits only isolated Tauri IPC", async () => {
   // branches for native webviews are permitted when they do not exit it.
   assert.doesNotMatch(appSource, /if \(currentPanelMode === "desktop"\)\s*return;/);
   assert.equal(tauri.app.withGlobalTauri, false);
-  assert.equal(tauri.app.security.pattern.use, "isolation");
+  // Do not make native connectivity depend on Tauri's hidden isolation iframe.
+  // The fixed capabilities and native validation are the IPC security boundary.
+  assert.equal(tauri.app.security.pattern.use, "brownfield");
   assert.equal(tauri.app.security.freezePrototype, true);
   assert.equal(tauri.app.security.assetProtocol.enable, false);
   assert.equal(tauri.app.windows[0].dragDropEnabled, false);
@@ -69,6 +72,10 @@ test("desktop publication permits only isolated Tauri IPC", async () => {
     "script-src": "'self'",
     "style-src": "'self'",
   });
-  assert.deepEqual(capability.permissions, ["allow-listen-admin", "allow-send-admin-message"]);
+  assert.deepEqual(capability.permissions, [
+    "allow-listen-admin",
+    "allow-send-admin-message",
+    "allow-log-desktop-event",
+  ]);
   assert.equal(capability.permissions.some((permission) => String(permission).includes("opener")), false);
 });

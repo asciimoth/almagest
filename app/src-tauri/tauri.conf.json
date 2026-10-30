@@ -39,10 +39,7 @@
         "scope": []
       },
       "pattern": {
-        "use": "isolation",
-        "options": {
-          "dir": "../isolation"
-        }
+        "use": "brownfield"
       }
     }
   },

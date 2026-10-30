@@ -47,8 +47,7 @@ pub(crate) fn plugin<R: Runtime>() -> TauriPlugin<R> {
 }
 
 fn classify(url: &Url) -> Navigation {
-    if url.as_str() == "about:blank"
-        || url.scheme() == "tauri"
+    if url.scheme() == "tauri"
         || matches!(url.scheme(), "http" | "https") && url.host_str() == Some("tauri.localhost")
         || cfg!(dev)
             && url.scheme() == "http"
@@ -72,9 +71,6 @@ mod tests {
 
     #[test]
     fn packaged_pages_stay_in_the_webview() {
-        // An iframe without a `src` starts at about:blank. WebView2 shows its
-        // blocked-content error page if the navigation callback rejects it.
-        assert_eq!(classify(&url("about:blank")), Navigation::Internal);
         assert_eq!(
             classify(&url("tauri://localhost/docs/index.html")),
             Navigation::Internal
@@ -107,6 +103,7 @@ mod tests {
 
     #[test]
     fn privileged_and_unknown_schemes_are_blocked() {
+        assert_eq!(classify(&url("about:blank")), Navigation::Blocked);
         assert_eq!(classify(&url("about:srcdoc")), Navigation::Blocked);
         assert_eq!(classify(&url("file:///etc/passwd")), Navigation::Blocked);
         assert_eq!(classify(&url("javascript:alert(1)")), Navigation::Blocked);

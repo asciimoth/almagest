@@ -13,13 +13,20 @@ export type EmbeddedDocsClose = {
   tab: string;
 };
 
-export type EmbeddedDocsMessage = EmbeddedDocsRequest | EmbeddedDocsClose;
+export type EmbeddedDocsReady = {
+  kind: "docs-ready";
+};
+
+export type EmbeddedDocsMessage = EmbeddedDocsRequest | EmbeddedDocsClose | EmbeddedDocsReady;
 
 const DOCS_METHODS = new Set(["tree", "page", "node_class"]);
 
 /** Validate every value received by the privileged parent panel. */
 export function parseEmbeddedDocsMessage(value: unknown): EmbeddedDocsMessage | null {
   if (!isRecord(value) || value.source !== EMBEDDED_DOCS_SOURCE || typeof value.kind !== "string") return null;
+  if (value.kind === "docs-ready") {
+    return Object.keys(value).length === 2 ? { kind: value.kind } : null;
+  }
   if (value.kind === "docs-close") {
     return typeof value.tab === "string" && (!value.tab || validRoutePart(value.tab))
       ? { kind: value.kind, tab: value.tab }

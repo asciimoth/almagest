@@ -42,7 +42,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     write_if_changed(&manifest_dir.join("icons/icon.ico"), &ico)?;
 
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
-        tauri_build::AppManifest::new().commands(&["listen_admin", "send_admin_message"]),
+        tauri_build::AppManifest::new().commands(&[
+            "listen_admin",
+            "send_admin_message",
+            "log_desktop_event",
+        ]),
     ))?;
     Ok(())
 }

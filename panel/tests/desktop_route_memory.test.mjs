@@ -72,11 +72,17 @@ test("desktop surface changes preserve routes in persistent panel and docs docum
   const boot = appSource.slice(appSource.indexOf("function boot"), appSource.indexOf("boot();"));
   assert.doesNotMatch(boot, /else if \(currentPanelMode === "desktop"\)[\s\S]*loadDesktopDocumentation\(\)/);
   assert.match(appSource, /function installDesktopDocsBridge\(\)/);
-  assert.match(appSource, /event\.source !== el\.desktopDocsFrame\.contentWindow/);
+  assert.match(appSource, /createDesktopDocsFrame\(docsURL\)/);
+  assert.match(appSource, /frame\.src = url\.href;\s*desktopDocsFrame = frame;\s*document\.body\.append\(frame\)/);
+  assert.doesNotMatch(appSource, /querySelector<HTMLIFrameElement>\("#desktop-docs-frame"\)/);
+  assert.match(appSource, /event\.source !== desktopDocsFrame\?\.contentWindow/);
+  assert.match(appSource, /kind: "docs-reconnect"/);
+  assert.match(appSource, /currentPanelMode === "desktop"\) reconnectDesktopDocumentation\(\)/);
   assert.match(appSource, /await request\(message\.surface, message\.method, message\.payload\)/);
   assert.match(appSource, /setLocaleFromEmbeddedDocs\(String\(message\.payload\.locale\)\)/);
   assert.match(docsSource, /kind: "docs-close"/);
   assert.match(docsSource, /kind !== "docs-navigate"/);
+  assert.match(docsSource, /message\.kind === "docs-reconnect"[\s\S]*loadTree\(effectiveLocale \|\| requestedLocale\)/);
   assert.match(docsSource, /if \(desktopMode\) \{[\s\S]*window\.history\.replaceState\(\{ page: id \}/);
   assert.match(docsSource, /window\.addEventListener\("pagehide", saveCurrentDesktopDocsScroll\)/);
   assert.match(docsSource, /if \(window\.location\.hash\) scrollToCurrentAnchor\(\);\s*else restoreDesktopDocsScroll\(id\)/);

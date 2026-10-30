@@ -61,3 +61,10 @@ test("embedded docs protocol validates panel close routes", () => {
     kind: "docs-close", tab: "config",
   });
 });
+
+test("embedded docs protocol validates the readiness signal", () => {
+  assert.deepEqual(parseEmbeddedDocsMessage({ source, kind: "docs-ready" }), {
+    kind: "docs-ready",
+  });
+  assert.equal(parseEmbeddedDocsMessage({ source, kind: "docs-ready", extra: true }), null);
+});

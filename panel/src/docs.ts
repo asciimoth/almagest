@@ -578,7 +578,12 @@ window.addEventListener("message", (event) => {
   const value: unknown = event.data;
   if (!value || typeof value !== "object" || Array.isArray(value)) return;
   const message = value as Record<string, unknown>;
-  if (message.source !== EMBEDDED_DOCS_SOURCE || message.kind !== "docs-navigate") return;
+  if (message.source !== EMBEDDED_DOCS_SOURCE) return;
+  if (message.kind === "docs-reconnect") {
+    void loadTree(effectiveLocale || requestedLocale);
+    return;
+  }
+  if (message.kind !== "docs-navigate") return;
   if (typeof message.page === "string" && message.page && message.page !== currentPage) {
     void openPage(message.page, true);
   }

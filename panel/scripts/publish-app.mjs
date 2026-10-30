@@ -67,10 +67,9 @@ const desktopDocs = await readFile(new URL("public/build/desktop-docs.js", targe
 const docsVersion = createHash("sha256").update(desktopDocs).digest("hex").slice(0, 16);
 const sourceHTML = await readFile(new URL("index.html", panel), "utf8");
 const appHTML = sourceHTML
-  // Tauri supplies a restrictive response CSP and adds its randomized
-  // isolation-frame origin to that policy. The web panel's meta policy has
-  // `frame-src 'none'`, which would intersect with Tauri's policy and block
-  // the isolation iframe, leaving all IPC requests queued forever.
+  // Tauri supplies the restrictive response CSP. The web panel's meta policy
+  // has `frame-src 'none'`, which would intersect with the response policy and
+  // block the desktop documentation frame.
   .replace(/^\s*<meta http-equiv="Content-Security-Policy"[^>]*>\s*$/m, "")
   // Warm the other page's module graph. Navigation can then reuse the parsed
   // HTTP cache when the webview does not retain a back-forward entry.
@@ -84,7 +83,7 @@ await writeFile(new URL("index.html", target), (await minifyHTML(appHTML, {
 
 const sourceDocsHTML = await readFile(new URL("docs.html", panel), "utf8");
 const docsHTML = sourceDocsHTML
-  // Use Tauri's response CSP for the same isolation-frame reason as index.html.
+  // Use Tauri's response CSP for the same reason as index.html.
   .replace(/^\s*<meta http-equiv="Content-Security-Policy"[^>]*>\s*$/m, "")
   .replace('content="/"', 'content="../"')
   .replaceAll('href="/favicon.svg"', 'href="../favicon.svg"')
