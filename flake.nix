@@ -155,7 +155,7 @@
         src = ./.;
         modRoot = "bin";
         env.CGO_ENABLED = 0;
-        vendorHash = "sha256-DhnQjSjRfYXSrFG9dy0OSH6C4iVxHOsKlMbKlh6ke4I=";
+        vendorHash = "sha256-eOsim3MLHRWKsWnESeTM0DhastP/7vcXiKUYR0lKeU8=";
         subPackages = [
           "almagestd"
           "almagest-cli"
@@ -407,17 +407,16 @@
               ''; in builtins.toString script;
               stages = [ "pre-commit" ];
             };
-            # TODO: Enable govulncheck again after Go is updated to 1.26.10 or later.
-            # govulncheck = {
-            #   enable = true;
-            #   description = "Run govulncheck";
-            #   files = goHookFiles;
-            #   pass_filenames = false;
-            #   entry = let script = pkgs.writeShellScript "govulncheckhook" ''
-            #     just vulncheck
-            #   ''; in builtins.toString script;
-            #   stages = [ "pre-commit" ];
-            # };
+            govulncheck = {
+              enable = true;
+              description = "Run govulncheck";
+              files = goHookFiles;
+              pass_filenames = false;
+              entry = let script = pkgs.writeShellScript "govulncheckhook" ''
+                just vulncheck
+              ''; in builtins.toString script;
+              stages = [ "pre-commit" ];
+            };
             winvm-lint = {
               enable = true;
               description = "Lint the Windows VM harness";

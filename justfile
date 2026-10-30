@@ -2,8 +2,7 @@ set shell := ["./scripts/run-recipe.sh", "bash", "-euo", "pipefail", "-c"]
 set dotenv-load := true
 
 
-# TODO: Enable vulncheck again after Go is updated to 1.26.10 or later.
-check *selectors: tidy typos fmt lint actionlint shellcheck vet build-wasm # vulncheck
+check *selectors: tidy typos fmt lint actionlint shellcheck vet build-wasm vulncheck
   @just locales-check
   @just test-total {{quote(selectors)}}
   @if [[ -z {{quote(selectors)}} ]]; then just fuzz; fi
@@ -118,7 +117,7 @@ tidy: repair-go-work
 repair-go-work:
 	@if [ ! -f go.work ]; then go work init; fi
 	go work use ./lib ./bin ./certcat
-	go work edit -go=1.26.9
+	go work edit -go=1.26.10
 
 certcat-tidy:
 	go -C certcat mod tidy

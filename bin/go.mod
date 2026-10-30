@@ -1,6 +1,6 @@
 module github.com/asciimoth/almagest/bin
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/alexflint/go-arg v1.6.1
@@ -22,7 +22,7 @@ require (
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd
 	go.etcd.io/bbolt v1.5.0
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20261020153306-9f2b28d4331a
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.48.0
 	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb
 )
 
@@ -58,14 +58,14 @@ require (
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/xtaci/smux v1.5.44
-	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
-	golang.org/x/mod v0.37.0
-	golang.org/x/net v0.56.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/text v0.39.0 // indirect
+	golang.org/x/mod v0.41.0
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
-	golang.org/x/tools v0.47.0 // indirect
+	golang.org/x/tools v0.49.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2
 	gvisor.dev/gvisor v0.0.0-20260325202830-7644cf3a343c // indirect
 )
