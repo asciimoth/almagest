@@ -49,7 +49,7 @@ func copyProductionLocales(source, destination string) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(temporary)
+	defer func() { _ = os.RemoveAll(temporary) }()
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
