@@ -4,7 +4,7 @@ ObjectPacker builds a new [output](@port/right/output) and does not change the
 base object. If [Base](@port/left/Base) is not connected, it starts with an
 empty Map or Vector, as selected by **Root**.
 
-Paths are [JSON](https://www.json.org/json-en.html) arrays. A string selects a
+Paths are JSON arrays. A string selects a
 Map key, and a non-negative integer selects a Vector index. For example,
 `["person","name"]` selects the `name` key in the `person` Map, and
 `["items",0]` selects the first item in the `items` Vector. Use **Containers**

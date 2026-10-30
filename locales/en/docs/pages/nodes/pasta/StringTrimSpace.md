@@ -1,7 +1,7 @@
 Removes whitespace from the start and end of a String. Whitespace inside the
 String is unchanged.
 
-The node uses the [Unicode](https://www.unicode.org/standard/standard.html)
+The node uses the Unicode
 definition of whitespace. It removes spaces, tabs, line breaks, non-breaking
 spaces, and other Unicode whitespace characters at both ends. A zero-width space
 is not classified as Unicode whitespace, so it is not removed. If the

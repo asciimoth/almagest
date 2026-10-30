@@ -5,7 +5,8 @@ stream through the connected [Network](@port/right/Network). Place it between a
 that leads to the plaintext service.
 
 The client must trust Almagest's local TLS CA. TlsTerminator uses that CA to
-generate a certificate for the [SNI](https://www.rfc-editor.org/rfc/rfc6066)
+generate a certificate for the
+[SNI](https://en.wikipedia.org/wiki/Server_Name_Indication)
 hostname in each connection. It supplies its [Network](@port/left/Network) only
 when the outbound [Network](@port/right/Network), local CA, and menu values are
 valid.
@@ -24,7 +25,7 @@ rejects the connection in these cases:
 - The first client data is not TLS.
 - The ClientHello has no visible SNI hostname.
 - The ClientHello signals
-  [Encrypted Client Hello (ECH)](https://www.rfc-editor.org/rfc/rfc9849).
+  [Encrypted Client Hello (ECH)](https://en.wikipedia.org/wiki/Encrypted_Client_Hello).
 - The ClientHello is malformed or exceeds the sniff buffer limit.
 
 Rejected data is not passed through, and TlsTerminator does not open an upstream
@@ -43,7 +44,9 @@ expires. A negative value is invalid.
 can inspect. Zero uses 65,536 bytes. A smaller value reduces memory use but can
 reject a valid ClientHello with many extensions. A negative value is invalid.
 
-**Client-facing [ALPN](https://www.rfc-editor.org/rfc/rfc7301)** lists the
+**Client-facing
+[ALPN](https://en.wikipedia.org/wiki/Application-Layer_Protocol_Negotiation)**
+lists the
 protocols that TlsTerminator can select for the TLS connection from the client.
 Separate values with spaces, commas, semicolons, or new lines. For example:
 
@@ -63,7 +66,7 @@ destination. Enable **Use SNI hostname** to use the SNI hostname with the
 original destination port instead. A matching destination-remap rule takes
 priority over both defaults.
 
-**Destination remaps [JSON](https://www.json.org/json-en.html)** is an array of
+**Destination remaps JSON** is an array of
 rules. Rules are checked in order, and the first matching rule selects its
 `dst`. In one rule, all configured fields must match. Multiple values in one
 field are alternatives. An omitted or empty match field matches any value.
@@ -83,7 +86,8 @@ Each rule supports these fields:
 
 - `original_dsts` matches the destination that the client requested. Values can
   be a host, `host:port`, IP address, `IP:port`,
-  [CIDR](https://www.rfc-editor.org/rfc/rfc4632) subnet, or host pattern.
+  [CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing) subnet,
+  or host pattern.
 - `sni_hosts` matches the visible SNI hostname and is not case-sensitive.
 - `alpns` matches any protocol that the client offers. Matching is
   case-sensitive and does not depend on the protocol finally selected.

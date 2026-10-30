@@ -28,7 +28,8 @@ Address selection uses this priority:
 1. Automatically allocated local IPv4 and IPv6 addresses.
 
 Enter one or more IP addresses in **Local addrs**, separated by spaces, commas,
-semicolons, or new lines. [CIDR](https://www.rfc-editor.org/rfc/rfc4632) values
+semicolons, or new lines.
+[CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing) values
 are accepted, but VTun uses only their IP address. The prefix does not create a
 route. Automatically allocated addresses appear in **Effective** and are not
 saved as menu configuration.
@@ -92,7 +93,9 @@ configurations.
 queues can absorb longer bursts but can use more memory. Values that are zero or
 negative reset to the defaults.
 
-Enable **Disable [TCP SACK](https://www.rfc-editor.org/rfc/rfc2018)** only when
+Enable **Disable
+[TCP SACK](https://en.wikipedia.org/wiki/Transmission_Control_Protocol#Selective_acknowledgments)**
+only when
 the peer or carrier has a compatibility problem with TCP Selective
 Acknowledgment. Disabling it can reduce TCP performance when packets are lost.
 

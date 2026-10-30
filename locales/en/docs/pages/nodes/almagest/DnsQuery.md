@@ -9,8 +9,7 @@ request**. A name without a final dot gets one automatically. An empty name
 becomes `example.test.`. The type is not case-sensitive, and an empty type
 becomes `A`.
 
-The node supports these
-[query types](https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-4):
+The node supports these query types:
 
 - `A` and `AAAA`;
 - `CNAME`, `NS`, and `PTR`;

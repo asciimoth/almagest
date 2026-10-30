@@ -11,7 +11,7 @@ this node makes that injected resolver available again as a
 [DNS](@port/left/DNS) output.
 
 The node supports these
-[Internet-class record types](https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-4):
+Internet-class record types:
 
 - `A` and `AAAA`;
 - `PTR` for complete IPv4 and IPv6 reverse names;

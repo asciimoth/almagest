@@ -1,12 +1,12 @@
 Accepts [DNS](@docs/almagest/dns) requests over
-[UDP](https://www.rfc-editor.org/rfc/rfc768) through an attached Network and
+UDP through an attached Network and
 sends each request to an attached DNS resolver. Connect the listening network to
 [Network](@port/right/Network) and the resolver that will answer requests to
 [DNS](@port/right/DNS).
 
 This node provides a UDP listener only. It does not provide
-[DNS over TCP](https://www.rfc-editor.org/rfc/rfc7766) or
-[DNS over TLS](https://www.rfc-editor.org/rfc/rfc7858).
+[DNS over TCP](https://en.wikipedia.org/wiki/Domain_Name_System#Protocol_transport)
+or [DNS over TLS](https://en.wikipedia.org/wiki/DNS_over_TLS).
 
 ## Listen address
 

@@ -9,7 +9,7 @@ necessary.
 
 ## Paths and types
 
-A path is a non-empty [JSON](https://www.json.org/json-en.html) array. A string
+A path is a non-empty JSON array. A string
 selects a Map key, and a non-negative integer selects a Vector position. For
 example:
 

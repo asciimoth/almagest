@@ -85,7 +85,7 @@ general routing features.
   [Mullvad split-tunnel driver](https://github.com/amnezia-vpn/amnezia-client/blob/dev/client/platforms/windows/daemon/windowssplittunnel.cpp)
   to exclude applications before their traffic uses the VPN. AmneziaVPN does not
   offer Windows application Include mode or a separate 5-tuple rule layer.
-- [Mullvad VPN](https://github.com/mullvad/mullvadvpn-app/blob/main/docs/split-tunneling.md)
+- [Mullvad VPN](https://mullvad.net/en/help/split-tunneling-with-the-mullvad-app)
   supports application exclusions on Windows, Linux, macOS, and Android.
   Identity and child-process behavior depend on the platform. Each platform
   excludes selected traffic before normal VPN forwarding. Windows uses the same

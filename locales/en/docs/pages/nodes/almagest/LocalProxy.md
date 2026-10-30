@@ -1,4 +1,4 @@
-LocalProxy provides a [SOCKS](https://www.rfc-editor.org/rfc/rfc1928) proxy to
+LocalProxy provides a [SOCKS](https://en.wikipedia.org/wiki/SOCKS) proxy to
 applications on the daemon host. Client connections use the system-local
 network. The requested connections, name lookups, and remote listeners use the
 connected [proxy](@port/right/proxy). Use this node to give a local application
@@ -10,7 +10,7 @@ address is `127.0.0.1:1080`. An empty host also uses `127.0.0.1`. Set the port
 to `0` to disable this listener.
 
 The optional SOCKS-over-WebSocket listener uses plain
-[WebSocket](https://www.rfc-editor.org/rfc/rfc6455) transport. Set **SOCKS+WS
+[WebSocket](https://en.wikipedia.org/wiki/WebSocket) transport. Set **SOCKS+WS
 port** to a nonzero value to enable it. The default path is `/socks`; a path
 without a leading slash gets one automatically. This listener does not add TLS,
 so it provides `ws`, not `wss`. The plain SOCKS and WebSocket listeners can run

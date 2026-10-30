@@ -54,7 +54,8 @@ rule type first, and then use autocomplete where it is available.
 
 ### Linux
 
-Linux implements process routing with [eBPF](https://docs.ebpf.io/) process
+Linux implements process routing with
+[eBPF](https://ebpf.io/what-is-ebpf/) process
 tracking and packet marks. It supports **Exclude**, **Include**, and **Strict
 routing**. The supported rule types are:
 

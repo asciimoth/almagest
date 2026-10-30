@@ -12,7 +12,7 @@ non-IP packets that it cannot parse.
 
 ## Policy format
 
-Enter **Firewall rules** as one [JSON](https://www.json.org/json-en.html)
+Enter **Firewall rules** as one JSON
 object. Use `{}` for the default policy. The node rejects empty input, invalid
 JSON, unknown fields, invalid port values, and non-positive response times.
 
@@ -23,7 +23,8 @@ Each entry in `exclude` or `include` can contain these fields:
   `udp`, and `icmp` match both IP versions. An empty or omitted value matches
   all parsed IP protocols.
 - `hosts` selects the remote peer. Use an IP address,
-  [CIDR](https://www.rfc-editor.org/rfc/rfc4632) prefix, or hostname pattern.
+  [CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing) prefix,
+  or hostname pattern.
   For outgoing packets, this is the destination. For incoming packets, this is
   the source. An omitted list matches every peer.
 - `localHosts` selects the local destination of an incoming packet. It has no
@@ -63,8 +64,8 @@ matches GRE in both IP versions, while `ip4:47` matches only IPv4 GRE.
 
 Each allowed outgoing packet records its reverse flow. A matching incoming
 packet is accepted without an `include` rule. Related
-[ICMP](https://www.rfc-editor.org/rfc/rfc792) and
-[ICMPv6](https://www.rfc-editor.org/rfc/rfc4443) error packets are also accepted
+[ICMP](https://en.wikipedia.org/wiki/Internet_Control_Message_Protocol) and
+ICMPv6 error packets are also accepted
 when they contain a recorded outgoing flow.
 
 `responseTTL` controls how long reply state is kept. Use a positive duration

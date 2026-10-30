@@ -19,7 +19,8 @@ Network path.
 ## TLS behavior
 
 For an intercepted connection, TlsMitm reads the ClientHello and uses its
-visible [SNI](https://www.rfc-editor.org/rfc/rfc6066) hostname to generate a
+visible [SNI](https://en.wikipedia.org/wiki/Server_Name_Indication) hostname to
+generate a
 server certificate signed by the local CA. It then makes a new TLS connection to
 that hostname at the original network destination. The generated certificate is
 valid for the SNI hostname.
@@ -27,7 +28,8 @@ valid for the SNI hostname.
 The selected **TLS config** controls the connection to the real server. Use it
 to configure trusted roots, TLS version limits, and a client certificate. The
 SNI hostname and the client's offered
-[ALPN](https://www.rfc-editor.org/rfc/rfc7301) protocols replace the server name
+[ALPN](https://en.wikipedia.org/wiki/Application-Layer_Protocol_Negotiation)
+protocols replace the server name
 and ALPN list in that config. If you do not select a config, the default TLS
 config applies. TlsMitm completes the server connection first and then offers
 its selected ALPN protocol to the client.
@@ -49,7 +51,8 @@ conditions applies:
 - The client does not trust the local CA or uses certificate pinning.
 
 A connection with a readable ClientHello that the filter excludes passes through
-unchanged. This permits [ECH](https://www.rfc-editor.org/rfc/rfc9849), pinned
+unchanged. This permits
+[ECH](https://en.wikipedia.org/wiki/Encrypted_Client_Hello), pinned
 applications, mutual TLS managed by the application, or other traffic that must
 keep its original end-to-end TLS session.
 
@@ -84,7 +87,7 @@ applications that require interception.
 - `exclusive` passes a connection through unchanged when at least one rule
   matches. With no rules, it intercepts all eligible TLS connections.
 
-Rules are [JSON](https://www.json.org/json-en.html) objects in an array. Rules
+Rules are JSON objects in an array. Rules
 are alternatives: a connection matches when any object matches. In one object,
 configured fields must all match. Multiple values in one field are alternatives.
 An omitted or empty field matches any value.
@@ -107,7 +110,8 @@ Use this rule with `inclusive` mode. The available fields are:
   whole-value pattern such as `tcp*`.
 - `conn_srcs` and `conn_dsts` match the requested or actual socket address.
   Values can be a host, `host:port`, IP address, `IP:port`,
-  [CIDR](https://www.rfc-editor.org/rfc/rfc4632) subnet, or host pattern.
+  [CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing) subnet,
+  or host pattern.
 - `sni_hosts` matches the visible SNI hostname and is not case-sensitive.
 - `alpns` matches any protocol offered by the client. ALPN matching is
   case-sensitive.

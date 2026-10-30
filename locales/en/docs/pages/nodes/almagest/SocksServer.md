@@ -1,4 +1,4 @@
-Runs a [SOCKS4, SOCKS4a, and SOCKS5](https://www.rfc-editor.org/rfc/rfc1928)
+Runs a [SOCKS4, SOCKS4a, and SOCKS5](https://en.wikipedia.org/wiki/SOCKS)
 proxy. The [listen](@port/right/listen) Network accepts client connections. The
 [proxy](@port/right/proxy) Network performs the connections, listeners, UDP
 operations, and name lookups that clients request.
@@ -10,7 +10,7 @@ error.
 
 ## Use with a GOST client
 
-### SOCKS over [WebSocket](https://www.rfc-editor.org/rfc/rfc6455)
+### SOCKS over [WebSocket](https://en.wikipedia.org/wiki/WebSocket)
 
 Set **SOCKS+WS host** and a nonzero **SOCKS+WS port**. The default Almagest
 WebSocket path is `/socks`, but GOST defaults to `/ws`. Therefore, specify the
@@ -21,8 +21,8 @@ gost -L "http://127.0.0.1:8080" \
   -F "socks5+ws://user:pass@almagest.example:1081?path=/socks&notls=true"
 ```
 
-This command provides a local [HTTP](https://www.rfc-editor.org/rfc/rfc9110)
-proxy at `127.0.0.1:8080` and sends its traffic through this node. Configure the
+This command provides a local HTTP proxy at `127.0.0.1:8080` and sends its
+traffic through this node. Configure the
 same `user` and `pass` in **Users**. Remove `user:pass@` when the node has no
 users.
 

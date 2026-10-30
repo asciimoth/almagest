@@ -3,10 +3,8 @@ listeners in this network do not use the operating-system network and cannot
 reach the internet or other external hosts.
 
 Connect this [Network](@port/left/Network) to the client and server nodes that
-you want to test together. [TCP](https://www.rfc-editor.org/rfc/rfc9293) and
-[UDP](https://www.rfc-editor.org/rfc/rfc768) communication can use
-[IPv4](https://www.rfc-editor.org/rfc/rfc791) or
-[IPv6](https://www.rfc-editor.org/rfc/rfc8200) loopback. Each MockNetwork is
+you want to test together. TCP and UDP communication can use IPv4 or IPv6
+loopback. Each MockNetwork is
 separate, so nodes that use different MockNetwork nodes cannot communicate with
 each other.
 

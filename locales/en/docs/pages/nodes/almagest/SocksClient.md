@@ -1,12 +1,12 @@
 Provides a Network that sends supported TCP and UDP operations through a
-[SOCKS](https://www.rfc-editor.org/rfc/rfc1928) proxy. Connect the network used
+[SOCKS](https://en.wikipedia.org/wiki/SOCKS) proxy. Connect the network used
 to reach the proxy to [out](@port/right/out). Connect clients or tunnel nodes to
 the [Network](@port/left/Network) output. The node does not bypass the proxy for
 loopback or local addresses.
 
 ## Use with a GOST server
 
-### SOCKS over [WebSocket](https://www.rfc-editor.org/rfc/rfc6455)
+### SOCKS over [WebSocket](https://en.wikipedia.org/wiki/WebSocket)
 
 Start a [GOST](https://gost.run/en/) SOCKS5-over-WebSocket server:
 

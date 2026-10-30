@@ -24,10 +24,8 @@ Tun2Dns accepts packets with all these properties:
 - The UDP checksum is valid. IPv4 can omit the UDP checksum, but IPv6 cannot.
 
 Some IPv6 extension headers are accepted, but an IPv6 Fragment header is not.
-[DNS over TCP](https://www.rfc-editor.org/rfc/rfc7766),
-[DNS over TLS](https://www.rfc-editor.org/rfc/rfc7858),
-[DNS over HTTPS](https://www.rfc-editor.org/rfc/rfc8484), and
-[QUIC](https://www.rfc-editor.org/rfc/rfc9000) do not match these rules. Tun2Dns
+DNS over TCP, DNS over TLS, DNS over HTTPS, and QUIC do not match these rules.
+Tun2Dns
 does not reassemble requests or fragment responses. Keep DNS packets within the
 usable TUN MTU.
 

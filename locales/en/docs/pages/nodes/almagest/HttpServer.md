@@ -1,4 +1,6 @@
-Runs a small plain-[HTTP](https://www.rfc-editor.org/rfc/rfc9110) server through
+Runs a small plain
+[HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Overview) server
+through
 the connected [Network](@port/right/Network). Use it to test a listening path,
 proxy forwarding, HTTP connectivity, or request routing. It is intended for
 debugging, not for an application service.

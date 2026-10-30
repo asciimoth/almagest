@@ -1,4 +1,6 @@
-Sends an [HTTP or HTTPS](https://www.rfc-editor.org/rfc/rfc9110) request through
+Sends an
+[HTTP or HTTPS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Overview)
+request through
 a connected [Network](@port/right/Network). Use this node to test a route or
 examine the response from a service.
 

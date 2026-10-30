@@ -12,7 +12,7 @@ them. Each server URL must use one of these schemes:
 - `udp://` sends DNS over UDP. If the server returns a truncated response, the
   node retries the request over TCP to the same address.
 - `tcp://` sends DNS over TCP.
-- `dot://` sends [DNS over TLS](https://www.rfc-editor.org/rfc/rfc7858).
+- `dot://` sends [DNS over TLS](https://en.wikipedia.org/wiki/DNS_over_TLS).
 
 For example, use `udp://192.0.2.53:53`, `tcp://192.0.2.53:53`, or
 `dot://dns.example:853`. An address without a scheme becomes a UDP URL. If you

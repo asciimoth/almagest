@@ -11,7 +11,8 @@ The node supports these name formats:
 - `.meship` decodes its single name label directly to an IPv6 address. This
   format does not send a DNS request.
 - `.pk.ygg` derives a [Yggdrasil](https://yggdrasil-network.github.io/) IPv6
-  address from the [Ed25519](https://www.rfc-editor.org/rfc/rfc8032) public key
+  address from the [Ed25519](https://en.wikipedia.org/wiki/EdDSA#Ed25519) public
+  key
   in the label before the suffix. This format does not send a DNS request.
 - `.ygg` uses the label before the suffix as a Yggdrasil authority. Straight
   hexadecimal, base32, and dashed
