@@ -96,8 +96,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         endpoint.diagnostic_kind()
     ));
 
+    let builder = tauri::Builder::default();
+    // This plugin must be registered first so a later process exits before
+    // other plugins or application setup run.
+    #[cfg(any(target_os = "linux", target_os = "macos", windows))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(
+        |app, _arguments, _working_directory| {
+            logging::write(format_args!(
+                "desktop app activation forwarded by another instance"
+            ));
+            tray::show_main_window(app);
+        },
+    ));
+
     let connection = AdminConnection::connect(&endpoint);
-    tauri::Builder::default()
+    builder
         // The opener plugin is used only from trusted Rust. No opener command
         // is present in the frontend capability.
         .plugin(tauri_plugin_opener::init())

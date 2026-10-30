@@ -29,6 +29,9 @@ tauri-plugin-opener = "2.7.2"
 tungstenite = { version = "0.28.0", default-features = false, features = ["handshake"] }
 url = "2.5.8"
 
+[target.'cfg(any(target_os = "linux", target_os = "macos", windows))'.dependencies]
+tauri-plugin-single-instance = "2.5.4"
+
 [target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd"))'.dependencies]
 # Tauri enables AppIndicator, which panics at runtime when its optional shared
 # library is absent. Enabling KSNI makes tray-icon use its D-Bus backend.

@@ -147,7 +147,7 @@ fn hide_window<R: Runtime>(window: &Window<R>) {
     }
 }
 
-fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
+pub(crate) fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
         return;
     };
