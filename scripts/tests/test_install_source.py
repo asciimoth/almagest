@@ -36,16 +36,16 @@ class SourceInstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_go_version_boundaries(self):
-        for version in ("1.26.9", "1.26.10", "1.27.0", "2.0.0"):
+        for version in ("1.26.10", "1.26.11", "1.27.0", "2.0.0"):
             with self.subTest(version=version):
                 result = self.run_function(
-                    f"version_at_least {version} 1.26.9"
+                    f"version_at_least {version} 1.26.10"
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
-        for version in ("1.25.10", "1.26.8"):
+        for version in ("1.25.10", "1.26.9"):
             with self.subTest(version=version):
                 result = self.run_function(
-                    f"version_at_least {version} 1.26.9"
+                    f"version_at_least {version} 1.26.10"
                 )
                 self.assertNotEqual(result.returncode, 0)
 

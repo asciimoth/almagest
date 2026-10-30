@@ -1,4 +1,4 @@
-ARG BUILDER_IMAGE=golang:1.26.9-bookworm
+ARG BUILDER_IMAGE=golang:1.26.10-bookworm
 ARG RUNTIME_IMAGE=almagest-e2e:local
 FROM ${BUILDER_IMAGE} AS build
 

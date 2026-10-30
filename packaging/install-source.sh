@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
-minimum_go=1.26.9
+minimum_go=1.26.10
 minimum_rust=1.90.0
 libseccomp_version=2.6.1
 libseccomp_sha256=501f66c667225d53791b97e1d7cf85ab764c297d04881f60f38f451c4b0ee1be

@@ -10,7 +10,7 @@ The image, QGA client, and lifecycle helpers are adapted from
 `a056c520f0faf966f54dd90ef63b15d9aa7382ec`. This adaptation changes the project
 paths, source packaging, guest toolchain, dependency provisioning, SSH key
 verification, and run/test orchestration. The Windows, VirtIO, OpenSSH, Tor,
-.NET, and WiX inputs are locked in this harness. Go is locked to 1.26.9; its
+.NET, and WiX inputs are locked in this harness. Go is locked to 1.26.10; its
 hash is from the Go download manifest. No sibling checkout is needed. Image
 provisioning installs the locked Wintun DLL and compatible split-driver service
 as external test inputs. The daemon does not provision them. Do not run
@@ -26,7 +26,7 @@ GiB guest disk is a virtual capacity: qcow2 files grow with written blocks. The
 retained overlays can require more space. Test artifacts live under the
 repository, which can use a different filesystem from the image cache. Install
 QEMU, OVMF, xorriso, OpenSSH client tools, Python 3, jq, curl, Git, tar, flock,
-coreutils, Go 1.26.9 or newer, Node.js, npm, ShellCheck, Ruff, PowerShell 7, and
+coreutils, Go 1.26.10 or newer, Node.js, npm, ShellCheck, Ruff, PowerShell 7, and
 PSScriptAnalyzer. The Nix development shell supplies the lint and VM packages on
 x86_64 Linux. It also sets `MULLVAD_SPLIT_TUNNEL_DRIVER_DIR` and
 `SYSNET_WINDOWS_WINTUN_DIR` to the pinned runtime dependency trees. The winvm

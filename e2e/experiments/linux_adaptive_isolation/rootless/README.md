@@ -28,7 +28,7 @@ The runner fails on a build error, timeout, or nonzero probe exit. Review the
 reported allowed and denied controls instead of treating exit zero as proof of a
 security boundary.
 
-The default input images are `almagest-e2e:local` and `golang:1.26.9-bookworm`;
+The default input images are `almagest-e2e:local` and `golang:1.26.10-bookworm`;
 both must already exist locally. Use `ROOTLESS_RUNTIME_IMAGE` and
 `ROOTLESS_BUILDER_IMAGE` to select other image references. The runner records
 their resolved IDs and checks that the references did not change during the
