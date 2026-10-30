@@ -167,7 +167,8 @@ test("web panel documentation controls keep their separate-page behavior", () =>
   assert.equal(button?.getAttribute("role"), "link");
   assert.equal(button?.hasAttribute("data-tab"), false);
   assert.match(appSource, /window\.open\(url, "_blank"\)/);
-  assert.match(appSource, /if \(currentPanelMode === "desktop"\)[\s\S]*?else \{\s*docsLink\.target = "_blank"/);
+  assert.match(appSource, /navigateToDocumentationLink\(event, `node\/\$\{node\.class\}`\)/);
+  assert.match(appSource, /if \(currentPanelMode !== "desktop"\) \{\s*docsLink\.target = "_blank"/);
   assert.match(appSource, /docsLink\.rel = "opener"/);
   assert.match(appSource, /documentationURL\(`node\/\$\{node\.class\}`\)/);
   assert.match(appSource, /button\.addEventListener\("contextmenu"/);

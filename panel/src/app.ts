@@ -2234,6 +2234,14 @@ function openDocumentation(page = ""): void {
   }
 }
 
+function navigateToDocumentationLink(event: MouseEvent, page: string): void {
+  if (currentPanelMode !== "desktop") return;
+  // The desktop app has one webview. Keep its SPA document loaded and reveal
+  // the persistent documentation frame for every unmodified or modified link.
+  event.preventDefault();
+  openDocumentation(page);
+}
+
 let desktopDocsLoaded = false;
 let desktopDocsReady = false;
 let desktopDocsFrame: HTMLIFrameElement | null = null;
@@ -2497,6 +2505,8 @@ function renderNodePanel(id: number): void {
     documentationURL,
     undefined,
     currentPanelMode === "desktop" ? "_self" : "_blank",
+    undefined,
+    navigateToDocumentationLink,
   );
   const descriptionHeader = document.createElement("div");
   descriptionHeader.className = "node-description-header";
@@ -2508,12 +2518,10 @@ function renderNodePanel(id: number): void {
     ));
     docsLink.className = "node-docs-link";
     docsLink.href = documentationURL(`node/${node.class}`);
-    if (currentPanelMode === "desktop") {
-      docsLink.addEventListener("click", (event) => {
-        event.preventDefault();
-        openDocumentation(`node/${node.class}`);
-      });
-    } else {
+    docsLink.addEventListener("click", (event) => {
+      navigateToDocumentationLink(event, `node/${node.class}`);
+    });
+    if (currentPanelMode !== "desktop") {
       docsLink.target = "_blank";
       // The trusted same-origin docs use the opener relationship to find this panel tab.
       docsLink.rel = "opener";
@@ -2533,7 +2541,8 @@ function renderNodePanel(id: number): void {
     ) {
       renderNodeDescription(descriptionPanel, text ?? "", "panel", "", (side, name, highlighted) => {
         setDescriptionPortHighlight(id, side, name, highlighted);
-      }, documentationURL, undefined, currentPanelMode === "desktop" ? "_self" : "_blank");
+      }, documentationURL, undefined, currentPanelMode === "desktop" ? "_self" : "_blank", undefined,
+      navigateToDocumentationLink);
     }
   });
   for (const tab of el.sidekick.querySelectorAll<HTMLButtonElement>("[data-node-tab]")) {

@@ -777,8 +777,15 @@ type MarkdownRenderContext = {
   documentationURL: ((id: string) => string) | undefined;
   onGraphPreview: MarkdownGraphPreviewHandler | undefined;
   documentationTarget: "_blank" | "_self";
+  onDocumentationNavigate: MarkdownDocumentationNavigationHandler | undefined;
   panelLinks: MarkdownPanelLinkOptions | undefined;
 };
+
+export type MarkdownDocumentationNavigationHandler = (
+  event: MouseEvent,
+  page: string,
+  href: string,
+) => void;
 
 /** Hosting-specific routing for links from documentation to a panel tab. */
 export type MarkdownPanelLinkOptions = {
@@ -797,6 +804,7 @@ export function renderNodeDescription(
   onGraphPreview?: MarkdownGraphPreviewHandler,
   documentationTarget: "_blank" | "_self" = "_blank",
   panelLinks?: MarkdownPanelLinkOptions,
+  onDocumentationNavigate?: MarkdownDocumentationNavigationHandler,
 ): void {
   const text = value.trim();
   if (!text) {
@@ -804,7 +812,8 @@ export function renderNodeDescription(
     return;
   }
   const context: MarkdownRenderContext = {
-    mode, documentID, onPortHighlight, documentationURL, onGraphPreview, documentationTarget, panelLinks,
+    mode, documentID, onPortHighlight, documentationURL, onGraphPreview, documentationTarget,
+    onDocumentationNavigate, panelLinks,
   };
   const headingIDs = new Map<string, number>();
   node.replaceChildren(...parseMarkdownBlocks(text).flatMap((block) => {
@@ -1180,11 +1189,9 @@ function renderMarkdownDocumentationLink(
     : `./docs/${encodeMarkdownDocumentationID(destination)}`;
   if (context.mode === "panel") {
     anchor.target = context.documentationTarget;
-    if (context.documentationTarget === "_self") {
+    if (context.onDocumentationNavigate) {
       anchor.addEventListener("click", (event) => {
-        // Do not let modifier keys request another native webview.
-        event.preventDefault();
-        window.location.assign(anchor.href);
+        context.onDocumentationNavigate?.(event, destination, anchor.href);
       });
     }
   }

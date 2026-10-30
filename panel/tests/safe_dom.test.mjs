@@ -907,9 +907,10 @@ test("documentation panel links use the hosting route and safe click handler", (
   assertNoParsedPayload(root);
 });
 
-test("desktop documentation links stay in the current webview without parsing HTML", () => {
-  installDOM();
+test("desktop documentation links use the host navigation handler without parsing HTML", () => {
+  const dom = installDOM();
   const root = document.createElement("div");
+  const navigations = [];
   renderNodeDescription(
     root,
     `[${payload}](@docs/node/almagest/Tun)`,
@@ -919,13 +920,23 @@ test("desktop documentation links stay in the current webview without parsing HT
     () => "./docs/index.html?page=node%2Falmagest%2FTun",
     undefined,
     "_self",
+    undefined,
+    (event, page, href) => {
+      event.preventDefault();
+      navigations.push([page, href]);
+    },
   );
 
   const link = root.querySelector("a");
+  link?.dispatchEvent(new dom.window.MouseEvent("click", { cancelable: true }));
   assert.equal(link?.target, "_self");
   assertNoParsedPayload(root);
   // The generated href is fixed by the trusted resolver, not by Markdown.
   assert.equal(link?.getAttribute("href"), "./docs/index.html?page=node%2Falmagest%2FTun");
+  assert.deepEqual(navigations, [[
+    "node/almagest/Tun",
+    "https://panel.test/docs/index.html?page=node%2Falmagest%2FTun",
+  ]]);
 });
 
 test("documentation links are relative to the current documentation page", () => {
