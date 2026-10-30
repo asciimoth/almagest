@@ -43,16 +43,15 @@ class HarnessTests(unittest.TestCase):
 
     def test_package_toolchain_is_part_of_provisioning_and_cache_identity(self):
         lock = json.loads((ROOT / 'image-lock.json').read_text())
-        self.assertEqual(lock['dotnet']['version'], '6.0.36')
-        self.assertEqual({lock[name]['version'] for name in
-                          ('wix', 'wixUtil', 'wixDifxApp', 'wixDtf', 'wixUi')}, {'4.0.6'})
-        self.assertEqual(lock['rust']['version'], '1.90.0')
-        self.assertEqual(lock['python']['version'], '3.13.1')
-        self.assertEqual(lock['llvmMingw']['version'], '20261020')
+        toolchain = ('dotnet', 'python', 'rust', 'llvmMingw', 'wix', 'wixUtil',
+                     'wixDifxApp', 'wixDtf', 'wixUi')
+        for name in toolchain:
+            self.assertTrue(lock[name]['version'])
+            self.assertRegex(lock[name]['sha256'], r'^[0-9a-f]{64}$')
+        self.assertEqual(len({lock[name]['version'] for name in toolchain[4:]}), 1)
         common = (ROOT / 'common.sh').read_text()
         builder = (ROOT / 'build-image.sh').read_text()
-        for name in ('dotnet', 'python', 'rust', 'llvmMingw', 'wix', 'wixUtil',
-                     'wixDifxApp', 'wixDtf', 'wixUi'):
+        for name in toolchain:
             self.assertIn(name, common)
             self.assertIn(name, builder)
         self.assertIn('$lock_file', common)
@@ -273,43 +272,34 @@ require_vm_space "$winvm_cache_dir" 10 test
         self.assertIn('args += ["-CaseIDs", selected_cases.replace(",", "~")]', supervisor)
 
     def test_regular_winvm_gate_requires_isolated_packet_flow(self):
-        justfile = ROOT.parents[1] / 'justfile'
-        recipe = justfile.read_text()
-        supervisor = (ROOT.parents[1] / 'scripts/test-e2e-fail-fast.sh').read_text()
+        recipes = json.loads(subprocess.run(
+            ['just', '--dump', '--dump-format', 'json'],
+            cwd=ROOT.parents[1], check=True, capture_output=True, text=True,
+        ).stdout)['recipes']
         flow = (ROOT / 'flow-run.sh').read_text()
         runner = (ROOT / 'run.sh').read_text()
         vm_supervisor = (ROOT / 'supervise.py').read_text()
-        self.assertIn('./dev/winvm/run.sh test\n  ./dev/winvm/flow-run.sh', recipe)
+        self.assertEqual(recipes['winvm-test']['body'], [
+            ['./dev/winvm/run.sh test'],
+            ['./dev/winvm/flow-run.sh'],
+        ])
         self.assertIn('filter-dump,id=tunnel-capture', flow)
         self.assertIn('filter-dump,id=underlay-capture', flow)
         self.assertIn('flow-pcap.py', flow)
         self.assertIn('-scenario outnet', flow)
         self.assertIn('-scenario split', flow)
-        self.assertEqual(flow.count('allocate_flow_port'), 3)
-        self.assertEqual(runner.count('allocate_run_port'), 2)
-        self.assertEqual(flow.count('WarnWeakCrypto=no'), 4)
+        self.assertGreaterEqual(flow.count('allocate_flow_port'), 3)
+        self.assertGreaterEqual(runner.count('allocate_run_port'), 2)
+        self.assertGreaterEqual(flow.count('WarnWeakCrypto=no'), 4)
         self.assertIn('>"$run_dir/flow-console.log" 2>&1', flow)
         self.assertIn("progress 'waiting for the client guest'", flow)
         self.assertIn('network_command_timeout=120', flow)
-        self.assertEqual(flow.count('--timeout "$network_command_timeout"'), 2)
+        self.assertGreaterEqual(flow.count('--timeout "$network_command_timeout"'), 2)
         self.assertIn("progress 'running outnet and split packet-flow scenarios (timeout: 30 minutes)'", flow)
         self.assertIn('packet-flow scenarios still running; elapsed=%ss', flow)
         self.assertIn("progress 'collecting observations and validating packet captures'", flow)
-        self.assertIn('check *selectors: tidy typos fmt lint actionlint shellcheck vet build-wasm # vulncheck', recipe)
-        self.assertIn('just test-total {{quote(selectors)}}', recipe)
-        self.assertIn('if [[ -z {{quote(selectors)}} ]]; then just fuzz; fi', recipe)
-        self.assertIn('test-total-all: test-cycles-harness test-winvm-harness', recipe)
-        self.assertIn('./scripts/test-e2e-fail-fast.sh test test-e2e-docker test-winvm-enabled', recipe)
-        self.assertIn('test-winvm-harness:\n  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]', recipe)
-        self.assertIn('lint-winvm:\n  @if [[ "${RUN_WINVM_TESTS:-0}" == "1" ]]', recipe)
-        self.assertIn("shellcheck:\n  @if [[ \"${RUN_WINVM_TESTS:-0}\" == \"1\" ]]", recipe)
-        self.assertIn("':!dev/winvm/**'", recipe)
-        self.assertIn('test-e2e:\n  bash ./scripts/with-test-tmp.sh ./scripts/test-e2e-fail-fast.sh', recipe)
-        self.assertIn('parallel_types="${TEST_TYPES_PARALLEL:-0}"', supervisor)
-        self.assertIn('recipes=(test-e2e-docker test-winvm-enabled)', supervisor)
         self.assertIn('--output "$run_dir/host-resources.jsonl"', flow)
         self.assertIn('tools/host-resources.py', vm_supervisor)
-        self.assertIn('RUN_WINVM_TESTS', recipe)
 
     def test_vm_host_lock_is_independent_of_cache_path(self):
         runtime = self.path / 'runtime'

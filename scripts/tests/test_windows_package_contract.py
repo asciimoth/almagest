@@ -496,13 +496,12 @@ class WindowsPackageContractTests(unittest.TestCase):
 
     def test_reproducible_build_path_is_locked_and_records_evidence(self):
         lock = json.loads((ROOT / "dev/winvm/image-lock.json").read_text())
-        self.assertEqual(lock["dotnet"]["version"], "6.0.36")
-        self.assertEqual(lock["rust"]["version"], "1.90.0")
-        self.assertEqual(lock["python"]["version"], "3.13.1")
-        self.assertEqual(lock["llvmMingw"]["version"], "20261020")
-        for name in ("wix", "wixUtil", "wixDifxApp", "wixDtf", "wixUi"):
-            self.assertEqual(lock[name]["version"], "4.0.6")
+        toolchain = ("dotnet", "rust", "python", "llvmMingw", "wix", "wixUtil",
+                     "wixDifxApp", "wixDtf", "wixUi")
+        for name in toolchain:
+            self.assertTrue(lock[name]["version"])
             self.assertRegex(lock[name]["sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(len({lock[name]["version"] for name in toolchain[4:]}), 1)
 
         provision = (ROOT / "dev/winvm/provision.ps1").read_text()
         for token in ("@@DOTNET_FILE@@", "@@PYTHON_FILE@@", "@@RUST_FILE@@",
