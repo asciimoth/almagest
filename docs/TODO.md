@@ -1,225 +1,272 @@
-Fixes
+# TODO
 
-- [ ] Find out why there is so much workers respawn in daemon logs
-  - Why there is so much dns query workers
-- [ ] Fix work after host sleep wakeup
+## Fixes and performance
 
-Optimisation
+- [ ] Fix operation after the host wakes from sleep
+- [ ] Fix long node titles in the panel
+- [ ] Fix races and overhead in compute (logic) nodes and links
+  - Add scalar/control input and output ports to network nodes
+- [ ] Make timeouts configurable, including HTTP client and SOCKS server
+  handshake timeouts
+- [ ] Review log levels and keep secret values out of logs
+- [ ] Consider a different userspace TCP/IP stack, such as
+  <https://github.com/soypat/lneto>
 
-- [x] Compress builtin admin pamel
-- [ ] Switch to other userspace TCP/IP stack implementation
-  - <https://github.com/soypat/lneto> ?
+## Tests and development
 
-Dev
-
-- [ ] Better web dev setup (linters, etc)
-- [ ] SBOM
+- [ ] Add undo/redo tests for all existing topology tests
+- [ ] Test every network output node with every network input node
+  - Include pairs where each node is wrapped in SOCKS
+- [ ] Generate an SBOM
+- [ ] Rewrite Python and Bash development scripts and helpers in JavaScript or
+  Go
+- [ ] Add complex build tags to include or exclude nodes at compile time
+  - Keep `lib/` useful to third-party projects that need only some nodes
 - [x] Linux packages, source installer, and NixOS service
 - [x] Windows MSI packaging and tests
 
-Docs
+## Documentation
 
 - [ ] Guide for porting to new platforms
+- [ ] Man pages
+- [ ] How-to guides:
+  - Install the almagestd CA in systems and applications
+  - Configure SOCKS proxy use in applications and operating systems
+  - Find a rule for filtering a specific application or process
+  - Script and integrate tools with Almagest
+    - Trigger nodes through the API
+    - Call host commands
+  - Pipe the admin API over SSH
 - [x] Rich docs rendering with graph examples
 - [x] Localized panel and node docs
 - [x] Portable docs and browser demo
 
-Tests
+## Panel and desktop UX
 
-- [ ] Add undo/redo tests analog for all existed topology tests
+- [ ] Add example placeholders to all node menu fields
+- [ ] Add a log viewer to the panel
+  - Search and filter logs
+  - Show logs for a specific node
+- [ ] Add rich visual process/application selection for filtering in DefaultTun
+  and possibly LocalProxy
+  - Show application logos where available
+- [ ] Add a graphical geolocation selector for VPN clients and similar nodes
+- [ ] Let protected config replace the panel's static content for customization
+- [x] Desktop admin client with docs and tray
 
-Graph and network
+## Configuration and runtime
 
+- [ ] Add config templates with an immutable template and mutable config
+- [ ] Omit empty/default values in nodes' private fields
+- [ ] Support live almagestd reload on SIGHUP
+- [ ] Allow configuration of IP address allocation
+- [ ] Fetch host environment data, such as country and local network properties
+  - Allow graph flows to switch according to the current location
+- [x] Hujson config editing in the admin panel
+- [x] Config snapshots with snapshot/rollback in the admin panel
+- [x] Snapshot import/export and packaged examples
+
+## Graph and network nodes
+
+- [ ] Add reverse port mapping, with cycle checks
+- [ ] Add port mapping
+- [ ] Add TCP/UDP/HTTP(S) reverse proxy nodes
+- [ ] Add proxy chaining, including a SOCKS chain node
+  - Accept a list of nested SOCKS client configurations as an object input
+- [ ] Add a bad-network node for jitter and delays
+- [ ] Add a dispatcher node for round-robin and random selection
+- [ ] Add rate-limit nodes for TUN and Network links
+  - Cover outgoing dial and incoming listen/accept connections
+- [ ] Add UDP over TCP
+  - <https://github.com/mullvad/udp-over-tcp>
+  - <https://github.com/jonhoo/udp-over-tcp>
+  - <https://sing-box.sagernet.org/configuration/shared/udp-over-tcp/>
+- [ ] Add a camouflage traffic generator
+  - Record and replay custom traffic patterns
+- [ ] Add router mode with helpers to route all router traffic through Almagest
+- [ ] Investigate <https://github.com/norouter/norouter>
+- [ ] Add shell callbacks for IP/subnet filtering
+- [ ] Add UPnP support?
+- [ ] Add a multiplexer
+  - <https://github.com/xtaci/smux>
+  - <https://github.com/hashicorp/yamux>
 - [x] Graph engine, typed links, and worker tracking
 - [x] Network and TUN routing and firewall nodes
 - [x] HTTP, mock network, and diagnostic nodes
 
-UX/QoL
+## Filtering and block lists
 
-- [ ] Make sure there are example placeholders in all node menus fields
-- [ ] Dedicated admin panel tab for monitoring of all DNS requests in graph
-- [ ] Review log levels
-- [x] Desktop admin client with docs and tray
+- [ ] Create a compact, low-memory database/file format for large FQDN and IP
+  filter or block lists
+  - Support filters in any node, including ad blocking
+  - Support automatic list updates
+  - Consider a custom list format ("свой йоба формат со списками фильтров")
+- [ ] Add a dedicated adblock node for DNS, TUN, and Network links
+  - Existing nodes can implement ad blocking, but a dedicated node would help
+  - [ ] Fetch and update built-in block lists
 
-Configuration
+## DNS
 
-- [ ] Config templates system for setups with immutable template and mutable
-  config
-- [x] Hujson config editing in admin panel
-- [x] Config snapsots system with snapshot/rollback options in admin panel
-- [x] Snapshot import/export and packaged examples
-- [ ] Omitempty/omitdefault in nodes priv fields
-
-Integrations
-
-- [ ] Shelter on android
-  - Shelter profile based routing
-- Distributed firewalls
-  - [ ] crowdsec
-  - [ ] diswall
-
-Adblock
-
-- [ ] File format for compact and cheap storing of large FQDN and Ip lists
-  - Intended for ad blocking but can be used in any node that use hostname/ip
-    filters
-- [ ] Dedicated adblock node for DNS, Tun and Network links
-  - Adblocking can be implemented with already existed nodes but it would be
-    nice to have dedicated node
-  - [ ] Builin block lists fetcher & updater
-
-DNS
-
+- [ ] Add DoH, ODoH, and DoQ
+- [ ] Add mDNS?
+- [ ] Add a DNS hijack node for TUN and Network links
+  - Existing nodes can implement this, but a dedicated node would help
 - [x] meshname
 - [x] DoT
 - [x] DNS graph nodes and cache management
-- [ ] DoH
-- [ ] ODoH
-- [ ] DoQ
-- [ ] mDNS?
-- [ ] Add DNS hijack node
-  - Can be implemented with already existed nodes but it would be nice to have
-    dedicated node
-  - Should work with Tun and Network links
 
-TLS
+## TLS and DPI
 
-- [x] Warnings for hazard certs
+- [ ] Manage server-side TLS configs
+- [ ] Support custom network sniffer patterns as well as built-in patterns
+- [ ] Add a reverse sniffer
+- [ ] Add UDP protocol support to DPI tools
+- [ ] Add more protocol classifiers
+- [ ] Investigate Zapret, GoodbyeDPI, and similar DPI bypass tools
+  - <https://github.com/ValdikSS/GoodbyeDPI>
+  - <https://github.com/SadeghHayeri/GreenTunnel>
+  - <https://github.com/dilluti0n/dpibreak>
+  - <https://github.com/xvzc/spoofdpi>
+- [x] Sniffer
+- [x] Warnings for hazardous certificates
 - [x] Client TLS trust and revocation management
-- [ ] Server side configs management
-- [x] Manually add ru gov certs to hazard certs list
+- [x] Manually add Russian government certificates to the hazardous certificates
+  list
   - Manual sources have higher priority than parsed sources
 
-DPI
+## Secrets and admin API
 
-- [x] Sniffer
-- [ ] Reverse sniffer
-- [ ] UDP protocols support
-- More protocols classifiers
-
-Secrets system
-
-- [x] DB secrets storage
-- Use secrets for
-  - [x] WG priv key
-  - [x] SOCKS client, server, and local proxy passwords (optional)
-
-WireGuard
-
-- [x] AmnesiaWG extension
-- [x] WireGuard nodes and TUN route propagation
-- [ ] Standard configs format import
-- [ ] Something like <https://github.com/alex14fr/wgsig> or
-  <https://github.com/malcolmseyd/natpunch-go>
-- [ ] <https://github.com/ClusterM/wg-obfuscator>
-
-Proxy/VPN protocols support
-
-- Socks
-  - [x] Client
-    - [x] Noproxy string field
-    - [ ] DNS port for tor resolve extension
-  - [x] Server
-- [x] Local proxy with filtering and secret-backed passwords
-- [ ] SSH
-  - [ ] Sshutle like?
-  - [ ] Port passing
-  - [ ] Shell pipe
-- [ ] PPTP
-- [ ] Shadowsocks
-- [ ] Nebula
-  - <https://github.com/slackhq/nebula>
-  - <https://github.com/forgekeep/nebula-mesh>
-- [ ] Tink?
-- [ ] NaiveProxy
-- [ ] Stunnel / [go-tunnel](https://github.com/opencoff/go-tunnel)
-- [ ] iodine?
-- [ ] Cloak?
-- [ ] <https://github.com/jpillora/chisel> ?
-
-Services clients
-
-- [x] tailscale
-- [x] amnesia
-- [ ] netbird?
-- ngrok-like
-  - [ ] Ngrok itself
-  - [ ] <https://github.com/andydunstall/piko>
-
-Tor integration
-
-- [x] Sandboxed Tor driver and onion services
-- [ ] <https://github.com/cretz/bine>
-
-DPI bypass tools
-
-- <https://github.com/ValdikSS/GoodbyeDPI>
-- <https://github.com/SadeghHayeri/GreenTunnel>
-- <https://github.com/dilluti0n/dpibreak>
-- <https://github.com/xvzc/spoofdpi>
-
-Etc
-
-- [ ] Multiplexer
-  - <https://github.com/xtaci/smux>
-  - <https://github.com/hashicorp/yamux>
-- [ ] Reverse port mapping
-  - Extra check for avoiding cycles
-- [ ] Reverse proxy ( TCP/UDP/HTTP(S) )
-- [ ] Node with proxychains like proxy chaining
-- [ ] Bad network node
-  - jitter, delays, etc
-- [ ] Dispatcher node
-  - round robin, random, etc
-- [ ] Rate limit node
-  - Tun and Network versions
-  - for both outgoing (dial) and incoming (listen+accept) connections
-- [ ] UDP over TCP
-  - <https://github.com/mullvad/udp-over-tcp>
-  - <https://github.com/jonhoo/udp-over-tcp>
-  - <https://sing-box.sagernet.org/configuration/shared/udp-over-tcp/>
-- [ ] <https://github.com/norouter/norouter>
-- [ ] Shell callback for IP/Subnet filtering
-- [ ] UpNp?
-
-Sysnet
-
-- [x] Sysnet linux
-- [x] Sysnet windows
-- [x] Windows daemon and named-pipe admin transport
-- [ ] Drop resolved dns caches after changing it's configuration
-- [ ] Rule for allowing direct pings
-- More rules options for pre-filter and routing
-  - [ ] dst addr
-  - [ ] flatpak app?
-  - [ ] docker container?
-  - [ ] VM?
-- [ ] Allow all sysnet features emulation via debug admin api
-
-Admin
-
+- [ ] Add admin API authentication
+  - Consider passwords, access tokens, and FIDO
+  - Support narrow token/key scopes, including TUN node control and secrets
+    access
+  - Configure admin API access keys through protected config, possibly using
+    environment variables
+- [ ] Add an MCP API
 - [x] Admin API, graph panel, and local CLI transport
-- [ ] Authorisation
-  - [ ] Pssword/access tokens/fido(?)
-  - [ ] Narow scoped access tokens for api clients
+- [x] Database-backed secrets storage
+- [x] Use secrets for WireGuard private keys
+- [x] Use secrets for optional SOCKS client, SOCKS server, and local proxy
+  passwords
 
-Cli
+## CLI and access
 
+- [ ] Produce machine-readable JSON by default when output is not a TTY
+- [ ] Add a semi-interactive TUI mode with fzf-like pickers when output is a TTY
+- [ ] Add a CLI subcommand to add a user to the daemon access group
+  - Support sudo or doas
+- [ ] Add a desktop flow to add a user to the daemon access group
+  - Show a popup to ask the user
+  - Implement the privileged action fully in the Rust backend; the JavaScript
+    frontend only asks and sends the response
 - [x] CLI graph, DNS, TLS, secrets, and snapshot commands
-- [ ] Machine-readable json output by default when output is not a tty
-- [ ] Semi-interactive tui mode (fzf-like pickers, etC) when output is a tty
 
-Propagation
+## System network and integrations
 
-- lists
-  - awesome\*
-  - <https://research.torproject.org/tools/>
+- [ ] Drop resolved DNS caches after their configuration changes
+- [ ] Add a rule to allow direct pings
+- [ ] Add more pre-filter and routing rule options
+  - Destination address
+  - Flatpak application?
+  - Docker container?
+  - VM?
+- [ ] Allow emulation of all sysnet features through the debug admin API
+- [ ] Integrate with Docker and VMs for per-container or per-VM routing
+- [ ] Integrate with Qubes OS for per-domain routing
+- [ ] Add Shelter integration on Android for profile-based routing
+- [ ] Integrate with distributed firewalls
+  - CrowdSec
+  - diswall
+- [ ] Investigate upstream integration with formular, configger, and pasta
+- [x] Sysnet Linux
+- [x] Sysnet Windows
+- [x] Windows daemon and named-pipe admin transport
 
-Plugin system?
+## Runtime isolation
 
-- Go plugins vs IPC vs WASM
-
-Runtime isolation
-
+- [ ] Add sandboxed drivers
+  - OpenVPN client?
+  - alfis?
+  - mycelium network?
+- [ ] Consider bubblewrap as an automatic isolation/sandbox fallback
+- [ ] Complete isolation on Windows and ARM Linux
+- [ ] Complete strict sandbox mode on non-amd64 Linux targets
+- [ ] Add performant IPC for isolated processes
+- [ ] Obtain a third-party isolation audit
+- [ ] Enable isolation by default when ready
 - [x] Linux daemon process isolation
 - [x] Cross-platform subprogram sandboxing
+
+## WireGuard and related services
+
+- [ ] Import standard WireGuard config format
+- [ ] Investigate NAT traversal:
+  - <https://github.com/alex14fr/wgsig>
+  - <https://github.com/malcolmseyd/natpunch-go>
+- [ ] Investigate <https://github.com/ClusterM/wg-obfuscator>
+- [ ] Investigate NordVPN's NordLynx protocol
+- [ ] Add TailscaleCtrl peer approval
+- [x] AmnesiaWG extension
+- [x] WireGuard nodes and TUN route propagation
+- [x] Tailscale client
+- [x] Amnesia client
+
+## Proxy, VPN, and overlay protocols
+
+- [ ] Add SSH network proxy support
+  - Investigate sshuttle-like routing
+  - Port forwarding
+  - Shell pipe
+- [ ] Add Shadowsocks
+- [ ] Add Yggdrasil network support
+- [ ] Add VLESS or other protocols used by Amnesia
+  - Investigate extra features such as per-device IDs
+- [ ] Add Reticulum network support?
+- [ ] Add PPTP
+- [ ] Add Nebula
+  - <https://github.com/slackhq/nebula>
+  - <https://github.com/forgekeep/nebula-mesh>
+- [ ] Add Tink?
+- [ ] Add NaiveProxy
+- [ ] Add Stunnel / [go-tunnel](https://github.com/opencoff/go-tunnel)
+- [ ] Add iodine?
+- [ ] Add Cloak?
+- [ ] Investigate <https://github.com/jpillora/chisel>
+- [ ] Investigate Latern
+- [ ] Add a DNS port for the Tor resolve extension in the SOCKS client
+- [x] SOCKS client with a noproxy string field
+- [x] SOCKS server
+- [x] Local proxy with filtering and secret-backed passwords
+
+## Reverse proxy services
+
+- [ ] Add ngrok-like reverse proxy service clients
+  - ngrok
+  - AWS Tunnel reverse proxy?
+  - <https://github.com/andydunstall/piko>
+- [ ] Add a NetBird client?
+
+## Tor integration
+
+- [ ] Investigate <https://github.com/cretz/bine>
+- [x] Sandboxed Tor driver and onion services
+
+## Monitoring and statistics
+
+- [ ] Show real-time DNS requests in a dedicated admin panel tab
+- [ ] Show Network/TUN traffic flows
+- [ ] Show CPU, RAM, and other resource use?
+
+## Protocol research
+
+- [ ] Review features and supported protocols for possible Almagest support:
+  - <https://gost.run/en/>
+  - sing-box
+  - tun2socks
+  - xray / v2ray
+  - <https://github.com/UniformlyR4ndom/tlstap>
+  - nc / sockat
+
+## Plugin system?
+
+- [ ] Compare Go plugins, IPC, lua, and WASM
