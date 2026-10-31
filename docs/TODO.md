@@ -6,7 +6,7 @@ Fixes
 
 Optimisation
 
-- [ ] Compress builtin admin pamel
+- [x] Compress builtin admin pamel
 - [ ] Switch to other userspace TCP/IP stack implementation
   - <https://github.com/soypat/lneto> ?
 
@@ -14,28 +14,40 @@ Dev
 
 - [ ] Better web dev setup (linters, etc)
 - [ ] SBOM
+- [x] Linux packages, source installer, and NixOS service
+- [x] Windows MSI packaging and tests
 
 Docs
 
 - [ ] Guide for porting to new platforms
-- [ ] Rich docs rendering with graph examples
+- [x] Rich docs rendering with graph examples
+- [x] Localized panel and node docs
+- [x] Portable docs and browser demo
 
 Tests
 
 - [ ] Add undo/redo tests analog for all existed topology tests
+
+Graph and network
+
+- [x] Graph engine, typed links, and worker tracking
+- [x] Network and TUN routing and firewall nodes
+- [x] HTTP, mock network, and diagnostic nodes
 
 UX/QoL
 
 - [ ] Make sure there are example placeholders in all node menus fields
 - [ ] Dedicated admin panel tab for monitoring of all DNS requests in graph
 - [ ] Review log levels
+- [x] Desktop admin client with docs and tray
 
 Configuration
 
 - [ ] Config templates system for setups with immutable template and mutable
   config
-- [ ] Hujson config editing in admin panel
-- [ ] Config snapsots system with snapshot/rollback options in admin panel
+- [x] Hujson config editing in admin panel
+- [x] Config snapsots system with snapshot/rollback options in admin panel
+- [x] Snapshot import/export and packaged examples
 - [ ] Omitempty/omitdefault in nodes priv fields
 
 Integrations
@@ -60,6 +72,7 @@ DNS
 
 - [x] meshname
 - [x] DoT
+- [x] DNS graph nodes and cache management
 - [ ] DoH
 - [ ] ODoH
 - [ ] DoQ
@@ -72,6 +85,7 @@ DNS
 TLS
 
 - [x] Warnings for hazard certs
+- [x] Client TLS trust and revocation management
 - [ ] Server side configs management
 - [x] Manually add ru gov certs to hazard certs list
   - Manual sources have higher priority than parsed sources
@@ -93,6 +107,7 @@ Secrets system
 WireGuard
 
 - [x] AmnesiaWG extension
+- [x] WireGuard nodes and TUN route propagation
 - [ ] Standard configs format import
 - [ ] Something like <https://github.com/alex14fr/wgsig> or
   <https://github.com/malcolmseyd/natpunch-go>
@@ -105,6 +120,7 @@ Proxy/VPN protocols support
     - [x] Noproxy string field
     - [ ] DNS port for tor resolve extension
   - [x] Server
+- [x] Local proxy with filtering and secret-backed passwords
 - [ ] SSH
   - [ ] Sshutle like?
   - [ ] Port passing
@@ -132,6 +148,7 @@ Services clients
 
 Tor integration
 
+- [x] Sandboxed Tor driver and onion services
 - [ ] <https://github.com/cretz/bine>
 
 DPI bypass tools
@@ -168,7 +185,8 @@ Etc
 Sysnet
 
 - [x] Sysnet linux
-- [ ] Sysnet windows
+- [x] Sysnet windows
+- [x] Windows daemon and named-pipe admin transport
 - [ ] Drop resolved dns caches after changing it's configuration
 - [ ] Rule for allowing direct pings
 - More rules options for pre-filter and routing
@@ -180,12 +198,14 @@ Sysnet
 
 Admin
 
+- [x] Admin API, graph panel, and local CLI transport
 - [ ] Authorisation
   - [ ] Pssword/access tokens/fido(?)
   - [ ] Narow scoped access tokens for api clients
 
 Cli
 
+- [x] CLI graph, DNS, TLS, secrets, and snapshot commands
 - [ ] Machine-readable json output by default when output is not a tty
 - [ ] Semi-interactive tui mode (fzf-like pickers, etC) when output is a tty
 
@@ -198,3 +218,8 @@ Propagation
 Plugin system?
 
 - Go plugins vs IPC vs WASM
+
+Runtime isolation
+
+- [x] Linux daemon process isolation
+- [x] Cross-platform subprogram sandboxing
