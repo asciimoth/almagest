@@ -705,7 +705,8 @@ class Supervisor:
                 validation.append(self.args.mode)
         if self.command(validation, 15, log="validation.log"):
             raise Failure("artifact-validation")
-        if self.args.mode in ("test", "ordinary", "privileged"):
+        if (self.args.mode in ("test", "ordinary", "privileged") and
+                not os.environ.get("WINVM_TEST_CASES")):
             coverage_dir = os.environ.get(
                 "WINVM_COVERAGE_DIR", str(ROOT.parents[1] / "coverage/winvm"))
             if self.command(["python3", str(ROOT / "combine-coverage.py"),

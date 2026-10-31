@@ -143,7 +143,7 @@ archives:
         dst: lib/sysusers.d/almagest.conf
       - src: packaging/linux/almagest.tmpfiles
         dst: lib/tmpfiles.d/almagest.conf
-      - src: build/packaging/locales/**/*
+      - src: build/packaging/locales
         dst: share/almagest/locales
       - src: examples/**/*
         dst: share/almagest/examples
@@ -176,7 +176,7 @@ archives:
         dst: lib/sysusers.d/almagest.conf
       - src: packaging/linux/almagest.tmpfiles
         dst: lib/tmpfiles.d/almagest.conf
-      - src: build/packaging/locales/**/*
+      - src: build/packaging/locales
         dst: share/almagest/locales
       - src: examples/**/*
         dst: share/almagest/examples

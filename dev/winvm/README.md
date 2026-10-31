@@ -26,9 +26,9 @@ GiB guest disk is a virtual capacity: qcow2 files grow with written blocks. The
 retained overlays can require more space. Test artifacts live under the
 repository, which can use a different filesystem from the image cache. Install
 QEMU, OVMF, xorriso, OpenSSH client tools, Python 3, jq, curl, Git, tar, flock,
-coreutils, Go 1.26.10 or newer, Node.js, npm, ShellCheck, Ruff, PowerShell 7, and
-PSScriptAnalyzer. The Nix development shell supplies the lint and VM packages on
-x86_64 Linux. It also sets `MULLVAD_SPLIT_TUNNEL_DRIVER_DIR` and
+coreutils, Go 1.26.10 or newer, Node.js, npm, ShellCheck, Ruff, PowerShell 7,
+and PSScriptAnalyzer. The Nix development shell supplies the lint and VM
+packages on x86_64 Linux. It also sets `MULLVAD_SPLIT_TUNNEL_DRIVER_DIR` and
 `SYSNET_WINDOWS_WINTUN_DIR` to the pinned runtime dependency trees. The winvm
 tools use these paths directly. Set `WINVM_OVMF_CODE` and `WINVM_OVMF_VARS` if
 firmware is not in one of the paths listed in `common.sh`. Use a matching

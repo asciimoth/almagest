@@ -209,7 +209,7 @@
           "kind": "go",
           "module": "bin",
           "coverage": false,
-          "arguments": ["./internal/isolation/windowsprofile", "-run", "^$", "-fuzz", "^FuzzRequestLanes$", "-fuzztime=20s", "-parallel=2"],
+          "arguments": ["./internal/isolation/windowsprofile", "-run", "^$", "-fuzz", "^FuzzRequestLanes$", "-fuzztime=300000x", "-parallel=2"],
           "eventFile": "isolation-windows-lane-fuzz.jsonl",
           "requiredTests": [
             "github.com/asciimoth/almagest/bin/internal/isolation/windowsprofile::FuzzRequestLanes"

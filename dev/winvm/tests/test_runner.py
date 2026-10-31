@@ -113,10 +113,11 @@ elif name == 'ssh':
                     data = json.dumps(value).encode()
                     entry = tarfile.TarInfo(f'artifacts/{suite}/suite.json'); entry.size = len(data)
                     archive.addfile(entry, io.BytesIO(data))
-                    coverage = b'mode: atomic\ngithub.com/asciimoth/almagest/lib/example.go:1.1,2.2 1 1\n'
-                    entry = tarfile.TarInfo(f'artifacts/{suite}/coverage/example.coverage.out')
-                    entry.size = len(coverage)
-                    archive.addfile(entry, io.BytesIO(coverage))
+                    if not os.environ.get('WINVM_TEST_CASES'):
+                        coverage = b'mode: atomic\ngithub.com/asciimoth/almagest/lib/example.go:1.1,2.2 1 1\n'
+                        entry = tarfile.TarInfo(f'artifacts/{suite}/coverage/example.coverage.out')
+                        entry.size = len(coverage)
+                        archive.addfile(entry, io.BytesIO(coverage))
             else:
                 data = json.dumps({'suite':'harness-smoke','outcome':'passed','testExecution':'not-run'}).encode()
                 entry = tarfile.TarInfo('artifacts/smoke.json'); entry.size = len(data)
@@ -186,6 +187,8 @@ stop_and_reap_pid() { kill -TERM "$1" 2>/dev/null || true; wait "$1" 2>/dev/null
                            RUN_KIND=run_kind, RUN_MODE=mode,
                            WINVM_CACHE_DIR=str(root / 'cache'), WINVM_ENV_FILE=str(root / 'no-env'),
                            PATH=str(fakebin) + ':' + os.environ['PATH'])
+                if mode == 'ordinary':
+                    env['WINVM_TEST_CASES'] = 'm32::windows-lane-fuzz'
                 command = [scripts / 'run.sh'] + (['resource'] if mode == 'resource' else [mode] if mode in ('ordinary', 'privileged') else ['test'] if native else [])
                 if mode == 'prepared':
                     prepared = root / 'prepared'

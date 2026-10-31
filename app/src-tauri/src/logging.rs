@@ -63,9 +63,7 @@ impl LogFile {
 }
 
 pub(crate) fn initialize() -> io::Result<PathBuf> {
-    let local = std::env::var_os("LOCALAPPDATA")
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "LOCALAPPDATA is not available"))?;
-    let directory = PathBuf::from(local).join("Almagest").join("logs");
+    let directory = log_directory()?;
     fs::create_dir_all(&directory)?;
     let path = directory.join(LOG_NAME);
     let (log, rotation_error) = LogFile::open(path.clone())?;
@@ -79,6 +77,27 @@ pub(crate) fn initialize() -> io::Result<PathBuf> {
         write(format_args!("rotate desktop app log: {error}"));
     }
     Ok(path)
+}
+
+#[cfg(windows)]
+fn log_directory() -> io::Result<PathBuf> {
+    let local = std::env::var_os("LOCALAPPDATA")
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "LOCALAPPDATA is not available"))?;
+    Ok(PathBuf::from(local).join("Almagest").join("logs"))
+}
+
+#[cfg(not(windows))]
+fn log_directory() -> io::Result<PathBuf> {
+    if let Some(state) = std::env::var_os("XDG_STATE_HOME") {
+        return Ok(PathBuf::from(state).join("almagest").join("logs"));
+    }
+    let home = std::env::var_os("HOME")
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not available"))?;
+    Ok(PathBuf::from(home)
+        .join(".local")
+        .join("state")
+        .join("almagest")
+        .join("logs"))
 }
 
 pub(crate) fn write(message: fmt::Arguments<'_>) {

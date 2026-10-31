@@ -194,11 +194,12 @@ func TestConfigAutosaverBuiltInNodeSnapshotsAreDeterministic(t *testing.T) {
 }
 
 type configAutosaveTestWriter struct {
-	mu         sync.Mutex
-	writes     [][]byte
-	failWrites int
-	attempts   int
-	notify     chan struct{}
+	mu                 sync.Mutex
+	writes             [][]byte
+	failWrites         int
+	attempts           int
+	notify             chan struct{}
+	releaseFailedWrite <-chan struct{}
 }
 
 func (w *configAutosaveTestWriter) WriteConfig(data []byte) error {
@@ -208,6 +209,9 @@ func (w *configAutosaveTestWriter) WriteConfig(data []byte) error {
 		w.failWrites--
 		w.mu.Unlock()
 		w.notifyAttempt()
+		if w.releaseFailedWrite != nil {
+			<-w.releaseFailedWrite
+		}
 		return errors.New("test config write failure")
 	}
 	w.writes = append(w.writes, append([]byte(nil), data...))
@@ -490,7 +494,13 @@ func TestNodeConfigAutosaveTriggerAcknowledgesOnlySuccessfulDurableWrite(t *test
 	}
 	t.Cleanup(func() { _ = engine.Close() })
 
-	writer := &configAutosaveTestWriter{failWrites: 1, notify: make(chan struct{}, 4)}
+	releaseFailedWrite := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseFailedWrite) }) }
+	defer release()
+	writer := &configAutosaveTestWriter{
+		failWrites: 1, notify: make(chan struct{}, 4), releaseFailedWrite: releaseFailedWrite,
+	}
 	saver := newConfigAutosaver(engine, conf, newTestConfigPersistence(t, conf, writer), logging.NewDebugLogFactory(8).EngineLogger(), time.Millisecond)
 	trigger := newNodeConfigAutosaveTrigger()
 	result := trigger.Notify(1)
@@ -512,6 +522,7 @@ func TestNodeConfigAutosaveTriggerAcknowledgesOnlySuccessfulDurableWrite(t *test
 		t.Fatalf("failed write was acknowledged: %v", err)
 	default:
 	}
+	release()
 	select {
 	case <-writer.notify:
 	case <-time.After(time.Second):

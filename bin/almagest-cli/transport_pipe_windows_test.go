@@ -34,27 +34,43 @@ func TestDialLocalUserPipeReconnectsAndVerifiesOwner(t *testing.T) {
 	}
 	defer listener.Close() //nolint:errcheck
 
-	accepted := make(chan error, 2)
 	for range 2 {
+		type acceptResult struct {
+			conn net.Conn
+			err  error
+		}
+		accepted := make(chan acceptResult, 1)
 		go func() {
 			conn, err := listener.Accept()
-			if err == nil {
-				err = conn.Close()
-			}
-			accepted <- err
+			accepted <- acceptResult{conn: conn, err: err}
 		}()
-		conn, err := dialLocalPipe(context.Background(), endpoint{
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		conn, err := dialLocalPipe(ctx, endpoint{
 			kind:      endpointPipe,
 			pipeTrust: pipeTrustUser,
 			pipeName:  name,
 		})
+		cancel()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := conn.Close(); err != nil {
+		var serverConn net.Conn
+		select {
+		case result := <-accepted:
+			if result.err != nil {
+				_ = conn.Close()
+				t.Fatal(result.err)
+			}
+			serverConn = result.conn
+		case <-time.After(5 * time.Second):
+			_ = conn.Close()
+			t.Fatal("pipe listener did not accept connection")
+		}
+		if err := serverConn.Close(); err != nil {
+			_ = conn.Close()
 			t.Fatal(err)
 		}
-		if err := <-accepted; err != nil {
+		if err := conn.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}

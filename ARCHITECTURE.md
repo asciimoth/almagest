@@ -82,6 +82,21 @@ transports.
 
 `bin/` imports `lib` through `bin/go.mod`. Keep daemon-only dependencies there.
 
+## Nix Dependency Hashes
+
+`flake.nix` pins the fetched dependency trees for Nix packaging:
+
+- `almagest.vendorHash` covers the Go dependencies used by the `bin/` module,
+  including local-module dependencies from `lib/`.
+- `almagestApp.cargoHash` covers the Rust dependencies in `app/src-tauri/`.
+
+Update the applicable hash when a change to `go.mod`, `go.sum`, `Cargo.toml`,
+`Cargo.lock`, or a related local module changes that dependency tree. Do not
+update these hashes for source-only changes. Run `just test-packaging-nix`; if
+Nix reports a fixed-output hash mismatch, replace the applicable hash with the
+reported `got` value. One mismatch can hide another, so rerun the command until
+the complete packaging gate passes.
+
 ## Test Harness
 
 With no selectors, `just check` runs the static checks, lints, the complete test

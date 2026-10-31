@@ -260,6 +260,15 @@ require_vm_space "$winvm_cache_dir" 10 test
                 if case.get('coverage') is False:
                     no_coverage.append(case['id'])
         self.assertEqual(no_coverage, ['m32::windows-lane-fuzz'])
+        lane_fuzz = next(
+            case
+            for suite in manifest['suites']
+            for case in suite['cases']
+            if case.get('id') == 'm32::windows-lane-fuzz'
+        )
+        self.assertIn('-fuzztime=300000x', lane_fuzz['arguments'])
+        self.assertFalse(any(argument.endswith('s') and argument.startswith('-fuzztime=')
+                             for argument in lane_fuzz['arguments']))
 
         supervisor = (ROOT / 'supervise.py').read_text()
         config = json.loads((ROOT / 'config.json').read_text())['machine']

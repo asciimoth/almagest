@@ -155,7 +155,7 @@
         src = ./.;
         modRoot = "bin";
         env.CGO_ENABLED = 0;
-        vendorHash = "sha256-eOsim3MLHRWKsWnESeTM0DhastP/7vcXiKUYR0lKeU8=";
+        vendorHash = "sha256-VKp4ceAdsWHektPzIbNibN+LDTBcQg7f8qFip8EYJMc=";
         subPackages = [
           "almagestd"
           "almagest-cli"
@@ -228,7 +228,7 @@
         src = cleanProjectSource;
         cargoRoot = "app/src-tauri";
         buildAndTestSubdir = "app/src-tauri";
-        cargoHash = "sha256-gRhf45GfhEtSJ2H6HcNo4ECosXjKy52swox5cILurkI=";
+        cargoHash = "sha256-NTLUknPahM93/H63CZeJqGqUeE+B4qUJPRPKn+9bSoo=";
         nativeBuildInputs = [
           pkgs.pkg-config
           pkgs.wrapGAppsHook3
