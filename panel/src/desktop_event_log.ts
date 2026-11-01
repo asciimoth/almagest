@@ -1,5 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
-
 export type DesktopEvent =
   | "docs_frame_created"
   | "docs_frame_loaded"
@@ -7,9 +5,13 @@ export type DesktopEvent =
   | "docs_frame_reconnected"
   | "docs_frame_timeout";
 
-/** Write one fixed diagnostic event to the native desktop application log. */
+let desktopEventLogger: ((event: DesktopEvent) => void) | null = null;
+
+export function configureDesktopEventLogger(logger: (event: DesktopEvent) => void): void {
+  desktopEventLogger = logger;
+}
+
+/** Write one fixed diagnostic event when the native logger is available. */
 export function logDesktopEvent(event: DesktopEvent): void {
-  void invoke("log_desktop_event", { event }).catch((error: unknown) => {
-    console.warn(`[almagest-desktop] could not log ${event}`, error);
-  });
+  desktopEventLogger?.(event);
 }

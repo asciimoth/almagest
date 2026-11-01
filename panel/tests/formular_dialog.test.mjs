@@ -95,5 +95,5 @@ test("published panel versions its application module", async () => {
     new URL("../../bin/almagestd/static/index.html.gz", import.meta.url),
   );
   const index = (await import("node:zlib")).gunzipSync(compressed).toString("utf8");
-  assert.match(index, /\.\/public\/build\/app\.js\?v=[a-f0-9]{16}/);
+  assert.match(index, /\.\/public\/build\/admin\.js\?v=[a-f0-9]{16}/);
 });

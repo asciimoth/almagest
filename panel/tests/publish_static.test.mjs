@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, readFile, stat } from "node:fs/promises";
+import { access, readFile, readdir, stat } from "node:fs/promises";
 import { test } from "node:test";
 import { gunzipSync } from "node:zlib";
 import { JSDOM } from "jsdom";
@@ -51,7 +51,7 @@ test("daemon publication retains the existing panel controls and uses the daemon
     [...publishedDocument.querySelectorAll("[id]")].map((element) => element.id).sort(),
     [...sourceDocument.querySelectorAll("[id]")].map((element) => element.id).sort(),
   );
-  assert.match(publishedDocument.querySelector("script[type='module']")?.getAttribute("src") ?? "", /^\.\/public\/build\/app\.js\?v=[a-f0-9]{16}$/);
+  assert.match(publishedDocument.querySelector("script[type='module']")?.getAttribute("src") ?? "", /^\.\/public\/build\/admin\.js\?v=[a-f0-9]{16}$/);
   assert.equal(publishedDocument.querySelector("meta[name='almagest-site-base']"), null);
   assert.equal(publishedDocument.querySelector(".header-logo-link")?.href, "http://127.0.0.1:8090/");
 });
@@ -67,5 +67,27 @@ test("daemon publication retains path-based documentation and root assets", asyn
   assert.equal(document.querySelector("link[href='/style.css']")?.href, "http://127.0.0.1:8090/style.css");
   assert.equal(document.querySelector("script[src='/vendor/litegraph/litegraph.js']")?.src,
     "http://127.0.0.1:8090/vendor/litegraph/litegraph.js");
-  assert.match(document.querySelector("script[type='module']")?.src ?? "", /^http:\/\/127\.0\.0\.1:8090\/public\/build\/docs\.js\?v=[a-f0-9]{16}$/);
+  assert.match(document.querySelector("script[type='module']")?.src ?? "", /^http:\/\/127\.0\.0\.1:8090\/public\/build\/daemon_docs\.js\?v=[a-f0-9]{16}$/);
+});
+
+test("daemon publication selects daemon adapters and excludes other entry points", async () => {
+  const files = await readdir(published("public/build/"));
+  for (const name of ["admin.js.gz", "daemon_docs.js.gz", "app.js.gz", "docs.js.gz",
+    "websocket_admin_transport.js.gz", "http_docs_client.js.gz"]) {
+    assert.ok(files.includes(name), name);
+  }
+  for (const name of ["desktop.js.gz", "desktop_admin_transport.js.gz", "desktop_docs.js.gz",
+    "desktop_docs_client.js.gz", "webdemo.js.gz", "wasm_transport.js.gz", "static_docs.js.gz"]) {
+    assert.equal(files.includes(name), false, name);
+  }
+  const admin = await readFile(source("public/build/admin.js"), "utf8");
+  const docs = await readFile(source("public/build/daemon_docs.js"), "utf8");
+  assert.match(admin, /new WebSocketAdminTransport\(\)/);
+  assert.match(docs, /new HTTPDocsClient\(\)/);
+  assert.match(admin, /await import\("\.\/app\.js"\)/);
+  assert.match(docs, /await import\("\.\/docs\.js"\)/);
+  for (const name of files.filter((name) => name.endsWith(".js.gz"))) {
+    const source = gunzipSync(await readFile(published(`public/build/${name}`))).toString("utf8");
+    assert.doesNotMatch(source, /@tauri-apps\/|almagest\.wasm|almagest\.webdemo/, name);
+  }
 });

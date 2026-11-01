@@ -566,15 +566,15 @@ window.addEventListener("popstate", () => {
   else if (id) void openPage(id, false);
 });
 
-window.addEventListener("pagehide", saveCurrentDesktopDocsScroll);
-window.addEventListener("pageshow", (event) => {
-  if (!desktopMode || !event.persisted) return;
+if (desktopMode) window.addEventListener("pagehide", saveCurrentDesktopDocsScroll);
+if (desktopMode) window.addEventListener("pageshow", (event) => {
+  if (!event.persisted) return;
   const page = rememberedDesktopDocsPage(window.localStorage);
   if (page && page !== currentPage) void openPage(page, true);
 });
 
-window.addEventListener("message", (event) => {
-  if (!embeddedDesktop || event.origin !== window.location.origin || event.source !== window.parent) return;
+if (embeddedDesktop) window.addEventListener("message", (event) => {
+  if (event.origin !== window.location.origin || event.source !== window.parent) return;
   const value: unknown = event.data;
   if (!value || typeof value !== "object" || Array.isArray(value)) return;
   const message = value as Record<string, unknown>;

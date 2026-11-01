@@ -74,7 +74,7 @@ const appHTML = sourceHTML
   // Warm the other page's module graph. Navigation can then reuse the parsed
   // HTTP cache when the webview does not retain a back-forward entry.
   .replace("</head>", `  <link rel="modulepreload" href="./public/build/desktop-docs.js?v=${docsVersion}">\n  </head>`)
-  .replace("./public/build/app.js", `./public/build/desktop.js?v=${version}`);
+  .replace("./public/build/admin.js", `./public/build/desktop.js?v=${version}`);
 await writeFile(new URL("index.html", target), (await minifyHTML(appHTML, {
   collapseWhitespace: true,
   conservativeCollapse: true,
@@ -93,7 +93,7 @@ const docsHTML = sourceDocsHTML
   .replaceAll('src="/logo.svg"', 'src="../logo.svg"')
   .replace('href="/"', 'href="../index.html"')
   .replace("</head>", `  <link rel="modulepreload" href="../public/build/desktop.js?v=${version}">\n  </head>`)
-  .replace('src="/public/build/docs.js"', `src="../public/build/desktop-docs.js?v=${docsVersion}"`);
+  .replace('src="/public/build/daemon_docs.js"', `src="../public/build/desktop-docs.js?v=${docsVersion}"`);
 await writeFile(new URL("docs/index.html", target), (await minifyHTML(docsHTML, {
   collapseWhitespace: true,
   conservativeCollapse: true,

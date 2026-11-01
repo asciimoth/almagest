@@ -79,3 +79,12 @@ test("desktop publication permits only the restricted Tauri IPC surface", async 
   ]);
   assert.equal(capability.permissions.some((permission) => String(permission).includes("opener")), false);
 });
+
+test("desktop bundle excludes daemon and web demo adapters", async () => {
+  for (const name of ["desktop.js", "desktop-docs.js"]) {
+    const source = await readFile(published(`public/build/${name}`), "utf8");
+    assert.doesNotMatch(source, /WebSocket|HTTPDocsClient|almagest\.wasm|almagest\.webdemo/, name);
+  }
+  const app = await readFile(published("public/build/desktop.js"), "utf8");
+  assert.match(app, /log_desktop_event/);
+});

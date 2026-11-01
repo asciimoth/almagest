@@ -13,7 +13,12 @@ function installDOM(url, base = "") {
 }
 
 installDOM("http://127.0.0.1:8090/docs/");
-const { HTTPDocsClient, siteBaseURL } = await import("../public/build/docs_client.js");
+const { docsClient, siteBaseURL } = await import("../public/build/docs_client.js");
+const { HTTPDocsClient } = await import("../public/build/http_docs_client.js");
+
+test("shared documentation client has no daemon fallback", () => {
+  assert.throws(() => docsClient(), /Documentation client was not configured/);
+});
 
 afterEach(() => {
   globalThis.fetch = originalFetch;

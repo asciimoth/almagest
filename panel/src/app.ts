@@ -7196,7 +7196,7 @@ function boot(): void {
   window.name = adminPanelWindowName(window.location.origin);
   resetAPIReconnectBackoff();
   wireUI();
-  installDesktopDocsBridge();
+  if (currentPanelMode === "desktop") installDesktopDocsBridge();
   initGraph();
   installTestHooks();
   void startAPIConnection();

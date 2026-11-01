@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { constants, gzip as gzipCallback } from "node:zlib";
 import { transform } from "esbuild";
 import { minify as minifyHTML } from "html-minifier-terser";
+import { copyEntryModules } from "./copy-entry-modules.mjs";
 
 const target = new URL("../../bin/almagestd/static/", import.meta.url);
 const gzip = promisify(gzipCallback);
@@ -55,17 +56,19 @@ await cp(new URL("../../logo-light.svg", import.meta.url), new URL("logo.svg", t
 await cp(new URL("../../logo-light.svg", import.meta.url), new URL("favicon.svg", target));
 await cp(new URL("../LUCIDE_LICENSE.txt", import.meta.url), new URL("LUCIDE_LICENSE.txt", target));
 await cp(new URL("../style.css", import.meta.url), new URL("style.css", target));
-await cp(new URL("../public", import.meta.url), new URL("public", target), { recursive: true });
+await copyEntryModules(["admin.js", "daemon_docs.js"], target);
 await cp(new URL("../vendor", import.meta.url), new URL("vendor", target), { recursive: true });
 await optimize(target);
 
+const admin = await readFile(new URL("public/build/admin.js", target));
 const app = await readFile(new URL("public/build/app.js", target));
+const daemonDocs = await readFile(new URL("public/build/daemon_docs.js", target));
 const docs = await readFile(new URL("public/build/docs.js", target));
 const formularMenu = await readFile(new URL("vendor/formular-menu/formular-menu.js", target));
-const version = createHash("sha256").update(app).update(docs).update(formularMenu).digest("hex").slice(0, 16);
+const version = createHash("sha256").update(admin).update(app).update(daemonDocs).update(docs).update(formularMenu).digest("hex").slice(0, 16);
 const indexURL = new URL("index.html", target);
 const index = await readFile(new URL("../index.html", import.meta.url), "utf8");
-const versionedIndex = index.replace("./public/build/app.js", `./public/build/app.js?v=${version}`);
+const versionedIndex = index.replace("./public/build/admin.js", `./public/build/admin.js?v=${version}`);
 await writeFile(indexURL, await minifyHTML(versionedIndex, {
   collapseWhitespace: true,
   conservativeCollapse: true,
@@ -73,7 +76,7 @@ await writeFile(indexURL, await minifyHTML(versionedIndex, {
 }));
 await mkdir(new URL("docs/", target), { recursive: true });
 const docsIndex = (await readFile(new URL("../docs.html", import.meta.url), "utf8"))
-  .replace("/public/build/docs.js", `/public/build/docs.js?v=${version}`);
+  .replace("/public/build/daemon_docs.js", `/public/build/daemon_docs.js?v=${version}`);
 await writeFile(new URL("docs/index.html", target), await minifyHTML(docsIndex, {
   collapseWhitespace: true,
   conservativeCollapse: true,

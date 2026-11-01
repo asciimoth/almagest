@@ -165,6 +165,28 @@ test("web demo output is optimized and contains no TypeScript declarations", asy
   assert.doesNotMatch(html, /\n\s{2,}</);
 });
 
+test("published web demo has no native imports or local file URLs", async () => {
+  const files = await readdir(output("public/build/"));
+  for (const name of ["admin.js", "daemon_docs.js", "websocket_admin_transport.js", "http_docs_client.js",
+    "desktop.js", "desktop_admin_transport.js", "desktop_docs.js", "desktop_docs_client.js"]) {
+    assert.equal(files.includes(name), false, name);
+  }
+  for (const name of ["webdemo.js", "static_docs.js", "wasm_transport.js"]) {
+    assert.ok(files.includes(name), name);
+  }
+  assert.equal(files.some((name) => name.startsWith("desktop") && name !== "desktop_event_log.js" && name !== "desktop_route_memory.js"), false);
+  for (const name of files.filter((name) => name.endsWith(".js"))) {
+    const source = await readFile(output(`public/build/${name}`), "utf8");
+    assert.doesNotMatch(source, /@tauri-apps\/|file:\/\//, name);
+  }
+  const demoEntry = await readFile(new URL("../public/build/webdemo.js", import.meta.url), "utf8");
+  const docsEntry = await readFile(new URL("../public/build/static_docs.js", import.meta.url), "utf8");
+  assert.match(demoEntry, /new WASMAdminTransport\(/);
+  assert.match(demoEntry, /await import\("\.\/app\.js"\)/);
+  assert.match(docsEntry, /new StaticDocsClient\(/);
+  assert.match(docsEntry, /await import\("\.\/docs\.js"\)/);
+});
+
 test("web demo contains a valid Go Wasm backend and its matching runtime", async () => {
   const wasm = await readFile(output("almagest.wasm"));
   assert.deepEqual([...wasm.subarray(0, 4)], [0x00, 0x61, 0x73, 0x6d]);

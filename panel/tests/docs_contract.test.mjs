@@ -7,6 +7,7 @@ const docsHTML = await readFile(new URL("../docs.html", import.meta.url), "utf8"
 const panelHTML = await readFile(new URL("../index.html", import.meta.url), "utf8");
 const docsSource = await readFile(new URL("../src/docs.ts", import.meta.url), "utf8");
 const docsClientSource = await readFile(new URL("../src/docs_client.ts", import.meta.url), "utf8");
+const httpDocsClientSource = await readFile(new URL("../src/http_docs_client.ts", import.meta.url), "utf8");
 const panelStyle = await readFile(new URL("../style.css", import.meta.url), "utf8");
 const appSource = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
 const siteNavigationSource = await readFile(new URL("../src/site_navigation.ts", import.meta.url), "utf8");
@@ -26,7 +27,7 @@ test("documentation uses a separate page and the shared panel stylesheet", () =>
   assert.equal(document.querySelector("link[href='/style.css']")?.getAttribute("href"), "/style.css");
   assert.equal(document.querySelector("link[href='/vendor/litegraph/litegraph.css']") !== null, true);
   assert.equal(document.querySelector("script[src='/vendor/litegraph/litegraph.js']") !== null, true);
-  assert.equal(document.querySelector("script[type='module']")?.getAttribute("src"), "/public/build/docs.js");
+  assert.equal(document.querySelector("script[type='module']")?.getAttribute("src"), "/public/build/daemon_docs.js");
   assert.equal(document.querySelector("meta[name='almagest-site-base']")?.getAttribute("content"), "/");
 });
 
@@ -39,7 +40,7 @@ test("daemon documentation assets resolve from nested page URLs", () => {
   assert.equal(document.querySelector("script[src='/vendor/litegraph/litegraph.js']")?.src,
     "http://127.0.0.1:8090/vendor/litegraph/litegraph.js");
   assert.equal(document.querySelector(".header-logo")?.src, "http://127.0.0.1:8090/logo.svg");
-  assert.equal(document.querySelector("script[type='module']")?.src, "http://127.0.0.1:8090/public/build/docs.js");
+  assert.equal(document.querySelector("script[type='module']")?.src, "http://127.0.0.1:8090/public/build/daemon_docs.js");
 });
 
 test("panel and documentation logos link to their site roots", () => {
@@ -109,14 +110,14 @@ test("documentation loads localized pages over HTTP without a WebSocket", () => 
   assert.match(panelStyle, /\.docs-node-warning\s*\{/);
   assert.doesNotMatch(docsSource, /innerHTML/);
   assert.match(docsSource, /pageAvailability\.get\(id\) !== false \|\| docsClient\(\)\.previewsUnavailableNodes/);
-  assert.match(docsClientSource, /readonly previewsUnavailableNodes = false/);
+  assert.match(httpDocsClientSource, /readonly previewsUnavailableNodes = false/);
   assert.match(docsSource, /console\.error\(`Could not load node preview/);
   assert.match(docsSource, /writeLocaleCookie/);
   assert.match(docsSource, /docsClient\(\)\.pageFromLocation\(window\.location\)/);
   assert.match(docsClientSource, /new URL\(configured \|\| "\.\.\/\.\.\/", import\.meta\.url\)/);
-  assert.match(docsClientSource, /new URL\(`api\/docs\/\$\{path\}`, siteBaseURL\(\)\)/);
-  assert.match(docsClientSource, /const prefix = "\/docs\/"/);
-  assert.match(docsClientSource, /new URL\("\/docs\/", window\.location\.href\)/);
+  assert.match(httpDocsClientSource, /new URL\(`api\/docs\/\$\{path\}`, siteBaseURL\(\)\)/);
+  assert.match(httpDocsClientSource, /const prefix = "\/docs\/"/);
+  assert.match(httpDocsClientSource, /new URL\("\/docs\/", window\.location\.href\)/);
   assert.match(docsSource, /almagest\.docs\.topic-folds\.v1/);
   assert.match(docsSource, /function setNavigationOpen\(open: boolean\)/);
   assert.match(docsSource, /event\.key === "Escape"/);
@@ -125,7 +126,7 @@ test("documentation loads localized pages over HTTP without a WebSocket", () => 
   assert.match(docsSource, /treeElement\.addEventListener\("wheel"/);
   assert.match(docsSource, /handoffBoundaryScroll\(treeElement, pageElement, deltaY\)/);
   assert.match(docsSource, /defaultPageID\(tree\.topics\)/);
-  assert.doesNotMatch(docsSource + docsClientSource, /WebSocket/);
+  assert.doesNotMatch(docsSource + docsClientSource + httpDocsClientSource, /WebSocket/);
 });
 
 test("documentation swaps a staged page only after its content and node preview are ready", () => {

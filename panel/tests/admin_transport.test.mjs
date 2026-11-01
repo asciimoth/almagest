@@ -5,12 +5,14 @@ import { JSDOM } from "jsdom";
 
 const app = await readFile(new URL("../src/app.ts", import.meta.url), "utf8");
 const transport = await readFile(new URL("../src/admin_transport.ts", import.meta.url), "utf8");
+const websocketTransport = await readFile(new URL("../src/websocket_admin_transport.ts", import.meta.url), "utf8");
 const webdemo = await readFile(new URL("../src/webdemo.ts", import.meta.url), "utf8");
 const wasmTransport = await readFile(new URL("../src/wasm_transport.ts", import.meta.url), "utf8");
 
-const { ADMIN_API_CONNECT_TIMEOUT_MS, WebSocketAdminTransport, configureAdminTransport, createAdminTransport } = await import(
+const { configureAdminTransport, createAdminTransport } = await import(
   "../public/build/admin_transport.js"
 );
+const { ADMIN_API_CONNECT_TIMEOUT_MS, WebSocketAdminTransport } = await import("../public/build/websocket_admin_transport.js");
 const { loadWebDemoColorMap, WASMAdminTransport } = await import("../public/build/wasm_transport.js");
 
 class MockWebSocket extends EventTarget {
@@ -64,13 +66,17 @@ test("the panel uses a configurable admin API transport", () => {
   assert.match(app, /createAdminTransport\(\)/);
   assert.doesNotMatch(app, /new WebSocket/);
   assert.match(transport, /export interface AdminTransport/);
-  assert.match(transport, /class WebSocketAdminTransport implements AdminTransport/);
-  assert.match(transport, /new URL\("\.\/api\/ws", siteBaseURL\(\)\)/);
+  assert.match(websocketTransport, /class WebSocketAdminTransport implements AdminTransport/);
+  assert.match(websocketTransport, /new URL\("\.\/api\/ws", siteBaseURL\(\)\)/);
   assert.match(webdemo, /configureAdminTransport/);
   assert.match(webdemo, /WASMAdminTransport/);
   assert.match(wasmTransport, /class WASMAdminTransport implements AdminTransport/);
   assert.match(wasmTransport, /loadWebDemoAPI/);
   assert.match(webdemo, /await import\("\.\/app\.js"\)/);
+});
+
+test("shared transport does not select a daemon adapter for other targets", () => {
+  assert.throws(() => createAdminTransport(), /Admin transport was not configured/);
 });
 
 test("WebSocket transport connects to the daemon API and forwards messages", async () => {

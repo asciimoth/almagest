@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { transform } from "esbuild";
 import { minify as minifyHTML } from "html-minifier-terser";
+import { copyEntryModules } from "./copy-entry-modules.mjs";
 
 const outputArgument = process.argv[2] || "../build/webdemo";
 const target = pathToFileURL(`${resolve(process.cwd(), outputArgument)}/`);
@@ -171,7 +172,7 @@ await cp(new URL("logo-light.svg", repository), new URL("favicon.svg", target));
 await cp(new URL("panel/LUCIDE_LICENSE.txt", repository), new URL("LUCIDE_LICENSE.txt", target));
 await cp(new URL("webdemo/main.css", repository), new URL("main.css", target));
 await cp(new URL("panel/style.css", repository), new URL("style.css", target));
-await cp(new URL("panel/public/", repository), new URL("public/", target), { recursive: true });
+await copyEntryModules(["webdemo.js", "static_docs.js"], target);
 await cp(new URL("panel/vendor/", repository), new URL("vendor/", target), { recursive: true });
 await writeFile(new URL("index.html", target), await minifiedHTML(new URL("webdemo/index.html", repository)));
 await mkdir(new URL("demo/", target), { recursive: true });
@@ -184,7 +185,7 @@ await writeFile(new URL("demo/index.html", target), await minifiedHTML(new URL("
   ["href=\"./style.css\"", "href=\"../style.css\""],
   ["src=\"./vendor/", "src=\"../vendor/"],
   ["src=\"./logo.svg\"", "src=\"../logo.svg\""],
-  ["src=\"./public/build/app.js\"", "src=\"../public/build/webdemo.js\""],
+  ["src=\"./public/build/admin.js\"", "src=\"../public/build/webdemo.js\""],
 ]));
 await mkdir(new URL("docs/", target), { recursive: true });
 await writeFile(new URL("docs/index.html", target), await minifiedHTML(new URL("panel/docs.html", repository), [
@@ -195,7 +196,7 @@ await writeFile(new URL("docs/index.html", target), await minifiedHTML(new URL("
   ["class=\"header-logo-link\" href=\"/\"", "class=\"header-logo-link\" href=\"../\""],
   ["src=\"/logo.svg\"", "src=\"../logo.svg\""],
   ["src=\"/vendor/", "src=\"../vendor/"],
-  ["src=\"/public/build/docs.js\"", "src=\"../public/build/static_docs.js\""],
+  ["src=\"/public/build/daemon_docs.js\"", "src=\"../public/build/static_docs.js\""],
   ["href=\"/\" target=\"_blank\">Admin panel", "href=\"../demo/\" target=\"_blank\">Web demo"],
 ]));
 const nodeClassCache = await publishNodeClassCache();
