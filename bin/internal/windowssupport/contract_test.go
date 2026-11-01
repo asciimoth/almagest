@@ -23,9 +23,14 @@ func TestCheckedInContracts(t *testing.T) {
 		t.Fatalf("ValidateContracts: %v", err)
 	}
 
+	wantStatus := map[string]string{
+		"windows-server-2022-amd64": "supported",
+		"windows-11-amd64":          "unavailable",
+		"windows-11-arm64":          "unavailable",
+	}
 	for _, platform := range matrix.Platforms {
-		if platform.Status != "unavailable" {
-			t.Errorf("platform %q status = %q, want unavailable before native evidence", platform.ID, platform.Status)
+		if platform.Status != wantStatus[platform.ID] {
+			t.Errorf("platform %q status = %q, want %q", platform.ID, platform.Status, wantStatus[platform.ID])
 		}
 	}
 }

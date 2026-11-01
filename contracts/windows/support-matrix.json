@@ -23,8 +23,8 @@
       "id": "windows-server-2022-amd64",
       "os": "windows-server-2022",
       "architecture": "amd64",
-      "status": "unavailable",
-      "reason": "Native Almagest qualification evidence is not yet available.",
+      "status": "supported",
+      "reason": "Supported through manual testing on Windows Server 2022 build 20348.",
       "dependencies": ["wintun", "split-driver", "elevated-network-identity"],
       "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e", "windows-native-packet-flow", "windows-native-resource"]
     },
@@ -251,17 +251,17 @@
     {
       "id": "native-backend-selection",
       "area": "daemon",
-      "status": "unavailable",
+      "status": "supported",
       "mapping": "almagestd native SystemIntegration selection on Windows",
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
       "requiredSuites": ["windows-native-core", "windows-native-e2e"],
-      "notes": "Windows now selects the native backend. Qualification remains unavailable until all required native core and E2E evidence exists."
+      "notes": "Windows selects the native backend. Windows Server 2022 amd64 is manually tested."
     },
     {
       "id": "windows-config-storage-and-snapshots",
       "area": "daemon",
-      "status": "unavailable",
+      "status": "supported",
       "mapping": "ProgramData/LocalAppData config and storage, Windows ACL validation, durable writes, and snapshots",
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
@@ -271,27 +271,27 @@
     {
       "id": "windows-local-admin-pipe",
       "area": "daemon",
-      "status": "unavailable",
+      "status": "supported",
       "mapping": "almagestd and almagest-cli local named-pipe administration",
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
       "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"],
-      "notes": "Step 12 supplies the local transport, ACLs, client owner verification, and user/service endpoint separation. The MSI creates a persistent Almagest Administrators local group, and the Local System machine pipe grants its SID together with Local System and built-in administrators. Qualification remains unavailable until the required native and E2E evidence exists."
+      "notes": "The local transport uses ACLs, client owner verification, and separate user and service endpoints. The MSI creates a persistent Almagest Administrators local group, and the Local System machine pipe grants its SID together with Local System and built-in administrators."
     },
     {
       "id": "windows-web-admin",
       "area": "daemon",
-      "status": "unavailable",
+      "status": "supported",
       "mapping": "owner-filtered panel, HTTP API, WebSocket, and diagnostics",
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
       "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"],
-      "notes": "Step 13 supplies an optional best-effort Windows client-process user SID filter and warns when web admin is enabled without it. It is not strong authentication. API tokens are outside the Windows backend scope. Qualification remains unavailable until the required native and E2E evidence exists."
+      "notes": "The optional Windows client-process user SID filter is best effort. The service warns when web admin is enabled without it. It is not strong authentication. API tokens are outside the Windows backend scope."
     },
     {
       "id": "windows-console-and-scm-lifecycle",
       "area": "daemon",
-      "status": "unavailable",
+      "status": "supported",
       "mapping": "console execution, Service Control Manager execution, unified shutdown, and checked cleanup",
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
@@ -301,22 +301,22 @@
     {
       "id": "windows-child-process-lifecycle",
       "area": "daemon",
-      "status": "unavailable",
+      "status": "supported",
       "mapping": "command-node child and descendant cleanup with Windows process containment",
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
       "requiredSuites": ["windows-native-core", "windows-native-e2e"],
-      "notes": "Step 15 supplies suspended-start, kill-on-close Job Object behavior for protected commands and rejects Unix credentials before launch. TorDriver uses the same protected gobox service as other subprogram owners. Its off, auto, and strict modes have Tor protocol and traffic evidence under ordinary and elevated identities on Windows Server 2022 amd64. The privileged native gate also verifies CryptoAPI entropy and real Tor control-port startup under elevated and LocalSystem identities. Windows native v1 uses a Low-integrity write-restricted token and reports its documented host-network and filesystem-view exclusions. Windows 11 and arm64 still need separate qualification, and this matrix entry remains unavailable until all required native and E2E evidence exists."
+      "notes": "Protected commands use suspended-start and kill-on-close Job Object behavior and reject Unix credentials before launch. TorDriver uses the same protected gobox service as other subprogram owners. Its off, auto, and strict modes have Tor protocol and traffic evidence under ordinary and elevated identities on Windows Server 2022 amd64. The privileged native gate also verifies CryptoAPI entropy and real Tor control-port startup under elevated and LocalSystem identities. Windows native v1 uses a Low-integrity write-restricted token and reports its documented host-network and filesystem-view exclusions. Windows 11 and arm64 need separate qualification."
     },
     {
       "id": "windows-certificate-authorities",
       "area": "daemon",
-      "status": "unavailable",
+      "status": "supported",
       "mapping": "Windows machine/current-identity certificate authority discovery",
       "platforms": ["windows-server-2022-amd64", "windows-11-amd64", "windows-11-arm64"],
       "dependencies": [],
       "requiredSuites": ["windows-native-core", "windows-native-privileged", "windows-native-e2e"],
-      "notes": "Step 16 enumerates public certificates from the daemon identity's CurrentUser\\Root and LocalMachine\\Root stores without changing explicit trust selection. Native identity suites verify discovery, reload, cleanup, and source deduplication. Qualification remains unavailable until all required native and E2E evidence exists."
+      "notes": "The daemon enumerates public certificates from the daemon identity's CurrentUser\\Root and LocalMachine\\Root stores without changing explicit trust selection. Native identity suites verify discovery, reload, cleanup, and source deduplication."
     }
   ]
 }

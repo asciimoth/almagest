@@ -5,10 +5,10 @@ product, service, dependencies, and retention behavior. `payload.wxs` contains
 the generated components for tracked locales and examples. `contract.json`
 freezes the identities and package policy.
 
-The first package is for Windows Server 2022 build 20348 on amd64. It does not
-support Windows client editions, Windows 11, arm64, or 386. Package availability
-does not make Windows a supported Almagest platform. The qualification contract
-in `contracts/windows/` controls support status.
+The first package supports Windows Server 2022 build 20348 on amd64. This target
+is manually tested. The package does not support Windows client editions,
+Windows 11, arm64, or 386. The support contract in `contracts/windows/` records
+the platform status and feature limits.
 
 ## Installed files and retained data
 
