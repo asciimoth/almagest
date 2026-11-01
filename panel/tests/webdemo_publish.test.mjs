@@ -203,7 +203,7 @@ test("published Go Wasm runs and persists all web-demo node classes", async () =
   const { stdout } = await promisify(execFile)(process.execPath, [
     new URL("helpers/run_webdemo_wasm_mutation.mjs", import.meta.url).pathname,
     output("").pathname,
-  ]);
+  ], { maxBuffer: 8 * 1024 * 1024 });
   const result = JSON.parse(stdout);
   assert.equal(result.subscribed.error, undefined);
   assert.deepEqual(new Set(result.classes), new Set(webDemoNodeClasses));
@@ -220,7 +220,7 @@ test("published Go Wasm uses in-memory storage when localStorage is absent", asy
     new URL("helpers/run_webdemo_wasm_mutation.mjs", import.meta.url).pathname,
     output("").pathname,
     "no-storage",
-  ]);
+  ], { maxBuffer: 8 * 1024 * 1024 });
   const result = JSON.parse(stdout);
   assert.equal(result.added.every((response) => response.error === undefined), true);
   assert.equal(Object.keys(result.snapshot.result.snapshot.nodes).length,

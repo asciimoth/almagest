@@ -41,5 +41,4 @@ process.stdout.write(JSON.stringify({
   events,
   config: config.result.text,
   persistedConfig: localValues.get("almagest.webdemo.config.v1") ?? null,
-}));
-process.exit(0);
+}), () => process.exit(0));
