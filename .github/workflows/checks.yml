@@ -57,3 +57,29 @@ jobs:
           name: webdemo
           path: build/webdemo
           if-no-files-found: error
+
+  deploy-pages:
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: webdemo
+          path: build/webdemo
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/webdemo
+      - id: deployment
+        uses: actions/deploy-pages@v4
