@@ -1,5 +1,6 @@
 # Almagest
 
+<img alt="Almagest" src="./logo.svg" height="200" width="200" style="border-radius:50%;"/>
 <svg viewBox="-101 -101 201 201" xmlns="http://www.w3.org/2000/svg">
   <circle r="100" x="0" y="0" fill="#1e1e2e" />
 
