@@ -389,6 +389,7 @@ func runDaemon(
 	configBootstrap.Persistence = localconfig.WithLogger(configBootstrap.Persistence, logf.ConfigLogger())
 	logProjectVersionStatus(admin.projectVersionStatus)
 	daemonLogger := logf.RuntimeLogger()
+	daemonLogger.Infof("Daemon configuration loaded execution_mode=%s", mode)
 	nodeNames, err := newDaemonNodeNameIndex(kv, conf.Main, daemonLogger)
 	if err != nil {
 		return fmt.Errorf("node name index setup: %w", err)
@@ -495,6 +496,7 @@ func runDaemon(
 
 	// Launch admin api fully
 	admin.Run(ctx, application.Cancel, &wg, engine, hostNetwork, logf)
+	daemonLogger.Info("Daemon admin API ready")
 	ready()
 
 	<-ctx.Done()

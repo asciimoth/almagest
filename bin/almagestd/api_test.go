@@ -19,7 +19,46 @@ import (
 	"github.com/asciimoth/configer/configer"
 	sysnetdebug "github.com/asciimoth/gonnect/sysnet/debug"
 	"github.com/asciimoth/pasta/pasta"
+	"github.com/kataras/golog"
 )
+
+func TestOperatorLogDoesNotEnterAdminLogAPI(t *testing.T) {
+	factory := NewLogFactory(LogCacheConfig{Info: 4, Warn: 4})
+	factory.level = logLevelEnabled{info: true, warn: true}
+	events := make(chan api.Message, 2)
+	session := (&AdminAPI{}).newAPISession(nil, factory, func(message api.Message) error {
+		events <- message
+		return nil
+	})
+	defer session.close()
+
+	golog.Warn("operator-only startup detail")
+	response, err := session.handleMessage(mustRequest(t, "logs", api.SurfaceLog, string(api.MethodLogSubscribe), nil))
+	if err != nil || response.Error != nil {
+		t.Fatalf("log subscribe response = %#v, error = %v", response, err)
+	}
+	snapshot, err := api.DecodePayload[api.SubscribeLogsResponse](response.Result)
+	if err != nil || len(snapshot.Entries) != 0 {
+		t.Fatalf("operator output entered initial admin snapshot: %#v, error = %v", snapshot, err)
+	}
+
+	golog.Warn("operator-only live detail")
+	factory.DaemonLogger().Info("approved runtime status")
+	select {
+	case event := <-events:
+		entry, decodeErr := api.DecodePayload[api.LogEntry](event.Payload)
+		if decodeErr != nil || entry.Message != "approved runtime status" || entry.Source != "daemon" {
+			t.Fatalf("unexpected admin log event = %#v, error = %v", event, decodeErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("approved runtime log event was not delivered")
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("operator output entered live admin stream: %#v", event)
+	case <-time.After(20 * time.Millisecond):
+	}
+}
 
 func TestAdminAPIRunAndStopWebServer(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
