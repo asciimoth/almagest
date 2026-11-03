@@ -12,6 +12,12 @@ just build-webdemo
 The default output is `build/webdemo/`. It is ignored by Git and can be copied
 to any static HTTP server.
 
+The build renders `social-preview.svg` as a 1280×640 PNG and publishes social
+preview metadata for the landing, demo, and documentation pages. The metadata
+uses `https://asciimoth.github.io/almagest/` by default. Set
+`ALMAGEST_WEBDEMO_SITE_URL` to your site's full URL, ending in `/`, when you
+publish the tree elsewhere.
+
 Serve it at the origin root:
 
 ```sh

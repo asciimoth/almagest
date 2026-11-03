@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" role="img" aria-labelledby="title desc">
+  <title id="title">Almagest social preview</title>
+  <desc id="desc">A Tun node connects separately to Network and DNS nodes with curved links. The static Almagest logo sits below the Tun node on a solid Catppuccin Mocha background.</desc>
+
+  <rect width="1200" height="600" fill="#1e1e2e" />
+
+  <!-- Separate cubic Bezier links from the Tun node to Network and DNS. -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="8">
+    <path d="M 498 178 C 588 178 612 193 702 193" stroke="#8a5cf6" />
+    <path d="M 498 220 C 608 220 592 405 702 405" stroke="#1f7a8c" />
+  </g>
+
+  <g fill="#313244" stroke="#585b70" stroke-width="3">
+    <rect x="250" y="130" width="248" height="126" rx="18" />
+    <rect x="702" y="130" width="248" height="126" rx="18" />
+    <rect x="702" y="342" width="248" height="126" rx="18" />
+  </g>
+  <!-- Tun, Network, and DNS colors from webdemo/node-classes.json. -->
+  <g stroke-linecap="round" stroke-width="8">
+    <path d="M 275 155 H 473" stroke="#c47a3c" />
+    <path d="M 727 155 H 925" stroke="#8a5cf6" />
+    <path d="M 727 367 H 925" stroke="#1f7a8c" />
+  </g>
+
+  <!-- Static copy of logo-light.svg: animated circles use their initial positions. -->
+  <svg x="300" y="331" width="148" height="148" viewBox="-100 -100 200 200" aria-hidden="true">
+    <circle r="100" fill="#1e1e2e" />
+    <circle r="42" fill="none" stroke="#45475a" stroke-width="4" />
+    <circle r="76" fill="none" stroke="#45475a" stroke-width="4" />
+    <circle r="18" fill="#a6e3a1" />
+    <circle r="12" cx="42" fill="#f9e2af" />
+    <circle r="14" cy="-76" fill="#f38ba8" />
+  </svg>
+</svg>

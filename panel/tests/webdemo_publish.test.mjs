@@ -15,6 +15,7 @@ test("web demo publication is a complete relative static tree", async () => {
   for (const path of [
     "index.html",
     "favicon.svg",
+    "social-preview.png",
     "LUCIDE_LICENSE.txt",
     "demo/index.html",
     "docs/index.html",
@@ -68,6 +69,41 @@ test("web demo favicon is generated from the light logo", async () => {
     await readFile(output("favicon.svg")),
     await readFile(new URL("../../logo-light.svg", import.meta.url)),
   );
+});
+
+test("web demo renders a 1280 by 640 social preview and publishes page metadata", async () => {
+  const png = await readFile(output("social-preview.png"));
+  assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.equal(png.readUInt32BE(16), 1280);
+  assert.equal(png.readUInt32BE(20), 640);
+
+  const base = "https://asciimoth.github.io/almagest/";
+  for (const [path, pageURL, title] of [
+    ["index.html", base, "Almagest"],
+    ["demo/index.html", `${base}demo/`, "Almagest Web Demo"],
+    ["docs/index.html", `${base}docs/`, "Almagest Documentation"],
+  ]) {
+    const document = new JSDOM(await readFile(output(path), "utf8")).window.document;
+    const property = (name) => document.querySelector(`meta[property='${name}']`)?.content;
+    const named = (name) => document.querySelector(`meta[name='${name}']`)?.content;
+    assert.equal(document.querySelector("link[rel='canonical']")?.href, pageURL);
+    assert.ok(named("description"));
+    assert.equal(property("og:type"), "website");
+    assert.equal(property("og:site_name"), "Almagest");
+    assert.equal(property("og:url"), pageURL);
+    assert.equal(property("og:title"), title);
+    assert.equal(property("og:description"), named("description"));
+    assert.equal(property("og:image"), `${base}social-preview.png`);
+    assert.equal(property("og:image:type"), "image/png");
+    assert.equal(property("og:image:width"), "1280");
+    assert.equal(property("og:image:height"), "640");
+    assert.ok(property("og:image:alt"));
+    assert.equal(named("twitter:card"), "summary_large_image");
+    assert.equal(named("twitter:title"), title);
+    assert.equal(named("twitter:description"), named("description"));
+    assert.equal(named("twitter:image"), property("og:image"));
+    assert.equal(named("twitter:image:alt"), property("og:image:alt"));
+  }
 });
 
 test("web demo pages contain no root-relative local asset or navigation URLs", async () => {

@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { Resvg } from "@resvg/resvg-js";
 import { transform } from "esbuild";
 import { minify as minifyHTML } from "html-minifier-terser";
 import { copyEntryModules } from "./copy-entry-modules.mjs";
@@ -11,6 +12,59 @@ const outputArgument = process.argv[2] || "../build/webdemo";
 const target = pathToFileURL(`${resolve(process.cwd(), outputArgument)}/`);
 const repository = new URL("../../", import.meta.url);
 const execute = promisify(execFile);
+const siteURL = new URL(process.env.ALMAGEST_WEBDEMO_SITE_URL || "https://asciimoth.github.io/almagest/");
+if (!["http:", "https:"].includes(siteURL.protocol) || !siteURL.pathname.endsWith("/")
+  || siteURL.search || siteURL.hash) {
+  throw new Error("ALMAGEST_WEBDEMO_SITE_URL must be an HTTP(S) site URL ending in /");
+}
+
+const socialPages = {
+  landing: {
+    path: "",
+    title: "Almagest",
+    description: "Almagest is a network toolkit with a visual graph editor. Connect VPNs, proxies, DNS, routing, and traffic filters in one local service.",
+  },
+  demo: {
+    path: "demo/",
+    title: "Almagest Web Demo",
+    description: "Try the Almagest visual graph editor in your browser with a live WebAssembly demo.",
+  },
+  docs: {
+    path: "docs/",
+    title: "Almagest Documentation",
+    description: "Explore Almagest nodes, links, and configuration in the documentation.",
+  },
+};
+
+function htmlAttribute(value) {
+  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
+}
+
+function socialMetadata({ path, title, description }) {
+  const pageURL = new URL(path, siteURL).href;
+  const imageURL = new URL("social-preview.png", siteURL).href;
+  const imageAlt = "Almagest logo beside three connected graph nodes";
+  const meta = (key, value, property = false) => `<meta ${property ? "property" : "name"}="${key}" content="${htmlAttribute(value)}">`;
+  return [
+    `<link rel="canonical" href="${htmlAttribute(pageURL)}">`,
+    meta("description", description),
+    meta("og:type", "website", true),
+    meta("og:site_name", "Almagest", true),
+    meta("og:url", pageURL, true),
+    meta("og:title", title, true),
+    meta("og:description", description, true),
+    meta("og:image", imageURL, true),
+    meta("og:image:type", "image/png", true),
+    meta("og:image:width", "1280", true),
+    meta("og:image:height", "640", true),
+    meta("og:image:alt", imageAlt, true),
+    meta("twitter:card", "summary_large_image"),
+    meta("twitter:title", title),
+    meta("twitter:description", description),
+    meta("twitter:image", imageURL),
+    meta("twitter:image:alt", imageAlt),
+  ].join("\n    ");
+}
 
 async function buildWASM() {
   const bin = fileURLToPath(new URL("bin/", repository));
@@ -159,9 +213,10 @@ async function webDemoAvailableNodeClasses(nodeClassCache) {
   return new Set(classes);
 }
 
-async function minifiedHTML(source, replacements = []) {
+async function minifiedHTML(source, replacements = [], page) {
   let value = await readFile(source, "utf8");
   for (const [from, to] of replacements) value = value.replaceAll(from, to);
+  value = value.replace("</head>", `    ${socialMetadata(page)}\n  </head>`);
   return await minifyHTML(value, { collapseWhitespace: true, conservativeCollapse: true, removeComments: true });
 }
 
@@ -169,12 +224,19 @@ await rm(target, { recursive: true, force: true });
 await mkdir(target, { recursive: true });
 await cp(new URL("logo-light.svg", repository), new URL("logo.svg", target));
 await cp(new URL("logo-light.svg", repository), new URL("favicon.svg", target));
+const preview = new Resvg(await readFile(new URL("social-preview.svg", repository)), {
+  fitTo: { mode: "width", value: 1280 },
+}).render();
+if (preview.width !== 1280 || preview.height !== 640) {
+  throw new Error("social-preview.svg must render at a 2:1 ratio");
+}
+await writeFile(new URL("social-preview.png", target), preview.asPng());
 await cp(new URL("panel/LUCIDE_LICENSE.txt", repository), new URL("LUCIDE_LICENSE.txt", target));
 await cp(new URL("webdemo/main.css", repository), new URL("main.css", target));
 await cp(new URL("panel/style.css", repository), new URL("style.css", target));
 await copyEntryModules(["webdemo.js", "static_docs.js"], target);
 await cp(new URL("panel/vendor/", repository), new URL("vendor/", target), { recursive: true });
-await writeFile(new URL("index.html", target), await minifiedHTML(new URL("webdemo/index.html", repository)));
+await writeFile(new URL("index.html", target), await minifiedHTML(new URL("webdemo/index.html", repository), [], socialPages.landing));
 await mkdir(new URL("demo/", target), { recursive: true });
 await writeFile(new URL("demo/index.html", target), await minifiedHTML(new URL("panel/index.html", repository), [
   ["</head>", "<meta name=\"almagest-site-base\" content=\"../\"></head>"],
@@ -186,7 +248,7 @@ await writeFile(new URL("demo/index.html", target), await minifiedHTML(new URL("
   ["src=\"./vendor/", "src=\"../vendor/"],
   ["src=\"./logo.svg\"", "src=\"../logo.svg\""],
   ["src=\"./public/build/admin.js\"", "src=\"../public/build/webdemo.js\""],
-]));
+], socialPages.demo));
 await mkdir(new URL("docs/", target), { recursive: true });
 await writeFile(new URL("docs/index.html", target), await minifiedHTML(new URL("panel/docs.html", repository), [
   ["content=\"/\"", "content=\"../../\""],
@@ -198,7 +260,7 @@ await writeFile(new URL("docs/index.html", target), await minifiedHTML(new URL("
   ["src=\"/vendor/", "src=\"../vendor/"],
   ["src=\"/public/build/daemon_docs.js\"", "src=\"../public/build/static_docs.js\""],
   ["href=\"/\" target=\"_blank\">Admin panel", "href=\"../demo/\" target=\"_blank\">Web demo"],
-]));
+], socialPages.docs));
 const nodeClassCache = await publishNodeClassCache();
 const availableNodeClasses = await webDemoAvailableNodeClasses(nodeClassCache);
 await buildDocsCatalog(nodeClassCache, availableNodeClasses);

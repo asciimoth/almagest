@@ -17,6 +17,7 @@
     "litegraph.js": "^0.7.18"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "esbuild": "^0.28.2",
     "html-minifier-terser": "^7.2.0",
     "jsdom": "^29.1.1",
