@@ -122,7 +122,9 @@ repair-go-work:
 certcat-tidy:
 	go -C certcat mod tidy
 
-lint: test-winvm-harness certcat-lint lint-windows lint-windows-packaging lint-winvm lint-secrets markdownlint lint-wasm app-lint
+lint: lint-core app-lint
+
+lint-core: test-winvm-harness certcat-lint lint-windows lint-windows-packaging lint-winvm lint-secrets markdownlint lint-wasm
   cd lib && golangci-lint run ./...
   cd bin && golangci-lint run ./...
 
