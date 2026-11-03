@@ -35,7 +35,6 @@
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils = {
       url = "github:numtide/flake-utils";
-      inputs.nixpkgs.follows = "nixpkgs";
     };
     pre-commit-hooks = {
       url = "github:cachix/pre-commit-hooks.nix";
@@ -133,7 +132,7 @@
         npmRoot = "panel";
         npmDeps = pkgs.fetchNpmDeps {
           src = ./panel;
-          hash = "sha256-ZQ3GcxZScI6N6bT0KdBP+8soMtneXjbp9h4s+Hvagjo=";
+          hash = "sha256-zhrrb032RbHs2JGjrsr9Y1X7exTZDU5hK1QhKJ3NsDo=";
         };
         buildPhase = ''
           runHook preBuild
