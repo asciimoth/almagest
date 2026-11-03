@@ -26,7 +26,8 @@
 #       configFile = "/var/lib/almagest/alm.hujson";
 #     };
 #   The service creates configFile only when it does not exist. Almagest can
-#   then update the file. protectedSettings stays read-only and Nix-managed.
+#   then update the file. The service copies Nix-managed protectedSettings to
+#   a private runtime file before startup.
 #   For protected secrets, use protectedConfigFile and set protectedSettings
 #   to null.
 {
@@ -565,9 +566,10 @@
         initialConfig = jsonFormat.generate "almagestd-initial.json" cfg.initialSettings;
         generatedProtectedConfig = jsonFormat.generate "almagestd-protected.json" cfg.protectedSettings;
         useGeneratedConfig = cfg.configFile == null;
+        runtimeProtectedConfig = "/run/almagest/protected.json";
         protectedConfig =
           if cfg.protectedConfigFile == null
-          then generatedProtectedConfig
+          then runtimeProtectedConfig
           else cfg.protectedConfigFile;
       in {
         options.services.almagestd = {
@@ -630,7 +632,8 @@
             };
             description = ''
               Protected daemon configuration. The module renders this value
-              as JSON. Values in this option are stored in the Nix store. Use
+              as JSON and copies it to a private runtime file when configFile
+              is used. Values in this option are stored in the Nix store. Use
               protectedConfigFile for secrets.
             '';
           };
@@ -735,6 +738,9 @@
                 if [ ! -e "$config_file" ]; then
                   ${pkgs.coreutils}/bin/install -D --mode=0600 ${initialConfig} "$config_file"
                 fi
+              ''
+              ++ lib.optional (cfg.configFile != null && cfg.protectedSettings != null) ''
+                ${pkgs.coreutils}/bin/install --mode=0600 ${generatedProtectedConfig} ${runtimeProtectedConfig}
               ''
               ++ lib.optional (cfg.isolation != "off") ''
                 ${cfg.package}/libexec/almagest/almagest-isolation-storage prepare
