@@ -47,11 +47,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1793524450,
-        "narHash": "sha256-L+TsYDe9/v0wHI8o7+KDjyfkwPELpnjXd4Ia+kaPQrg=",
+        "lastModified": 1793769107,
+        "narHash": "sha256-0nY6xqzXwN6cSI4lX46kPyYLUhQSEK/+T0HzkPS9DNg=",
         "owner": "asciimoth",
         "repo": "ghrepo",
-        "rev": "4e94f7c839022a269d50072361ee70fdb36e1a38",
+        "rev": "4305d93d59163ad4733a2b5a9c6275d1729653f4",
         "type": "github"
       },
       "original": {
