@@ -505,6 +505,8 @@
           gopls
 
           goreleaser
+          gh
+          gnupg
 
           typos
           commitizen
@@ -543,6 +545,7 @@
           tor
           obfs4
         ] ++ [ ghrepo.packages.${system}.ghrepo ] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+          docker
           glib-networking
           gtk3
           libsoup_3

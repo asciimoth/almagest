@@ -7,6 +7,8 @@ fo = "fo"
 snet = "snet"
 amneisa = "amneisa"
 inh = "inh"
+# GPG fingerprint record in --with-colons output.
+fpr = "fpr"
 
 [default.extend-identifiers]
 msg_controllen = "msg_controllen"

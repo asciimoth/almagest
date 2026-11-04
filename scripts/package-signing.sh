@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly action=${1:?Expected prepare or sign}
+readonly action=${1:?Expected prepare, sign, or verify}
 readonly output_dir=${2:?Package artifact directory is required}
 readonly gpg_command=${GPG_COMMAND:-gpg}
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
@@ -38,13 +38,14 @@ prepare)
 	done
 	sha256sum -- "${artifacts[@]}" > "$manifest.tmp"
 	mv -- "$manifest.tmp" "$manifest"
-	printf 'All package artifacts are ready in %s. Run just sign-package when you are ready to touch the hardware token.\n' "$PWD"
+	message=${ALMAGEST_SIGNING_MESSAGE:-Run just sign-package when you are ready to touch the hardware token.}
+	printf 'All package artifacts are ready in %s. %s\n' "$PWD" "$message"
 	if command -v notify-send >/dev/null 2>&1; then
 		notify-send --urgency=critical --expire-time=0 'Almagest packages are ready' \
-			'Run just sign-package when you are ready to sign.' >/dev/null 2>&1 || true
+			"$message" >/dev/null 2>&1 || true
 	fi
 	;;
-sign)
+sign|verify)
 	[[ -f $manifest ]] || {
 		printf 'No prepared package artifacts. Run just package first.\n' >&2
 		exit 1
@@ -53,10 +54,14 @@ sign)
 	mapfile -t artifacts < <(sed -n 's/^[[:xdigit:]]\{64\}  //p' "$manifest")
 	((${#artifacts[@]} > 3)) || { printf 'Invalid signing manifest\n' >&2; exit 1; }
 	for artifact in "${artifacts[@]}"; do
-		"$gpg_command" --batch --yes --local-user "$fingerprint" \
-			--output "$artifact.sig" --detach-sign "$artifact"
+		if [[ $action == sign ]]; then
+			"$gpg_command" --batch --yes --local-user "$fingerprint" \
+				--output "$artifact.sig" --detach-sign "$artifact"
+		else
+			"$gpg_command" --batch --verify "$artifact.sig" "$artifact"
+		fi
 	done
-	printf 'Signed %d package artifacts in %s.\n' "${#artifacts[@]}" "$PWD"
+	printf 'Package %s complete for %d artifacts in %s.\n' "$action" "${#artifacts[@]}" "$PWD"
 	;;
-*) printf 'Expected prepare or sign, got %s\n' "$action" >&2; exit 2 ;;
+*) printf 'Expected prepare, sign, or verify, got %s\n' "$action" >&2; exit 2 ;;
 esac

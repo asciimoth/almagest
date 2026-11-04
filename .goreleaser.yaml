@@ -354,7 +354,7 @@ checksum:
   algorithm: sha256
 
 changelog:
-  disable: true
+  use: git
 
 release:
   disable: true

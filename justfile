@@ -266,6 +266,11 @@ package sign='true': build-web
     false) printf 'Unsigned package artifacts are ready in dist/.\n' ;; \
   esac
 
+# Validate, lint, package, sign, and publish a versioned GitHub Release.
+[positional-arguments]
+release *args:
+  ./scripts/release.sh "$@"
+
 # Explicitly approve hardware-backed signing after just package completes.
 sign-package:
   ./scripts/package-signing.sh sign dist

@@ -15,8 +15,8 @@ the platform status and feature limits.
 The MSI installs immutable files below `%ProgramFiles%\Almagest`. These files
 include `almagestd.exe`, `almagest-cli.exe`, the optional `almagest-app.exe` and
 its `WebView2Loader.dll`, the official amd64 `wintun.dll`, locales, examples,
-license files, and a staging directory for the complete Mullvad
-split-tunnel driver package.
+license files, and a staging directory for the complete Mullvad split-tunnel
+driver package.
 
 The installer adds `%ProgramFiles%\Almagest` to the machine `PATH`. New command
 prompts can run the daemon and CLI by name. When the desktop app is installed,
