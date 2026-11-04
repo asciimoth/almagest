@@ -41,12 +41,19 @@
       url = "github:cachix/pre-commit-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    ghrepo = {
+      url = "github:asciimoth/ghrepo";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+      inputs.pre-commit-hooks.follows = "pre-commit-hooks";
+    };
   };
   outputs = {
     self,
     nixpkgs,
     flake-utils,
     pre-commit-hooks,
+    ghrepo,
     ...
   }:
     flake-utils.lib.eachDefaultSystem (system: let
@@ -535,7 +542,7 @@
 
           tor
           obfs4
-        ] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+        ] ++ [ ghrepo.packages.${system}.ghrepo ] ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
           glib-networking
           gtk3
           libsoup_3

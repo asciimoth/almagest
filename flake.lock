@@ -34,6 +34,32 @@
         "type": "github"
       }
     },
+    "ghrepo": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "pre-commit-hooks": [
+          "pre-commit-hooks"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793524450,
+        "narHash": "sha256-L+TsYDe9/v0wHI8o7+KDjyfkwPELpnjXd4Ia+kaPQrg=",
+        "owner": "asciimoth",
+        "repo": "ghrepo",
+        "rev": "4e94f7c839022a269d50072361ee70fdb36e1a38",
+        "type": "github"
+      },
+      "original": {
+        "owner": "asciimoth",
+        "repo": "ghrepo",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1793110635,
@@ -74,6 +100,7 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "ghrepo": "ghrepo",
         "nixpkgs": "nixpkgs",
         "pre-commit-hooks": "pre-commit-hooks"
       }
