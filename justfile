@@ -250,20 +250,25 @@ serve-webdemo base_path='' output='build/webdemo' port='8000' host='0.0.0.0':
 build-windows:
   ./scripts/build-windows.sh amd64 arm64
 
-# Build all supported release archives and native Linux packages. Pass false
-# to skip hardware-backed signing for local checks.
+# Build all release artifacts without requesting a hardware key. By default,
+# prepare them for an explicit signing step. Pass false for unsigned local checks.
 package sign='true': build-web
+  @case {{quote(sign)}} in true|false) ;; *) printf 'sign must be true or false\n' >&2; exit 2 ;; esac
+  rm -f dist/.signing-inputs.sha256
   ./packaging/build-native.sh
   ./packaging/build-app.sh
-  @case {{quote(sign)}} in \
-    true) goreleaser release --snapshot --clean ;; \
-    false) goreleaser release --snapshot --clean --skip=sign ;; \
-    *) printf 'sign must be true or false\n' >&2; exit 2 ;; \
-  esac
+  goreleaser release --snapshot --clean --skip=sign
   install -m 0644 packaging/linux/README.md dist/PACKAGE_CONTENTS.md
   install -m 0644 packaging/keys/ascii-moth.asc dist/ascii-moth.asc
   ./scripts/package-windows.sh
-  @if [[ {{quote(sign)}} == true ]]; then ./scripts/sign-windows-artifacts.sh dist; fi
+  @case {{quote(sign)}} in \
+    true) ./scripts/package-signing.sh prepare dist ;; \
+    false) printf 'Unsigned package artifacts are ready in dist/.\n' ;; \
+  esac
+
+# Explicitly approve hardware-backed signing after just package completes.
+sign-package:
+  ./scripts/package-signing.sh sign dist
 
 # Evaluate and build every package for the current system that the flake
 # exposes. Do not create result links or run the built programs.
@@ -286,8 +291,13 @@ test-packaging-nix:
 test-packaging sign='false': test-packaging-nix (test-packaging-native sign)
 
 [private]
-test-packaging-native sign='false': (package sign)
+test-packaging-native sign='false': (package 'false')
   ./packaging/tests/run.sh
+  @case {{quote(sign)}} in \
+    true) ./scripts/package-signing.sh prepare dist ;; \
+    false) ;; \
+    *) printf 'sign must be true or false\n' >&2; exit 2 ;; \
+  esac
 
 [private]
 test-packaging-enabled: test-packaging-nix

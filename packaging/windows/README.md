@@ -251,17 +251,19 @@ just winvm-package-integration 1.2.3
 `just package-windows [VERSION]` is the release-facing command. It copies the
 MSI, its `.sha256` file, and `.build.json` evidence into `dist/`. Without an
 explicit version, it uses an exact `vX.Y.Z` or `X.Y.Z` Git tag. An untagged
-local snapshot uses `0.0.0`. By default, `just package` creates detached OpenPGP
-signatures for the MSI, its checksum and build evidence, the package guide, and
-the support collector. Verify one with the public key in `ascii-moth.asc`, for
+local snapshot uses `0.0.0`. `just package` builds all artifacts without signing
+and notifies you when they are ready. Run `just sign-package` when you are ready
+to approve hardware-key signing. It creates detached OpenPGP signatures for the
+MSI, its checksum and build evidence, the package guide, and the support
+collector. Verify one with the public key in `ascii-moth.asc`, for
 example:
 
 ```text
 gpg --verify almagest_VERSION_windows_amd64.msi.sig almagest_VERSION_windows_amd64.msi
 ```
 
-`just package false` assembles these files without detached signatures beside
-the GoReleaser OSS Linux outputs. GoReleaser Pro is not required.
+`just package false` assembles these files without preparing a signing step.
+GoReleaser Pro is not required.
 
 `just test-windows-packaging [VERSION]` runs reproducibility, lifecycle, and
 installed-package integration qualification. The complete normal test gate runs

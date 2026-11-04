@@ -359,18 +359,6 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
-signs:
-  - id: ascii-moth
-    artifacts: all
-    args:
-      - --batch
-      - --local-user
-      - C5C84658CCFD7E8E71DEE933AF3AE54FC3A35C9F
-      - --output
-      - ${signature}
-      - --detach-sign
-      - ${artifact}
-
 changelog:
   disable: true
 

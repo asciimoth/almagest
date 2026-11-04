@@ -629,7 +629,8 @@ class WindowsPackageContractTests(unittest.TestCase):
             self.assertIn(recipe, justfile)
         self.assertIn("RUN_WINDOWS_PKG_TESTS", justfile)
         self.assertIn("./scripts/package-windows.sh", justfile)
-        self.assertIn("./scripts/sign-windows-artifacts.sh dist", justfile)
+        self.assertIn("./scripts/package-signing.sh prepare dist", justfile)
+        self.assertIn("./scripts/package-signing.sh sign dist", justfile)
         self.assertIn('selector.startswith("winpkg:")', selected)
         for name in ("build", "smoke", "lifecycle", "integration"):
             self.assertIn(f'"{name}"', selected)
@@ -673,6 +674,50 @@ class WindowsPackageContractTests(unittest.TestCase):
             )
 
             for artifact in artifacts:
+                self.assertTrue(Path(f"{artifact}.sig").is_file())
+
+    def test_package_signing_waits_for_explicit_command_and_checks_inputs(self):
+        signer = ROOT / "scripts/package-signing.sh"
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            linux = output / "almagest_1.2.3_linux_amd64.deb"
+            linux.write_bytes(b"linux package")
+            (output / "checksums.txt").write_text(
+                f"{hashlib.sha256(linux.read_bytes()).hexdigest()}  {linux.name}\n"
+            )
+            windows = [
+                output / "almagest_1.2.3_windows_amd64.msi",
+                output / "almagest_1.2.3_windows_amd64.msi.sha256",
+                output / "almagest_1.2.3_windows_amd64.build.json",
+                output / "WINDOWS_PACKAGE_CONTENTS.md",
+                output / "collect-windows-support.ps1",
+            ]
+            for artifact in windows:
+                artifact.write_text(artifact.name)
+            windows[1].write_text(
+                f"{hashlib.sha256(windows[0].read_bytes()).hexdigest()}  {windows[0].name}\n"
+            )
+            fake_gpg = output / "gpg"
+            fake_gpg.write_text(
+                '#!/bin/sh\nwhile [ "$1" != --output ]; do shift; done\n'
+                'shift\n: > "$1"\n'
+            )
+            fake_gpg.chmod(0o755)
+            env = {**os.environ, "GPG_COMMAND": str(fake_gpg)}
+            subprocess.run(["bash", str(signer), "prepare", str(output)],
+                           cwd=ROOT, env=env, check=True, capture_output=True)
+            self.assertFalse(list(output.glob("*.sig")))
+
+            windows[0].write_text("changed")
+            rejected = subprocess.run(["bash", str(signer), "sign", str(output)],
+                                      cwd=ROOT, env=env, capture_output=True)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertFalse(list(output.glob("*.sig")))
+
+            windows[0].write_text(windows[0].name)
+            subprocess.run(["bash", str(signer), "sign", str(output)],
+                           cwd=ROOT, env=env, check=True, capture_output=True)
+            for artifact in [linux, output / "checksums.txt", *windows]:
                 self.assertTrue(Path(f"{artifact}.sig").is_file())
 
     def test_wix_linter_accepts_tracked_package_sources(self):
