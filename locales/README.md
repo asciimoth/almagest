@@ -118,9 +118,12 @@ Placeholders have the form `{key}` where `key` contains letters, digits,
 periods, underscores, or hyphens. The formatter leaves an unknown placeholder
 unchanged.
 
-English keys must cover the `data-i18n` attributes in panel HTML and calls to
-the localization functions in panel TypeScript. The validator checks this
-coverage. Other locales, including `lorem`, can omit keys and use fallback text.
+English keys must cover the `data-i18n` attributes in panel and webdemo HTML and
+calls to the localization functions in panel TypeScript. The validator checks
+this coverage. Other locales, including `lorem`, can omit keys and use fallback
+text. The webdemo main page uses `landing.*` keys in this catalog. Its
+translated strings are plain text; `{0}`, `{1}`, and later numbered placeholders
+keep inline links, code, and other HTML elements in translated sentences.
 
 ### `nodes.json`
 

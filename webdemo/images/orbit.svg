@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-16 -16 312 312">
+  <style>
+    .planet {
+      transform-origin: 140px 140px;
+      animation: orbit 16s linear infinite;
+    }
+    .planet.middle { animation-duration: 22s; }
+    .planet.outer { animation-duration: 29s; }
+    @keyframes orbit { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .planet { animation: none; }
+    }
+  </style>
+  <defs>
+    <radialGradient id="glow">
+      <stop stop-color="#a6e3a1" stop-opacity=".28" />
+      <stop offset="1" stop-color="#a6e3a1" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <circle cx="140" cy="140" r="139.5" fill="none" stroke="#45475a" stroke-width="1" stroke-dasharray="5 6" opacity=".65" />
+  <circle cx="140" cy="140" r="103.5" fill="none" stroke="#45475a" stroke-width="1" />
+  <circle cx="140" cy="140" r="63.5" fill="none" stroke="#45475a" stroke-width="1" />
+  <circle cx="140" cy="140" r="52" fill="url(#glow)" />
+  <circle cx="140" cy="140" r="22" fill="#a6e3a1" />
+  <g class="planet inner">
+    <circle cx="99.5" cy="88.5" r="14.5" fill="#1e1e2e" />
+    <circle cx="99.5" cy="88.5" r="7.5" fill="#f9e2af" />
+  </g>
+  <g class="planet middle">
+    <circle cx="241" cy="171" r="16" fill="#1e1e2e" />
+    <circle cx="241" cy="171" r="9" fill="#f38ba8" />
+  </g>
+  <g class="planet outer">
+    <circle cx="247.5" cy="49.5" r="12.5" fill="#1e1e2e" />
+    <circle cx="247.5" cy="49.5" r="5.5" fill="#89b4fa" />
+  </g>
+</svg>

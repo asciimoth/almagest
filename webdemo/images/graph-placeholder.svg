@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="480" viewBox="0 0 1000 480" fill="none">
+  <defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#313244"/></pattern></defs>
+  <path fill="url(#grid)" d="M0 0h1000v480H0z"/>
+  <g stroke-width="2">
+    <path d="M290 240C365 240 335 150 410 150M590 150C675 150 645 240 730 240" stroke="#a6e3a1" stroke-opacity=".6"/>
+    <path d="M290 240C365 240 335 340 410 340M590 340C675 340 645 240 730 240" stroke="#89b4fa" stroke-opacity=".6"/>
+  </g>
+  <g fill="#181825" stroke="#45475a" stroke-dasharray="5 5">
+    <rect x="110" y="185" width="180" height="110" rx="7"/>
+    <rect x="410" y="95" width="180" height="110" rx="7"/>
+    <rect x="410" y="285" width="180" height="110" rx="7"/>
+    <rect x="730" y="185" width="160" height="110" rx="7"/>
+  </g>
+  <g stroke="#313244" stroke-width="7" stroke-linecap="round">
+    <path d="M132 213h75m-75 25h110m-110 25h65M432 123h75m-75 25h110m-110 25h65M432 313h75m-75 25h110m-110 25h65M752 213h75m-75 25h110m-110 25h65"/>
+  </g>
+  <g fill="#a6e3a1"><circle cx="290" cy="240" r="5"/><circle cx="410" cy="150" r="5"/><circle cx="590" cy="150" r="5"/><circle cx="730" cy="240" r="5"/></g>
+  <g fill="#89b4fa"><circle cx="410" cy="340" r="5"/><circle cx="590" cy="340" r="5"/></g>
+</svg>

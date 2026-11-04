@@ -7,16 +7,302 @@
     <title>Almagest</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="./main.css">
+    <script src="./main.js" defer></script>
   </head>
   <body>
-    <main>
-      <img src="./logo.svg" alt="" width="72" height="72">
-      <h1>Almagest</h1>
-      <p>Work In Progress...</p>
-      <nav aria-label="Site navigation">
-        <a href="./docs/">Documentation</a>
-        <a href="./demo/">Web demo</a>
+    <a class="skip-link" href="#main" data-i18n="landing.page.skip-to-content">Skip to content</a>
+    <header class="site-header wrap">
+      <a class="brand" href="./" aria-label="Almagest home" data-i18n-aria-label="landing.site-header.almagest-home">
+        <img class="brand-mark" src="./logo.svg" alt="" width="34" height="34"><span>Almagest</span>
+      </a>
+      <nav aria-label="Site navigation" data-i18n-aria-label="landing.site-header.site-navigation">
+        <a href="#features" data-i18n="landing.site-header.features">Features</a>
+        <a href="./docs/" data-i18n="landing.site-header.documentation">Documentation</a>
+        <a href="https://github.com/asciimoth/almagest" data-i18n-template="landing.site-header.github-item">GitHub <span aria-hidden="true">↗</span></a>
+        <a class="nav-install" href="#install" data-i18n-template="landing.site-header.install-item">Install <span aria-hidden="true">↓</span></a>
+        <label class="locale-switch" hidden><span class="sr-only" data-i18n="locale.label">Language</span><select aria-label="Language" data-i18n-aria-label="locale.label"></select></label>
       </nav>
+    </header>
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow" data-i18n-template="landing.hero.item-an-open-source-network-toolkit"><span class="status-dot" aria-hidden="true"></span> An open-source network toolkit</p>
+          <h1 id="hero-title" data-i18n-template="landing.hero.build-your-whole-network-item-item">Build your whole network<br><span data-i18n="landing.hero.in-one-place">in one place.</span></h1>
+          <p class="intro" data-i18n="landing.hero.connect-vpns-proxies-dns-and-traffic-filters-in">Connect VPNs, proxies, DNS, and traffic filters in a visual graph. Almagest brings them together in one local service, with paths you can see and change.</p>
+          <p class="hero-detail" data-i18n="landing.hero.give-one-app-its-own-proxy-chain-a-tunnel-through">Give one app its own proxy. Chain a tunnel through another network. Build isolated test networks to try configurations and test hypotheses.</p>
+          <div class="actions">
+            <a class="button primary" href="./demo/" data-i18n-template="landing.hero.try-the-web-demo-item">Try the web demo <span aria-hidden="true">↗</span></a>
+            <a class="button secondary" href="#install" data-i18n-template="landing.hero.install-almagest-item">Install Almagest <span aria-hidden="true">↓</span></a>
+          </div>
+          <p class="demo-note" data-i18n="landing.hero.runs-in-your-browser-with-a-virtual-test-network">Runs in your browser with a virtual test network.</p>
+        </div>
+        <div class="orbit">
+          <img src="./images/orbit.svg" alt="" width="280" height="280">
+          <span class="orbit-label" data-i18n-template="landing.hero.item-many-possible-paths"><a href="./docs/?page=node%2Falmagest%2FDns2Network" data-i18n="landing.hero.90-node-classes">90+ node classes</a>. Many possible paths.</span>
+        </div>
+      </section>
+      <div class="release-note wrap">
+        <span class="release-label" data-i18n="landing.release-note.pre-alpha">Pre-alpha</span>
+        <p data-i18n="landing.release-note.almagest-is-under-active-development-features-an">Almagest is under active development. Features and configuration can change. Do not use it in production.</p>
+      </div>
+      <section class="showcase wrap" aria-labelledby="showcase-title" aria-roledescription="carousel" data-i18n-aria-roledescription="landing.showcase.carousel">
+        <div class="section-heading">
+          <div><h2 id="showcase-title" data-i18n="landing.showcase.the-whole-network-graph-in-one-panel">The whole network graph, in one panel.</h2></div>
+          <a class="text-link" href="./demo/" data-i18n-template="landing.showcase.explore-the-demo-item">Explore the demo <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="carousel-track" id="screenshots" tabindex="0" role="group" aria-label="Project screenshots. Scroll horizontally to see more." data-i18n-aria-label="landing.showcase.project-screenshots-scroll-horizontally-to-see-m">
+          <figure class="screenshot" role="group" aria-roledescription="slide" aria-label="1 of 3: visual graph editor" data-i18n-aria-roledescription="landing.showcase.slide" data-i18n-aria-label="landing.showcase.1-of-3-visual-graph-editor">
+            <div class="window-bar" aria-hidden="true"><span class="window-dots"><i></i><i></i><i></i></span><span data-i18n="landing.showcase.almagest-graph">Almagest / Graph</span><span>01</span></div>
+            <div class="screenshot-image">
+              <img src="./images/graph-placeholder.svg" alt="Placeholder for a screenshot of the visual graph editor" width="1000" height="480" data-i18n-alt="landing.showcase.placeholder-for-a-screenshot-of-the-visual-graph">
+              <span class="placeholder-label" data-i18n="landing.showcase.screenshot-placeholder">Screenshot placeholder</span>
+            </div>
+            <figcaption><span class="caption-title" data-i18n="landing.showcase.follow-the-connections">Follow the connections.</span><span data-i18n="landing.showcase.add-nodes-connect-typed-ports-and-edit-your-traf">Add nodes, connect typed ports, and edit your traffic paths.</span></figcaption>
+          </figure>
+          <figure class="screenshot" role="group" aria-roledescription="slide" aria-label="2 of 3: node settings" data-i18n-aria-roledescription="landing.showcase.slide" data-i18n-aria-label="landing.showcase.2-of-3-node-settings">
+            <div class="window-bar" aria-hidden="true"><span class="window-dots"><i></i><i></i><i></i></span><span data-i18n="landing.showcase.almagest-node-settings">Almagest / Node settings</span><span>02</span></div>
+            <div class="screenshot-image">
+              <img src="./images/settings-placeholder.svg" alt="Placeholder for a screenshot of the node settings" width="1000" height="480" loading="lazy" data-i18n-alt="landing.showcase.placeholder-for-a-screenshot-of-the-node-setting">
+              <span class="placeholder-label" data-i18n="landing.showcase.screenshot-placeholder">Screenshot placeholder</span>
+            </div>
+            <figcaption><span class="caption-title" data-i18n="landing.showcase.get-into-the-details">Get into the details.</span><span data-i18n="landing.showcase.open-a-node-to-inspect-its-settings-ports-and-st">Open a node to inspect its settings, ports, and status.</span></figcaption>
+          </figure>
+          <figure class="screenshot" role="group" aria-roledescription="slide" aria-label="3 of 3: workspace snapshots" data-i18n-aria-roledescription="landing.showcase.slide" data-i18n-aria-label="landing.showcase.3-of-3-workspace-snapshots">
+            <div class="window-bar" aria-hidden="true"><span class="window-dots"><i></i><i></i><i></i></span><span data-i18n="landing.showcase.almagest-snapshots">Almagest / Snapshots</span><span>03</span></div>
+            <div class="screenshot-image">
+              <img src="./images/workspace-placeholder.svg" alt="Placeholder for a screenshot of the workspace snapshots" width="1000" height="480" loading="lazy" data-i18n-alt="landing.showcase.placeholder-for-a-screenshot-of-the-workspace-sn">
+              <span class="placeholder-label" data-i18n="landing.showcase.screenshot-placeholder">Screenshot placeholder</span>
+            </div>
+            <figcaption><span class="caption-title" data-i18n="landing.showcase.keep-a-point-to-return-to">Keep a point to return to.</span><span data-i18n="landing.showcase.save-your-setup-restore-a-snapshot-or-start-from">Save your setup, restore a snapshot, or start from an example.</span></figcaption>
+          </figure>
+        </div>
+        <div class="carousel-controls" hidden>
+          <div class="slide-picker" role="group" aria-label="Choose a screenshot" data-i18n-aria-label="landing.showcase.choose-a-screenshot">
+            <button type="button" data-slide="0" aria-label="Show visual graph editor" aria-current="true" data-i18n-aria-label="landing.showcase.show-visual-graph-editor"></button>
+            <button type="button" data-slide="1" aria-label="Show node settings" data-i18n-aria-label="landing.showcase.show-node-settings"></button>
+            <button type="button" data-slide="2" aria-label="Show workspace snapshots" data-i18n-aria-label="landing.showcase.show-workspace-snapshots"></button>
+          </div>
+          <div class="carousel-arrows">
+            <span class="slide-count" aria-live="polite" aria-atomic="true">01 / 03</span>
+            <button type="button" class="icon-button" data-direction="-1" aria-label="Previous screenshot" aria-controls="screenshots" data-i18n-aria-label="landing.showcase.previous-screenshot">←</button>
+            <button type="button" class="icon-button" data-direction="1" aria-label="Next screenshot" aria-controls="screenshots" data-i18n-aria-label="landing.showcase.next-screenshot">→</button>
+          </div>
+        </div>
+      </section>
+      <section class="features wrap" id="features" aria-labelledby="features-title">
+        <div class="section-heading">
+          <div><p class="eyebrow" data-i18n="landing.features.what-you-can-build">What you can build</p><h2 id="features-title" data-i18n="landing.features.small-pieces-useful-connections">Small pieces. Useful connections.</h2></div>
+          <p class="section-intro" data-i18n="landing.features.each-node-does-a-job-connect-compatible-ports-to">Each node does a job. Connect compatible ports to make a path, or run several independent paths in the same graph.</p>
+        </div>
+
+        <article class="feature feature-green">
+          <div class="feature-copy">
+            <p class="feature-index" data-i18n="landing.feature-green.01-tunnels-and-proxies">01 / Tunnels &amp; proxies</p>
+            <h3 data-i18n="landing.feature-green.a-route-with-a-few-more-possibilities">A route with a few more possibilities.</h3>
+            <p data-i18n="landing.feature-green.connect-wireguard-and-amneziawg-tunnels-with-soc">Connect WireGuard and AmneziaWG tunnels with SOCKS proxies. Put a proxy through a VPN, a VPN through a proxy, or one tunnel inside another. Each transport must support the next step in the path.</p>
+            <p class="use-case" data-i18n-template="landing.feature-green.item-give-one-application-a-local-socks-proxy-th"><span data-i18n="landing.feature-green.try-this">Try this</span> Give one application a local SOCKS proxy that connects through a VPN.</p>
+            <a class="text-link" href="./docs/?page=almagest%2Ftypes" data-i18n-template="landing.feature-green.explore-tunnels-and-network-types-item">Explore tunnels and network types <span aria-hidden="true">→</span></a>
+          </div>
+          <figure class="feature-image">
+            <img src="./images/graph-placeholder.svg" alt="Placeholder for a demonstration of a proxy connected through a VPN tunnel" width="1000" height="480" loading="lazy" data-i18n-alt="landing.feature-green.placeholder-for-a-demonstration-of-a-proxy-conne">
+            <figcaption><span data-i18n="landing.feature-green.proxy-vpn-network">Proxy → VPN → network</span><span data-i18n="landing.feature-green.image-placeholder">Image placeholder</span></figcaption>
+          </figure>
+        </article>
+
+        <article class="feature feature-blue">
+          <div class="feature-copy">
+            <p class="feature-index" data-i18n="landing.feature-blue.02-routing-and-filtering">02 / Routing &amp; filtering</p>
+            <h3 data-i18n="landing.feature-blue.choose-where-each-connection-goes">Choose where each connection goes.</h3>
+            <p data-i18n="landing.feature-blue.split-traffic-by-address-domain-port-or-protocol">Split traffic by address, domain, port, or protocol. Match applications, processes, users, and groups where the platform supports them. Add firewalls or remap addresses and ports along the way.</p>
+            <p class="use-case" data-i18n-template="landing.feature-blue.item-send-selected-destinations-through-a-tunnel"><span data-i18n="landing.feature-blue.try-this">Try this</span> Send selected destinations through a tunnel and keep other traffic on a direct path.</p>
+            <a class="text-link" href="./docs/?page=almagest%2Fprocess-filtering" data-i18n-template="landing.feature-blue.read-about-traffic-rules-item">Read about traffic rules <span aria-hidden="true">→</span></a>
+          </div>
+          <figure class="feature-image">
+            <img src="./images/settings-placeholder.svg" alt="Placeholder for a demonstration of traffic rules that select different networks" width="1000" height="480" loading="lazy" data-i18n-alt="landing.feature-blue.placeholder-for-a-demonstration-of-traffic-rules">
+            <figcaption><span data-i18n="landing.feature-blue.traffic-rules-and-separate-paths">Traffic rules &amp; separate paths</span><span data-i18n="landing.feature-blue.image-placeholder">Image placeholder</span></figcaption>
+          </figure>
+        </article>
+
+        <article class="feature feature-teal">
+          <div class="feature-copy">
+            <p class="feature-index" data-i18n="landing.feature-teal.03-dns">03 / DNS</p>
+            <h3 data-i18n="landing.feature-teal.give-your-dns-a-clear-direction">Give your DNS a clear direction.</h3>
+            <p data-i18n="landing.feature-teal.combine-static-records-persistent-caches-and-fal">Combine static records, persistent caches, and fallback resolvers. Send queries through selected networks over UDP, TCP, or TLS. Serve the result to other clients or use it for captured host traffic.</p>
+            <p class="use-case" data-i18n-template="landing.feature-teal.item-resolve-private-names-through-your-vpn-and"><span data-i18n="landing.feature-teal.try-this">Try this</span> Resolve private names through your VPN and use a different resolver for public domains.</p>
+            <a class="text-link" href="./docs/?page=almagest%2Fdns" data-i18n-template="landing.feature-teal.build-a-dns-path-item">Build a DNS path <span aria-hidden="true">→</span></a>
+          </div>
+          <figure class="feature-image">
+            <img src="./images/graph-placeholder.svg" alt="Placeholder for a demonstration of DNS queries routed through separate resolvers" width="1000" height="480" loading="lazy" data-i18n-alt="landing.feature-teal.placeholder-for-a-demonstration-of-dns-queries-r">
+            <figcaption><span data-i18n="landing.feature-teal.records-caches-and-resolvers">Records, caches &amp; resolvers</span><span data-i18n="landing.feature-teal.image-placeholder">Image placeholder</span></figcaption>
+          </figure>
+        </article>
+
+        <article class="feature feature-mauve">
+          <div class="feature-copy">
+            <p class="feature-index" data-i18n="landing.feature-mauve.04-protocols-and-tls">04 / Protocols &amp; TLS</p>
+            <h3 data-i18n="landing.feature-mauve.look-closer-at-the-traffic">Look closer at the traffic.</h3>
+            <p data-i18n="landing.feature-mauve.inspect-tcp-connections-by-protocol-http-request">Inspect TCP connections by protocol, HTTP request data, TLS SNI, or ALPN. Add or terminate TLS. Manage certificates, pin keys, and limit a certificate authority&#x27;s trust to selected domains or IP ranges.</p>
+            <p class="use-case" data-i18n-template="landing.feature-mauve.item-route-a-tls-connection-by-its-server-name-o"><span data-i18n="landing.feature-mauve.try-this">Try this</span> Route a TLS connection by its server name, or add TLS in front of a service.</p>
+            <a class="text-link" href="./docs/?page=almagest%2Ftls" data-i18n-template="landing.feature-mauve.explore-tls-tools-item">Explore TLS tools <span aria-hidden="true">→</span></a>
+          </div>
+          <figure class="feature-image">
+            <img src="./images/settings-placeholder.svg" alt="Placeholder for a demonstration of protocol inspection and TLS policy settings" width="1000" height="480" loading="lazy" data-i18n-alt="landing.feature-mauve.placeholder-for-a-demonstration-of-protocol-insp">
+            <figcaption><span data-i18n="landing.feature-mauve.protocol-inspection-and-tls-policy">Protocol inspection &amp; TLS policy</span><span data-i18n="landing.feature-mauve.image-placeholder">Image placeholder</span></figcaption>
+          </figure>
+        </article>
+
+        <article class="feature feature-yellow">
+          <div class="feature-copy">
+            <p class="feature-index" data-i18n="landing.feature-yellow.05-other-networks">05 / Other networks</p>
+            <h3 data-i18n="landing.feature-yellow.bring-more-networks-into-the-graph">Bring more networks into the graph.</h3>
+            <p data-i18n="landing.feature-yellow.connect-to-tailscale-or-headscale-import-amnezia">Connect to Tailscale or Headscale. Import Amnezia VPN service keys and self-hosted profiles. Send TCP traffic through Tor or publish an onion service. Tor runs as a separate program under administrator-defined policy.</p>
+            <p class="use-case" data-i18n-template="landing.feature-yellow.item-give-a-local-application-a-proxy-into-your"><span data-i18n="landing.feature-yellow.try-this">Try this</span> Give a local application a proxy into your Tailscale network.</p>
+            <a class="text-link" href="./docs/?page=node%2Falmagest%2FTailscaleCtrl" data-i18n-template="landing.feature-yellow.explore-service-connections-item">Explore service connections <span aria-hidden="true">→</span></a>
+          </div>
+          <figure class="feature-image">
+            <img src="./images/graph-placeholder.svg" alt="Placeholder for a demonstration of a local proxy connected to a service network" width="1000" height="480" loading="lazy" data-i18n-alt="landing.feature-yellow.placeholder-for-a-demonstration-of-a-local-proxy">
+            <figcaption><span data-i18n="landing.feature-yellow.local-apps-and-connected-networks">Local apps &amp; connected networks</span><span data-i18n="landing.feature-yellow.image-placeholder">Image placeholder</span></figcaption>
+          </figure>
+        </article>
+
+        <article class="feature feature-red">
+          <div class="feature-copy">
+            <p class="feature-index" data-i18n="landing.feature-red.06-experiments-and-snapshots">06 / Experiments &amp; snapshots</p>
+            <h3 data-i18n="landing.feature-red.test-ideas-in-a-virtual-network">Test ideas in a virtual network.</h3>
+            <p data-i18n="landing.feature-red.test-a-graph-with-virtual-networks-and-built-in">Test a graph with virtual networks and built-in HTTP clients and servers. Add values, conditions, and timed triggers to change paths while the service runs. Graph logic is still work in progress.</p>
+            <p class="use-case" data-i18n-template="landing.feature-red.item-load-the-mock-network-example-change-a-conn"><span data-i18n="landing.feature-red.try-this">Try this</span> Load the Mock Network example, change a connection, and save a snapshot of your setup.</p>
+            <a class="text-link" href="./docs/?page=almagest%2Fsnapshots" data-i18n-template="landing.feature-red.start-from-an-example-item">Start from an example <span aria-hidden="true">→</span></a>
+          </div>
+          <figure class="feature-image">
+            <img src="./images/workspace-placeholder.svg" alt="Placeholder for a demonstration of test workspaces and saved snapshots" width="1000" height="480" loading="lazy" data-i18n-alt="landing.feature-red.placeholder-for-a-demonstration-of-test-workspac">
+            <figcaption><span data-i18n="landing.feature-red.test-inspect-and-save">Test, inspect &amp; save</span><span data-i18n="landing.feature-red.image-placeholder">Image placeholder</span></figcaption>
+          </figure>
+        </article>
+      </section>
+      <section class="service-note wrap" aria-labelledby="service-title">
+        <span class="service-symbol" aria-hidden="true" data-i18n="landing.service-note.text">[ ↔ ]</span>
+        <div>
+          <h2 id="service-title" data-i18n="landing.service-note.close-the-editor-the-graph-keeps-running">Close the editor. The graph keeps running.</h2>
+          <p data-i18n-template="landing.service-note.the-item-service-runs-your-setup-use-the-desktop">The <code>almagestd</code> service runs your setup. Use the desktop app, web panel, or <code>almagest-cli</code> to manage it. Configuration uses JSON with comments, and the engine is also available as a Go library.</p>
+        </div>
+        <a class="text-link" href="./docs/?page=almagest%2Farchitecture" data-i18n-template="landing.service-note.how-it-works-item">How it works <span aria-hidden="true">→</span></a>
+      </section>
+      <section class="installation wrap" id="install" aria-labelledby="install-title">
+        <div class="section-heading">
+          <div><p class="eyebrow" data-i18n="landing.installation.get-started">Get started</p><h2 id="install-title" data-i18n="landing.install-title.build-your-first-network-graph">Build your first network graph.</h2></div>
+          <p class="section-intro" data-i18n-template="landing.installation.install-the-service-and-command-line-client-with">Install the service and command-line client with <code>almagest</code>. Add <code>almagest-app</code> for the desktop editor.</p>
+        </div>
+        <div class="install-layout">
+          <div class="install-box">
+            <div class="install-tabs" aria-label="Installation method" hidden data-i18n-aria-label="landing.installation.installation-method">
+              <button type="button" id="tab-apt" data-install="apt" data-i18n="landing.installation.debian-ubuntu">Debian / Ubuntu</button>
+              <button type="button" id="tab-rpm" data-install="rpm" data-i18n="landing.installation.fedora-rpm">Fedora / RPM</button>
+              <button type="button" id="tab-arch" data-install="arch" data-i18n="landing.installation.arch">Arch</button>
+              <button type="button" id="tab-windows" data-install="windows" data-i18n="landing.installation.windows">Windows</button>
+              <button type="button" id="tab-nix" data-install="nix" data-i18n="landing.installation.nix">Nix</button>
+              <button type="button" id="tab-source" data-install="source" data-i18n="landing.installation.source">Source</button>
+            </div>
+            <section class="install-panel" id="install-apt">
+              <h3 data-i18n="landing.install-apt.debian-and-ubuntu">Debian and Ubuntu</h3>
+              <p data-i18n-template="landing.install-apt.add-the-item-then-install-the-packages">Add the <a href="https://repo.moth.contact/" data-i18n="landing.install-apt.package-repository">package repository</a>, then install the packages.</p>
+              <div class="code-block"><div class="code-heading"><span data-i18n="landing.install-apt.shell">Shell</span><button type="button" class="copy-button" hidden data-i18n="landing.install-apt.copy-commands">Copy commands</button></div><pre tabindex="0"><code>curl -fsSLo KEY.gpg https://repo.moth.contact/KEY.gpg
+sudo install -m 0644 KEY.gpg /usr/share/keyrings/ghrepo-archive-keyring.gpg
+curl -fsSLo deb.list https://repo.moth.contact/deb.list
+sudo install -m 0644 deb.list /etc/apt/sources.list.d/ghrepo.list
+sudo apt update
+sudo apt install almagest almagest-app</code></pre></div>
+              <p class="install-note" data-i18n-template="landing.install-apt.linux-packages-support-amd64-and-arm64-on-arm64">Linux packages support amd64 and arm64. On arm64, omit <code>almagest-app</code>; the desktop package is available for amd64.</p>
+            </section>
+            <section class="install-panel" id="install-rpm">
+              <h3 data-i18n="landing.install-rpm.fedora-and-other-dnf-systems">Fedora and other DNF systems</h3>
+              <p data-i18n-template="landing.install-rpm.add-the-item-then-install-the-packages">Add the <a href="https://repo.moth.contact/" data-i18n="landing.install-rpm.package-repository">package repository</a>, then install the packages.</p>
+              <div class="code-block"><div class="code-heading"><span data-i18n="landing.install-rpm.shell">Shell</span><button type="button" class="copy-button" hidden data-i18n="landing.install-rpm.copy-commands">Copy commands</button></div><pre tabindex="0"><code>curl -fsSLo rpm.repo https://repo.moth.contact/rpm.repo
+sudo install -m 0644 rpm.repo /etc/yum.repos.d/ghrepo.repo
+sudo dnf makecache
+sudo dnf install almagest almagest-app</code></pre></div>
+              <p class="install-note" data-i18n-template="landing.install-rpm.linux-packages-support-amd64-and-arm64-on-arm64">Linux packages support amd64 and arm64. On arm64, omit <code>almagest-app</code>; the desktop package is available for amd64.</p>
+            </section>
+            <section class="install-panel" id="install-arch">
+              <h3 data-i18n="landing.install-arch.arch-linux">Arch Linux</h3>
+              <p data-i18n-template="landing.install-arch.download-the-item-files-for-your-architecture-fr">Download the <code>.pkg.tar.zst</code> files for your architecture from <a href="https://github.com/asciimoth/almagest/releases" data-i18n="landing.install-arch.github-releases">GitHub Releases</a>. Install <code>almagest</code> and, on amd64, the optional <code>almagest-app</code> package.</p>
+              <div class="code-block"><div class="code-heading"><span data-i18n="landing.install-arch.shell-replace-file-with-the-downloaded-file-path">Shell · replace FILE with the downloaded file paths</span></div><pre tabindex="0"><code>sudo pacman -U FILE...</code></pre></div>
+              <p class="install-note" data-i18n="landing.install-arch.the-daemon-package-supports-amd64-and-arm64">The daemon package supports amd64 and arm64.</p>
+            </section>
+            <section class="install-panel" id="install-windows">
+              <h3 data-i18n="landing.install-windows.windows-server-2022-amd64">Windows Server 2022 · amd64</h3>
+              <ol class="install-steps">
+                <li data-i18n-template="landing.install-windows.download-the-item-file-from-item">Download the <code>.msi</code> file from <a href="https://github.com/asciimoth/almagest/releases" data-i18n="landing.install-windows.github-releases">GitHub Releases</a>.</li>
+                <li data-i18n="landing.install-windows.run-the-installer-it-includes-the-daemon-command">Run the installer. It includes the daemon, command-line client, and optional desktop app.</li>
+                <li data-i18n="landing.install-windows.open-the-desktop-app-the-installer-starts-the-da">Open the desktop app. The installer starts the daemon service and selects the app by default.</li>
+              </ol>
+              <p class="install-note" data-i18n="landing.install-windows.you-may-need-to-sign-out-and-sign-in-again-after">You may need to sign out and sign in again after installation for the access control rules to take effect.</p>
+            </section>
+            <section class="install-panel" id="install-nix">
+              <h3 data-i18n="landing.install-nix.nix-and-nixos">Nix and NixOS</h3>
+              <p data-i18n="landing.install-nix.with-nix-flakes-enabled-add-the-daemon-and-cli-t">With Nix flakes enabled, add the daemon and CLI to your Linux profile.</p>
+              <div class="code-block"><div class="code-heading"><span data-i18n="landing.install-nix.shell">Shell</span><button type="button" class="copy-button" hidden data-i18n="landing.install-nix.copy-commands">Copy commands</button></div><pre tabindex="0"><code>nix profile add github:asciimoth/almagest#almagest</code></pre></div>
+              <p data-i18n-template="landing.install-nix.on-x86-64-linux-add-the-desktop-app-with-item">On x86_64-linux, add the desktop app with <code>nix profile add github:asciimoth/almagest#almagest-app</code>.</p>
+              <p data-i18n-template="landing.install-nix.for-nixos-add-item-to-your-flake-inputs-import-t">For NixOS, add <code>almagest.url = "github:asciimoth/almagest";</code> to your flake inputs. Import the module in your NixOS configuration, where <code>inputs</code> is in scope:</p>
+              <div class="code-block"><div class="code-heading"><span data-i18n="landing.install-nix.nixos-module-generated-configuration">NixOS module · generated configuration</span><button type="button" class="copy-button" hidden data-i18n="landing.install-nix.copy-configuration">Copy configuration</button></div><pre tabindex="0"><code>imports = [ inputs.almagest.nixosModules.almagestd ];
+services.almagestd = {
+  enable = true;
+  isolation = "off";
+  settings.Config.Save.IdleMilliseconds = 500;
+};</code></pre></div>
+              <p data-i18n-template="landing.install-nix.the-module-installs-the-daemon-and-cli-and-start">The module installs the daemon and CLI and starts the service when you rebuild your system. Generated settings are read-only. To edit the graph from Almagest, replace the <code>services.almagestd</code> block above with a writable configuration:</p>
+              <div class="code-block"><div class="code-heading"><span data-i18n="landing.install-nix.nixos-module-editable-configuration">NixOS module · editable configuration</span><button type="button" class="copy-button" hidden data-i18n="landing.install-nix.copy-configuration">Copy configuration</button></div><pre tabindex="0"><code>services.almagestd = {
+  enable = true;
+  isolation = "off";
+  settings = null;
+  initialSettings = {
+    Config.Save.IdleMilliseconds = 500;
+    nodes.proxy.Class = "almagest/SOCKS5Server";
+  };
+  configFile = "/var/lib/almagest/alm.hujson";
+};</code></pre></div>
+              <p data-i18n-template="landing.install-nix.the-service-creates-item-only-if-it-does-not-exi">The service creates <code>configFile</code> only if it does not exist. Later changes stay in that file. For secrets, set <code>protectedSettings = null</code> and use <code>protectedConfigFile</code> instead of storing them in the Nix store.</p>
+              <p class="install-note" data-i18n-template="landing.install-nix.process-isolation-defaults-to-item-the-item-and">Process isolation defaults to <code>off</code>. The <code>auto</code> and <code>strict</code> modes require a qualified Linux amd64 host. See the <a href="https://github.com/asciimoth/almagest/blob/master/flake.nix" data-i18n="landing.install-nix.flake-setup-notes">flake setup notes</a> for more options.</p>
+            </section>
+            <section class="install-panel" id="install-source">
+              <h3 data-i18n="landing.install-source.build-from-source-on-linux">Build from source on Linux</h3>
+              <p data-i18n-template="landing.install-source.on-a-debian-rpm-or-arch-based-system-install-ite">On a Debian-, RPM-, or Arch-based system, install <a href="https://github.com/casey/just" data-i18n="landing.install-source.just">just</a> and Git, then run:</p>
+              <div class="code-block"><div class="code-heading"><span data-i18n="landing.install-source.shell">Shell</span><button type="button" class="copy-button" hidden data-i18n="landing.install-source.copy-commands">Copy commands</button></div><pre tabindex="0"><code>git clone https://github.com/asciimoth/almagest.git
+cd almagest
+just install daemon app</code></pre></div>
+              <p class="install-note" data-i18n-template="landing.install-source.choose-item-item-or-both-the-command-checks-build">Choose <code>daemon</code>, <code>app</code>, or both. The command checks build requirements and lists missing packages. It preserves existing files in <code>/etc/almagest</code>.</p>
+            </section>
+            <div class="linux-start">
+              <h3 data-i18n="landing.linux-start.start-the-linux-service">Start the Linux service</h3>
+              <p data-i18n="landing.linux-start.after-an-apt-rpm-arch-or-source-install-enable-t">After an APT, RPM, Arch, or source install, enable the daemon:</p>
+              <div class="code-block"><div class="code-heading"><span data-i18n="landing.linux-start.shell">Shell</span><button type="button" class="copy-button" hidden data-i18n="landing.linux-start.copy-commands">Copy commands</button></div><pre tabindex="0"><code>sudo systemctl enable --now almagestd.service</code></pre></div>
+              <p data-i18n-template="landing.linux-start.to-use-the-app-or-cli-without-root-add-your-user">To use the app or CLI without root, add your user to the <code>almagest</code> group. This grants full control of Almagest. Sign out and sign in after this command.</p>
+              <div class="code-block"><div class="code-heading"><span data-i18n="landing.linux-start.shell">Shell</span><button type="button" class="copy-button" hidden data-i18n="landing.linux-start.copy-commands">Copy commands</button></div><pre tabindex="0"><code>sudo usermod --append --groups almagest "$USER"</code></pre></div>
+            </div>
+            <p class="copy-status" role="status" aria-atomic="true"></p>
+          </div>
+          <aside class="first-steps" aria-labelledby="first-steps-title">
+            <span class="small-orbit" aria-hidden="true">◎</span>
+            <h3 id="first-steps-title" data-i18n-template="landing.first-steps.start-small-item-then-follow-the-links">Start small.<br> Then follow the links.</h3>
+            <p data-i18n-template="landing.first-steps.open-the-desktop-app-and-go-to-item-load-item-or">Open the desktop app and go to <strong data-i18n="landing.first-steps.snapshots-examples">Snapshots → Examples</strong>. Load <strong data-i18n="landing.first-steps.hello-network">Hello Network</strong> or <strong data-i18n="landing.first-steps.mock-network">Mock Network</strong> for a first graph that does not change host routing.</p>
+            <p data-i18n="landing.first-steps.loading-an-example-replaces-your-editable-config">Loading an example replaces your editable configuration and data. If you already have a setup, save a snapshot first.</p>
+            <a class="text-link" href="./docs/?page=almagest%2Fstart" data-i18n-template="landing.first-steps.read-the-getting-started-guide-item">Read the getting started guide <span aria-hidden="true">→</span></a>
+            <div class="first-steps-more">
+              <p data-i18n="landing.first-steps.want-to-look-around-first">Want to look around first?</p>
+              <a class="text-link" href="./demo/" data-i18n-template="landing.first-steps.open-the-browser-demo-item">Open the browser demo <span aria-hidden="true">↗</span></a>
+              <p class="demo-note" data-i18n="landing.first-steps.the-demo-runs-a-limited-set-of-nodes-in-webassem">The demo runs a limited set of nodes in WebAssembly. Host routing and VPN connections require a local install.</p>
+            </div>
+          </aside>
+        </div>
+      </section>
     </main>
+    <footer class="site-footer wrap">
+      <a class="brand" href="./"><img class="brand-mark" src="./logo.svg" alt="" width="34" height="34"><span>Almagest</span></a>
+      <p data-i18n="landing.site-footer.a-network-toolkit-with-a-visual-graph-editor">A network toolkit with a visual graph editor.</p>
+      <nav aria-label="Footer navigation" data-i18n-aria-label="landing.site-footer.footer-navigation">
+        <a href="./docs/" data-i18n="landing.site-footer.documentation">Documentation</a>
+        <a href="https://github.com/asciimoth/almagest" data-i18n-template="landing.site-footer.source-code-item">Source code <span aria-hidden="true">↗</span></a>
+        <a href="https://github.com/asciimoth/almagest/blob/master/LICENSE" data-i18n="landing.site-footer.license">License</a>
+      </nav>
+    </footer>
   </body>
 </html>

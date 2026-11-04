@@ -14,6 +14,13 @@ await promisify(execFile)(process.execPath, ["scripts/publish-webdemo.mjs", "../
 test("web demo publication is a complete relative static tree", async () => {
   for (const path of [
     "index.html",
+    "main.css",
+    "main.js",
+    "locales/en/panel.json",
+    "images/orbit.svg",
+    "images/graph-placeholder.svg",
+    "images/settings-placeholder.svg",
+    "images/workspace-placeholder.svg",
     "favicon.svg",
     "social-preview.png",
     "LUCIDE_LICENSE.txt",
@@ -38,6 +45,8 @@ test("web demo publication is a complete relative static tree", async () => {
   }).window.document;
   assert.equal(landing.querySelector("a[href='./docs/']") !== null, true);
   assert.equal(landing.querySelector("a[href='./demo/']") !== null, true);
+  assert.equal(landing.querySelectorAll(".brand img[src='./logo.svg']").length, 2);
+  assert.equal(landing.querySelector(".orbit img")?.getAttribute("src"), "./images/orbit.svg");
   assert.equal(landing.querySelector("link[rel='icon']")?.getAttribute("href"), "./favicon.svg");
   assert.equal(demo.querySelector("link[rel='icon']")?.getAttribute("href"), "../favicon.svg");
   assert.equal(docs.querySelector("link[rel='icon']")?.getAttribute("href"), "../favicon.svg");
@@ -62,6 +71,56 @@ test("web demo publication is a complete relative static tree", async () => {
     "https://example.test/almagest/vendor/litegraph/litegraph.css");
   assert.equal(docs.querySelector("script[src='../vendor/litegraph/litegraph.js']")?.src,
     "https://example.test/almagest/vendor/litegraph/litegraph.js");
+});
+
+test("landing page publishes the English catalog and excludes development locales", async () => {
+  assert.deepEqual(await readFile(output("locales/en/panel.json")),
+    await readFile(new URL("../../locales/en/panel.json", import.meta.url)));
+  await assert.rejects(access(output("locales/lorem/panel.json")));
+});
+
+test("landing page applies a second locale and preserves inline links and code", async () => {
+  const dom = new JSDOM(await readFile(output("index.html"), "utf8"), {
+    url: "https://example.test/almagest/?locale=zz",
+    runScripts: "outside-only",
+  });
+  const { window } = dom;
+  window.matchMedia = () => ({ matches: false });
+  window.fetch = async (path) => ({
+    ok: true,
+    json: async () => path === "./docs/content/catalog.json"
+      ? { available: [{ locale: "en", name: "English" }, { locale: "zz", name: "Test" }] }
+      : path === "./locales/zz/panel.json"
+        ? {
+          "landing.hero.build-your-whole-network-item-item": "Red {1} {0}",
+          "landing.hero.in-one-place": "en un lugar",
+          "landing.hero.item-many-possible-paths": "Rutas: {0}.",
+          "landing.hero.90-node-classes": "90+ tipos de nodos",
+          "locale.label": "Idioma",
+        }
+        : {},
+  });
+  window.eval(await readFile(output("main.js"), "utf8"));
+  const localeSelect = window.document.querySelector(".locale-switch select");
+  for (let tries = 0; tries < 20 && localeSelect.value !== "zz"; tries++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(localeSelect.value, "zz");
+  assert.equal(window.document.documentElement.lang, "zz");
+  assert.equal(window.document.querySelector("#hero-title").textContent, "Red en un lugar ");
+  assert.equal(window.document.querySelector(".orbit-label").textContent, "Rutas: 90+ tipos de nodos.");
+  assert.equal(window.document.querySelector(".orbit-label a").getAttribute("href"),
+    "./docs/?page=node%2Falmagest%2FDns2Network");
+  assert.match(window.document.querySelector("#install-nix code").textContent, /nix profile add/);
+  assert.equal(window.document.querySelector(".locale-switch").hidden, false);
+  localeSelect.value = "en";
+  localeSelect.dispatchEvent(new window.Event("change"));
+  for (let tries = 0; tries < 20 && window.document.documentElement.lang !== "en"; tries++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(window.document.querySelector("#hero-title").textContent, "Build your whole networkin one place.");
+  assert.equal(window.document.querySelector(".orbit-label").textContent, "90+ node classes. Many possible paths.");
+  dom.window.close();
 });
 
 test("web demo favicon is generated from the light logo", async () => {

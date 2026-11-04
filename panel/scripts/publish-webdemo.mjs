@@ -180,6 +180,8 @@ async function buildDocsCatalog(nodeClassCache, availableNodeClasses) {
     });
     const tree = buildTopics(index.topics ?? [], nodePages, pages, manifest.locale);
     locales[manifest.locale] = { tree, pages };
+    await mkdir(new URL(`locales/${manifest.locale}/`, target), { recursive: true });
+    await cp(new URL("panel.json", source), new URL(`locales/${manifest.locale}/panel.json`, target));
     await cp(new URL("docs/pages/", source), new URL(`docs/content/${manifest.locale}/pages/`, target), { recursive: true });
   }
   available.sort((left, right) => left.locale.localeCompare(right.locale));
@@ -233,6 +235,8 @@ if (preview.width !== 1280 || preview.height !== 640) {
 await writeFile(new URL("social-preview.png", target), preview.asPng());
 await cp(new URL("panel/LUCIDE_LICENSE.txt", repository), new URL("LUCIDE_LICENSE.txt", target));
 await cp(new URL("webdemo/main.css", repository), new URL("main.css", target));
+await cp(new URL("webdemo/main.js", repository), new URL("main.js", target));
+await cp(new URL("webdemo/images/", repository), new URL("images/", target), { recursive: true });
 await cp(new URL("panel/style.css", repository), new URL("style.css", target));
 await copyEntryModules(["webdemo.js", "static_docs.js"], target);
 await cp(new URL("panel/vendor/", repository), new URL("vendor/", target), { recursive: true });

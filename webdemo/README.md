@@ -3,6 +3,24 @@
 The tracked files in this directory define the landing page. The web demo reuses
 the admin panel and documentation sources from `panel/` and `locales/`.
 
+`index.html`, `main.css`, and `main.js` define the project main page. The page
+uses the panel's Catppuccin Mocha colors. The screenshot carousel supports
+touch, arrow buttons, and keyboard navigation. Installation tabs select platform
+instructions. Without JavaScript, screenshots remain scrollable and all
+installation instructions remain visible.
+
+Landing-page copy uses `landing.*` keys in `locales/<locale>/panel.json`.
+English text in `index.html` is the fallback when scripts or locale files are
+unavailable. The build publishes panel catalogs for production locales only. The
+page uses the same locale cookie and storage key as the panel and docs, and
+shows a language selector when more than one production locale is available.
+
+The `images/*-placeholder.svg` files are image placeholders. To add real
+screenshots, replace the relevant image paths and alternative text in
+`index.html`, then remove their visible placeholder labels. Keep image
+dimensions to reserve space while images load. `images/orbit.svg` is the
+animated hero illustration. The build copies `images/` to the published tree.
+
 Build the complete static tree:
 
 ```sh

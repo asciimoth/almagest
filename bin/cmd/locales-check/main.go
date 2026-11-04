@@ -182,10 +182,10 @@ func validateMenuClasses(locales string, classes []pasta.NodeClass) error {
 
 func validatePanelKeys(root string, catalog map[string]string) error {
 	patterns := []*regexp.Regexp{
-		regexp.MustCompile(`data-i18n(?:-aria-label|-placeholder|-title)?="([A-Za-z0-9_.-]+)"`),
+		regexp.MustCompile(`data-i18n(?:-aria-label|-aria-roledescription|-alt|-placeholder|-title|-template)?="([A-Za-z0-9_.-]+)"`),
 		regexp.MustCompile(`(?:localizedText|\bt)\(\s*"([A-Za-z0-9_.-]+)"`),
 	}
-	paths := []string{filepath.Join(root, "panel", "index.html")}
+	paths := []string{filepath.Join(root, "panel", "index.html"), filepath.Join(root, "webdemo", "index.html")}
 	sources, err := filepath.Glob(filepath.Join(root, "panel", "src", "*.ts"))
 	if err != nil {
 		return err
