@@ -418,22 +418,7 @@ h1 > span {
 
 .screenshot-image img {
   width: 100%;
-  max-height: 430px;
   object-fit: contain;
-}
-
-.placeholder-label {
-  position: absolute;
-  bottom: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  padding: 0.3rem 0.7rem;
-  border: 1px dashed var(--surface1);
-  border-radius: 4px;
-  color: var(--subtext);
-  background: var(--mantle);
-  font-size: 0.65rem;
 }
 
 .screenshot figcaption {
@@ -608,7 +593,7 @@ h1 > span {
 
 .feature-image img {
   width: 100%;
-  aspect-ratio: 1.65;
+  aspect-ratio: 25 / 12;
   object-fit: contain;
   background: radial-gradient(ellipse at center, color-mix(in srgb, var(--accent), transparent 95%), transparent);
 }
@@ -994,11 +979,6 @@ pre {
     gap: 0.25rem;
     padding: 1rem;
     font-size: 0.75rem;
-  }
-
-  .placeholder-label {
-    bottom: 0.6rem;
-    font-size: 0.55rem;
   }
 
   .features {

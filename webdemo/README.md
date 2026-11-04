@@ -15,11 +15,64 @@ unavailable. The build publishes panel catalogs for production locales only. The
 page uses the same locale cookie and storage key as the panel and docs, and
 shows a language selector when more than one production locale is available.
 
-The `images/*-placeholder.svg` files are image placeholders. To add real
-screenshots, replace the relevant image paths and alternative text in
-`index.html`, then remove their visible placeholder labels. Keep image
-dimensions to reserve space while images load. `images/orbit.svg` is the
-animated hero illustration. The build copies `images/` to the published tree.
+The generated `images/*.png` files are Chromium captures of the existing admin
+panel. They use example graphs and fixed mock API data. They do not show live
+network sessions. `images/orbit.svg` is the animated hero illustration. The
+build renders missing PNG files before it copies `images/` to the published
+tree. Existing PNG files are preserved.
+
+## Render the interface images
+
+Install the panel dependencies and make Chromium available on `PATH`, then run:
+
+```sh
+just render-webdemo-images
+```
+
+This compiles the panel and captures all seven scenes at 1500×720 CSS pixels
+with a device scale factor of 1.5 (2250×1080 PNG files). It uses a loopback
+server and a temporary browser profile. `--password-store=basic`, also used by
+the graph image tool, prevents system secret-store prompts. Set `CHROMIUM_PATH`
+or pass `--chromium /path/to/chromium` to select the browser. Node.js 22 or
+later is required for its built-in WebSocket client.
+
+Compare variations without replacing the generated images:
+
+```sh
+just render-webdemo-images --only graph,dns --output build/render-variants \
+  --size 1500x720 --scale 2 --padding 56
+```
+
+Use `--zoom 0.9` to set the graph scale instead of automatic fitting. The script
+fails if nodes extend outside the canvas. `--help` lists all options. After the
+first compile, run `node panel/scripts/render-webdemo-images.mjs` directly for
+faster iterations. `npm --prefix panel run webdemo:images -- --help` is also
+available.
+
+Edit `panel/scripts/webdemo-render/scenes.json`, or pass `--scenes FILE`, to
+change the examples, positions, names, labels, palette, selected node, form
+values, and saved snapshots. Example paths are relative to the repository.
+Position, name, and label overrides use the original example node names.
+`select` and `menus` use the displayed name. `nodeWidth` sets the minimum node
+width (default: 180); this is the normal LiteGraph size property. Keep the image
+width and height attributes in `index.html` in sync if the output ratio changes.
+
+The capture entry point installs a mock admin transport, then loads the
+production `app.js`. It reuses `panel/index.html`, `panel/style.css`, the graph
+viewport fitter, LiteGraph, Formular, and the snapshot list. Node classes,
+ports, and colors come from `node-classes.json`. Dynamic slots follow the
+Sniffer and DnsFallback examples. Mock forms follow the HTTP client, Sniffer,
+and TLS wrapper menu definitions in `lib/`; update the fixtures if these menus
+change. The capture code is not included in production builds.
+
+The script waits for API initialization, node forms, fonts, and canvas frames.
+It rejects invalid ports, incompatible links, page errors, and unexpected image
+sizes. It fixes the locale and timezone and hides the canvas FPS counter for
+stable captures. Fonts and Chromium versions can still affect pixels. View each
+new render before replacing the published set. The PNGs are ignored by Git.
+GitHub CI installs Chrome for Testing and uses it for clean web demo builds.
+
+## Build and serve
 
 Build the complete static tree:
 

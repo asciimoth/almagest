@@ -9,6 +9,7 @@
     "build:app": "npm run compile && node scripts/publish-app.mjs",
     "build:webdemo": "npm run compile && node scripts/publish-webdemo.mjs",
     "graph:image": "npm run compile && node scripts/render-graph-image.mjs",
+    "webdemo:images": "npm run compile && node scripts/render-webdemo-images.mjs",
     "test": "npm run build && node --test tests/*.mjs"
   },
   "dependencies": {

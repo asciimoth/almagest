@@ -1,0 +1,426 @@
+{
+  "graph": {
+    "example": "examples/035-wireguard-through-local-socks/config.hujson",
+    "positions": {
+      "Local Proxy": [
+        0,
+        50
+      ],
+      "Client IP Stack": [
+        250,
+        50
+      ],
+      "Client WireGuard": [
+        500,
+        50
+      ],
+      "HTTP Server": [
+        0,
+        320
+      ],
+      "Server IP Stack": [
+        250,
+        320
+      ],
+      "Server WireGuard": [
+        500,
+        320
+      ],
+      "UDP Lab Network": [
+        800,
+        185
+      ]
+    },
+    "labels": {
+      "Local Proxy": "127.0.0.1:1095",
+      "HTTP Server": "10.235.0.2:8080",
+      "Client WireGuard": "up",
+      "Server WireGuard": "up"
+    },
+    "names": {
+      "Client IP Stack": "Client stack",
+      "Server IP Stack": "Server stack",
+      "Client WireGuard": "Client WG",
+      "Server WireGuard": "Server WG",
+      "UDP Lab Network": "Lab transport"
+    },
+    "palette": [
+      "almagest/LocalProxy",
+      "almagest/VTun",
+      "almagest/WireGuard",
+      "almagest/MockNetwork",
+      "almagest/HttpServer"
+    ]
+  },
+  "settings": {
+    "example": "examples/002-mock-network/config.hujson",
+    "select": "Http Client",
+    "positions": {
+      "Http Client": [
+        250,
+        35
+      ],
+      "Mock Network": [
+        520,
+        180
+      ],
+      "Http Server": [
+        250,
+        350
+      ],
+      "Response": [
+        0,
+        350
+      ],
+      "Out Network": [
+        520,
+        400
+      ]
+    },
+    "labels": {
+      "Http Client": "200 OK",
+      "Http Server": "127.0.0.1:8081",
+      "Response": "HTTP server response"
+    },
+    "menus": {
+      "Http Client": [
+        {
+          "id": "request",
+          "order": 10,
+          "generation": 1,
+          "form": false,
+          "items": [
+            {
+              "type": "field",
+              "id": "url",
+              "kind": "text",
+              "label": "URL",
+              "value": "http://127.0.0.1:8081/"
+            },
+            {
+              "type": "field",
+              "id": "method",
+              "kind": "text",
+              "label": "Method",
+              "value": "GET"
+            },
+            {
+              "type": "field",
+              "id": "body",
+              "kind": "text",
+              "label": "Body",
+              "value": "",
+              "multiline": true
+            },
+            {
+              "type": "field",
+              "id": "tlsConfig",
+              "kind": "text",
+              "label": "TLS config",
+              "value": "default"
+            },
+            {
+              "type": "button",
+              "id": "send",
+              "label": "Send request"
+            }
+          ]
+        },
+        {
+          "id": "result",
+          "order": 20,
+          "generation": 1,
+          "form": false,
+          "items": [
+            {
+              "type": "label",
+              "id": "status",
+              "text": "Status: 200 OK",
+              "format": "plain"
+            },
+            {
+              "type": "field",
+              "id": "error",
+              "kind": "text",
+              "label": "Error",
+              "value": "",
+              "readonly": true
+            },
+            {
+              "type": "field",
+              "id": "response",
+              "kind": "text",
+              "label": "Response",
+              "value": "HTTP server response",
+              "multiline": true,
+              "readonly": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "workspace": {
+    "tab": "snapshots",
+    "snapshots": [
+      {
+        "uuid": "3b60924a-7c96-4c72-a240-94140d815793",
+        "timestamp": 1772533800000000000,
+        "name": "WireGuard lab — working baseline"
+      },
+      {
+        "uuid": "80b96f64-5dbc-44b7-bfa1-30f1ed58c921",
+        "timestamp": 1772446500000000000,
+        "name": "DNS fallback and cache"
+      },
+      {
+        "name": "Access a WireGuard network through local SOCKS",
+        "comment": "Connect a local application to an isolated WireGuard network.",
+        "example": "035-wireguard-through-local-socks"
+      },
+      {
+        "name": "Inspect and route initial traffic",
+        "comment": "Select a network from the first HTTP bytes.",
+        "example": "009-inspect-and-route-traffic"
+      },
+      {
+        "name": "DNS fallback and cache",
+        "comment": "Resolve local records first, then cache outbound answers.",
+        "example": "014-dns-fallback-and-cache"
+      }
+    ]
+  },
+  "routing": {
+    "example": "examples/009-inspect-and-route-traffic/config.hujson",
+    "select": "Traffic Sniffer",
+    "positions": {
+      "Local Proxy": [
+        0,
+        60
+      ],
+      "Traffic Sniffer": [
+        260,
+        60
+      ],
+      "Out Network": [
+        550,
+        30
+      ],
+      "Mock Network": [
+        550,
+        320
+      ],
+      "HTTP Server": [
+        260,
+        320
+      ],
+      "Response": [
+        0,
+        320
+      ]
+    },
+    "labels": {
+      "Local Proxy": "127.0.0.1:1089",
+      "Traffic Sniffer": "sniffing 1 classifier",
+      "HTTP Server": "127.0.0.1:8080"
+    },
+    "menus": {
+      "Traffic Sniffer": [
+        {
+          "id": "config",
+          "order": 10,
+          "generation": 1,
+          "form": true,
+          "items": [
+            {
+              "type": "field",
+              "id": "rules",
+              "kind": "text",
+              "label": "Sniffer rules",
+              "value": "DIAL\nTCP\nAND\nINTERCEPT\n\nSNIFF HTTP URL:/mock\nROUTE 2 DST:127.0.0.1:8080\n\nSNIFF HTTP\nSLOT 1\n\nSNIFF_NONE\nSLOT 1\n\nTRUE\nSLOT 1",
+              "multiline": true,
+              "subtype": "rulev1"
+            },
+            {
+              "type": "field",
+              "id": "dnsCacheStorageName",
+              "kind": "text",
+              "label": "DNS cache storage",
+              "value": ""
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "dns": {
+    "example": "examples/014-dns-fallback-and-cache/config.hujson",
+    "positions": {
+      "Local Query": [
+        0,
+        50
+      ],
+      "Public Query": [
+        0,
+        330
+      ],
+      "DNS Cache": [
+        250,
+        190
+      ],
+      "DNS Fallback": [
+        470,
+        190
+      ],
+      "Static DNS": [
+        760,
+        50
+      ],
+      "Outbound DNS": [
+        760,
+        330
+      ]
+    },
+    "labels": {
+      "Local Query": "service.fallback.test.",
+      "Public Query": "example.com.",
+      "DNS Cache": "example-dns-fallback",
+      "DNS Fallback": "2 slots",
+      "Static DNS": "1 record"
+    },
+    "palette": [
+      "almagest/DnsQuery",
+      "almagest/DnsCache",
+      "almagest/DnsFallback",
+      "almagest/StaticDns",
+      "almagest/OutDns"
+    ]
+  },
+  "tls": {
+    "example": "examples/011-wrap-connection-in-tls/config.hujson",
+    "select": "TLS Wrapper",
+    "positions": {
+      "Plain HTTP Client": [
+        0,
+        20
+      ],
+      "TLS Wrapper": [
+        270,
+        20
+      ],
+      "TLS Terminator": [
+        540,
+        20
+      ],
+      "Response": [
+        0,
+        350
+      ],
+      "HTTP Server": [
+        270,
+        350
+      ],
+      "Mock Network": [
+        540,
+        350
+      ]
+    },
+    "labels": {
+      "Plain HTTP Client": "200 OK",
+      "TLS Wrapper": "wrapping TLS",
+      "TLS Terminator": "terminating TLS",
+      "HTTP Server": "127.0.0.1:8080"
+    },
+    "menus": {
+      "TLS Wrapper": [
+        {
+          "id": "config",
+          "order": 10,
+          "generation": 1,
+          "form": true,
+          "items": [
+            {
+              "type": "field",
+              "id": "tlsConfig",
+              "kind": "text",
+              "label": "TLS config",
+              "value": "default"
+            },
+            {
+              "type": "field",
+              "id": "clientServerName",
+              "kind": "text",
+              "label": "Client server name",
+              "value": "wrapped-service.test"
+            },
+            {
+              "type": "field",
+              "id": "clientAlpn",
+              "kind": "text",
+              "label": "Client ALPN",
+              "value": "http/1.1",
+              "multiline": true
+            },
+            {
+              "type": "field",
+              "id": "serverName",
+              "kind": "text",
+              "label": "Server name",
+              "value": "wrapped-service.test"
+            },
+            {
+              "type": "field",
+              "id": "serverAlpn",
+              "kind": "text",
+              "label": "Server ALPN",
+              "value": "http/1.1",
+              "multiline": true
+            },
+            {
+              "type": "field",
+              "id": "leafTTLSeconds",
+              "kind": "int",
+              "label": "Leaf TTL seconds",
+              "value": 300
+            }
+          ]
+        }
+      ]
+    },
+    "names": {
+      "Plain HTTP Client": "HTTP Client"
+    }
+  },
+  "local-proxy": {
+    "example": "examples/007-local-socks-access/config.hujson",
+    "positions": {
+      "Response": [
+        0,
+        40
+      ],
+      "HTTP Server": [
+        300,
+        40
+      ],
+      "Local Proxy": [
+        300,
+        330
+      ],
+      "Mock Network": [
+        650,
+        180
+      ]
+    },
+    "labels": {
+      "Local Proxy": "127.0.0.1:1087",
+      "HTTP Server": "127.0.0.1:8080",
+      "Response": "Response through local SOCKS"
+    },
+    "palette": [
+      "almagest/LocalProxy",
+      "almagest/HttpServer",
+      "almagest/MockNetwork",
+      "pasta/StringConstant"
+    ]
+  }
+}

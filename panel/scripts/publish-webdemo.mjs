@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -12,6 +12,22 @@ const outputArgument = process.argv[2] || "../build/webdemo";
 const target = pathToFileURL(`${resolve(process.cwd(), outputArgument)}/`);
 const repository = new URL("../../", import.meta.url);
 const execute = promisify(execFile);
+const imageScenes = JSON.parse(await readFile(new URL("webdemo-render/scenes.json", import.meta.url), "utf8"));
+const missingImages = [];
+for (const name of Object.keys(imageScenes)) {
+  try {
+    if (!(await stat(new URL(`webdemo/images/${name}.png`, repository))).isFile()) missingImages.push(name);
+  } catch {
+    missingImages.push(name);
+  }
+}
+if (missingImages.length) {
+  const { stdout } = await execute(process.execPath, [
+    fileURLToPath(new URL("render-webdemo-images.mjs", import.meta.url)),
+    "--only", missingImages.join(","),
+  ]);
+  process.stdout.write(stdout);
+}
 const siteURL = new URL(process.env.ALMAGEST_WEBDEMO_SITE_URL || "https://asciimoth.github.io/almagest/");
 if (!["http:", "https:"].includes(siteURL.protocol) || !siteURL.pathname.endsWith("/")
   || siteURL.search || siteURL.hash) {

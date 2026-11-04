@@ -67,8 +67,14 @@ jobs:
           go -C certcat test ./...
           go -C lib test . ./dns ./http ./network ./socks
           go -C bin test ./almagestd ./almagestd/command ./api
+      - uses: browser-actions/setup-chrome@v2
+        id: setup-chrome
+        with:
+          chrome-version: stable
+          install-dependencies: true
+      - run: echo "CHROMIUM_PATH=${{ steps.setup-chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
       - run: just build-webdemo
-      - run: node --test tests/admin_transport.test.mjs tests/webdemo_publish.test.mjs
+      - run: node --test tests/admin_transport.test.mjs tests/webdemo_images.test.mjs tests/webdemo_publish.test.mjs
         working-directory: panel
       - uses: actions/upload-artifact@v4
         with:

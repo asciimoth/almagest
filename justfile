@@ -242,6 +242,11 @@ render-graph-image *args:
   npm --prefix panel run compile
   node panel/scripts/render-graph-image.mjs {{args}}
 
+# Capture landing-page images with the existing panel and headless Chromium.
+render-webdemo-images *args:
+  npm --prefix panel run compile
+  node panel/scripts/render-webdemo-images.mjs {{args}}
+
 # Build and serve the web demo. Set base_path=almagest to test a subpath.
 serve-webdemo base_path='' output='build/webdemo' port='8000' host='0.0.0.0':
   just build-webdemo {{quote(output)}}

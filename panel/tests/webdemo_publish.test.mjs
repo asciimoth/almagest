@@ -18,9 +18,13 @@ test("web demo publication is a complete relative static tree", async () => {
     "main.js",
     "locales/en/panel.json",
     "images/orbit.svg",
-    "images/graph-placeholder.svg",
-    "images/settings-placeholder.svg",
-    "images/workspace-placeholder.svg",
+    "images/graph.png",
+    "images/settings.png",
+    "images/workspace.png",
+    "images/routing.png",
+    "images/dns.png",
+    "images/tls.png",
+    "images/local-proxy.png",
     "favicon.svg",
     "social-preview.png",
     "LUCIDE_LICENSE.txt",
@@ -47,6 +51,16 @@ test("web demo publication is a complete relative static tree", async () => {
   assert.equal(landing.querySelector("a[href='./demo/']") !== null, true);
   assert.equal(landing.querySelectorAll(".brand img[src='./logo.svg']").length, 2);
   assert.equal(landing.querySelector(".orbit img")?.getAttribute("src"), "./images/orbit.svg");
+  const captures = [...landing.querySelectorAll(".screenshot-image img, .feature-image img")];
+  assert.equal(captures.length, 9);
+  assert.equal(landing.querySelector(".placeholder-label, img[src*='-placeholder']"), null);
+  for (const capture of captures) {
+    assert.match(capture.getAttribute("src"), /\.png$/);
+    assert.doesNotMatch(capture.getAttribute("alt"), /placeholder/i);
+    const png = await readFile(output(capture.getAttribute("src")));
+    assert.equal(png.readUInt32BE(16), Number(capture.getAttribute("width")));
+    assert.equal(png.readUInt32BE(20), Number(capture.getAttribute("height")));
+  }
   assert.equal(landing.querySelector("link[rel='icon']")?.getAttribute("href"), "./favicon.svg");
   assert.equal(demo.querySelector("link[rel='icon']")?.getAttribute("href"), "../favicon.svg");
   assert.equal(docs.querySelector("link[rel='icon']")?.getAttribute("href"), "../favicon.svg");
