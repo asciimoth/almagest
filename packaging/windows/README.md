@@ -255,8 +255,7 @@ local snapshot uses `0.0.0`. `just package` builds all artifacts without signing
 and notifies you when they are ready. Run `just sign-package` when you are ready
 to approve hardware-key signing. It creates detached OpenPGP signatures for the
 MSI, its checksum and build evidence, the package guide, and the support
-collector. Verify one with the public key in `ascii-moth.asc`, for
-example:
+collector. Verify one with the public key in `ascii-moth.asc`, for example:
 
 ```text
 gpg --verify almagest_VERSION_windows_amd64.msi.sig almagest_VERSION_windows_amd64.msi

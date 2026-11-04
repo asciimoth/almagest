@@ -60,12 +60,13 @@ An upgrade preserves an existing protected config. On such a system, add
 
 GoReleaser creates Linux amd64 and arm64 archives and deb, RPM, and Arch Linux
 packages. Run `just package` to build all Linux and Windows artifacts without
-using the hardware key. When the build finishes, it prints a message and sends
-a desktop notification when available. Run `just sign-package` when you are
-ready to approve signing and touch the key. The signing command checks that the
-artifacts have not changed since the build. The output is in `dist/` and includes
-a SHA-256 checksum file, detached OpenPGP signatures, and `ascii-moth.asc`. Import the
-key, then verify an artifact before you install or extract it:
+using the hardware key. When the build finishes, it prints a message and sends a
+desktop notification when available. Run `just sign-package` when you are ready
+to approve signing and touch the key. The signing command checks that the
+artifacts have not changed since the build. The output is in `dist/` and
+includes a SHA-256 checksum file, detached OpenPGP signatures, and
+`ascii-moth.asc`. Import the key, then verify an artifact before you install or
+extract it:
 
 ```text
 gpg --import ascii-moth.asc
@@ -76,9 +77,10 @@ The primary key fingerprint is
 `C5C8 4658 CCFD 7E8E 71DE E933 AF3A E54F C3A3 5C9F`.
 
 `just package false` makes an unsigned local build without a signing step.
-`just test-packaging` uses this mode automatically. Run `just test-packaging true`
-to build and test the artifacts before the signing notification. After you run
-`just sign-package`, run `./packaging/tests/run.sh` to verify the signatures.
+`just test-packaging` uses this mode automatically. Run
+`just test-packaging true` to build and test the artifacts before the signing
+notification. After you run `just sign-package`, run `./packaging/tests/run.sh`
+to verify the signatures.
 
 The packages start `almagestd` as root with daemon isolation off. Subprogram
 sandbox mode is `auto`, and supported system programs are discovered at startup.
