@@ -15,7 +15,7 @@ the platform status and feature limits.
 The MSI installs immutable files below `%ProgramFiles%\Almagest`. These files
 include `almagestd.exe`, `almagest-cli.exe`, the optional `almagest-app.exe` and
 its `WebView2Loader.dll`, the official amd64 `wintun.dll`, locales, examples,
-package documentation, and a staging directory for the complete Mullvad
+license files, and a staging directory for the complete Mullvad
 split-tunnel driver package.
 
 The installer adds `%ProgramFiles%\Almagest` to the machine `PATH`. New command
@@ -159,11 +159,11 @@ diagnostics to `%LocalAppData%\Almagest\logs\almagest-app.log`. It rotates the
 file at 5 MiB and keeps three old files. A non-admin app does not write into the
 protected daemon log directory.
 
-The Windows package output includes `collect-windows-support.ps1`. Run it from
-the same directory as the MSI. It requests UAC elevation and creates one ZIP
-that contains recent Almagest MSI logs, daemon logs, the original signed-in
-user's desktop-app logs, event logs, and the diagnostic report. Add
-`-RunExperiments` to include a controlled service restart and monitor period.
+Run `scripts/collect-windows-support.ps1` from the source tree to collect
+diagnostic data. It requests UAC elevation and creates one ZIP that contains
+recent Almagest MSI logs, daemon logs, the original signed-in user's desktop-app
+logs, event logs, and the diagnostic report. Add `-RunExperiments` to include a
+controlled service restart and monitor period.
 
 ## Runtime dependencies
 
@@ -249,13 +249,13 @@ just winvm-package-integration 1.2.3
 ```
 
 `just package-windows [VERSION]` is the release-facing command. It copies the
-MSI, its `.sha256` file, and `.build.json` evidence into `dist/`. Without an
-explicit version, it uses an exact `vX.Y.Z` or `X.Y.Z` Git tag. An untagged
-local snapshot uses `0.0.0`. `just package` builds all artifacts without signing
-and notifies you when they are ready. Run `just sign-package` when you are ready
-to approve hardware-key signing. It creates detached OpenPGP signatures for the
-MSI, its checksum and build evidence, the package guide, and the support
-collector. Verify one with the public key in `ascii-moth.asc`, for example:
+MSI and its `.sha256` file into `dist/`. Build evidence stays in the WinVM run
+directory. Without an explicit version, it uses an exact `vX.Y.Z` or `X.Y.Z` Git
+tag. An untagged local snapshot uses `0.0.0`. `just package` builds all
+artifacts without signing and notifies you when they are ready. Run
+`just sign-package` when you are ready to approve hardware-key signing. It
+creates detached OpenPGP signatures for the MSI and its checksum. Verify one
+with the public key in `ascii-moth.asc`, for example:
 
 ```text
 gpg --verify almagest_VERSION_windows_amd64.msi.sig almagest_VERSION_windows_amd64.msi

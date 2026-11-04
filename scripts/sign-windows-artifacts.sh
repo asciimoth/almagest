@@ -16,13 +16,9 @@ if ((${#installers[@]} != 1)); then
 fi
 
 installer=${installers[0]}
-base=${installer%.msi}
 artifacts=(
 	"$installer"
 	"$installer.sha256"
-	"$base.build.json"
-	"$output_dir/WINDOWS_PACKAGE_CONTENTS.md"
-	"$output_dir/collect-windows-support.ps1"
 )
 
 for artifact in "${artifacts[@]}"; do

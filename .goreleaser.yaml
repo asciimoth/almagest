@@ -151,8 +151,6 @@ archives:
         dst: share/doc/almagest/README.md
       - src: LICENSE
         dst: share/doc/almagest/LICENSE
-      - src: packaging/linux/README.md
-        dst: PACKAGE_CONTENTS.md
 
   - id: linux-arm64
     ids:
@@ -184,8 +182,6 @@ archives:
         dst: share/doc/almagest/README.md
       - src: LICENSE
         dst: share/doc/almagest/LICENSE
-      - src: packaging/linux/README.md
-        dst: PACKAGE_CONTENTS.md
 
   - id: app-linux-amd64
     ids:
@@ -202,8 +198,6 @@ archives:
         dst: share/icons/hicolor/128x128/apps/almagest.png
       - src: LICENSE
         dst: share/licenses/almagest-app/LICENSE
-      - src: packaging/linux/app-README.md
-        dst: PACKAGE_CONTENTS.md
 
 nfpms:
   - id: linux-packages

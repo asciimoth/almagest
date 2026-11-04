@@ -24,7 +24,8 @@ def tracked_files(tree: str) -> list[str]:
         capture_output=True,
         text=True,
     )
-    paths = [line for line in result.stdout.splitlines() if line]
+    paths = [line for line in result.stdout.splitlines()
+             if line and line != "locales/README.md"]
     if tree != "locales":
         return paths
     excluded = set()

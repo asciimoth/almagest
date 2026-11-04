@@ -24,7 +24,6 @@ if find dist -maxdepth 1 -type f -name 'almagest-app_*_linux_arm64*' -print -qui
 	printf 'found an unsupported Linux arm64 app artifact\n' >&2
 	exit 1
 fi
-test -f dist/PACKAGE_CONTENTS.md
 test -f dist/ascii-moth.asc
 
 if [[ -f "${archives[amd64]}.sig" ]]; then
@@ -57,10 +56,7 @@ if [[ -f "${archives[amd64]}.sig" ]]; then
 		exit 1
 	fi
 	windows_installer=${windows_installers[0]}
-	for artifact in "$windows_installer" "$windows_installer.sha256" \
-		"${windows_installer%.msi}.build.json" \
-		dist/WINDOWS_PACKAGE_CONTENTS.md \
-		dist/collect-windows-support.ps1; do
+	for artifact in "$windows_installer" "$windows_installer.sha256"; do
 		verify_artifact "$artifact"
 	done
 elif find dist -maxdepth 1 -type f -name '*.sig' -print -quit | grep -q .; then
@@ -80,7 +76,10 @@ for arch in "${architectures[@]}"; do
 		exit 1
 	fi
 	grep -E '(^|/)share/almagest/examples/[^/]+/manifest.json$' <<<"$listing" >/dev/null
-	grep -E '(^|/)PACKAGE_CONTENTS\.md$' <<<"$listing" >/dev/null
+	if grep -E '(^|/)PACKAGE_CONTENTS\.md$' <<<"$listing" >/dev/null; then
+		printf '%s archive contains a package build guide\n' "$arch" >&2
+		exit 1
+	fi
 	if grep -E '(^|/)almagest-app$' <<<"$listing" >/dev/null; then
 		printf '%s daemon archive contains the desktop app\n' "$arch" >&2
 		exit 1
@@ -107,7 +106,10 @@ grep -E '(^|/)share/applications/almagest-app.desktop$' <<<"$app_listing" >/dev/
 grep -E '(^|/)etc/xdg/autostart/almagest-app.desktop$' <<<"$app_listing" >/dev/null
 grep -E '(^|/)share/icons/hicolor/128x128/apps/almagest.png$' <<<"$app_listing" >/dev/null
 grep -E '(^|/)share/licenses/almagest-app/LICENSE$' <<<"$app_listing" >/dev/null
-grep -E '(^|/)PACKAGE_CONTENTS\.md$' <<<"$app_listing" >/dev/null
+if grep -E '(^|/)PACKAGE_CONTENTS\.md$' <<<"$app_listing" >/dev/null; then
+	printf 'desktop app archive contains a package build guide\n' >&2
+	exit 1
+fi
 if grep -E '(^|/)(almagest-cli|almagestd)$' <<<"$app_listing" >/dev/null; then
 	printf 'desktop app archive contains daemon package binaries\n' >&2
 	exit 1
@@ -117,6 +119,32 @@ fi
 	cd dist
 	sha256sum --check checksums.txt
 )
+
+mapfile -t windows_installers < <(
+	find dist -maxdepth 1 -type f -name 'almagest_*_windows_amd64.msi' -print
+)
+if ((${#windows_installers[@]} != 1)); then
+	printf 'expected one Windows MSI, found %d\n' "${#windows_installers[@]}" >&2
+	exit 1
+fi
+windows_installer=${windows_installers[0]#dist/}
+declare -A publish_files=([checksums.txt]=1 [ascii-moth.asc]=1)
+publish_files["$windows_installer"]=1
+publish_files["$windows_installer.sha256"]=1
+while IFS= read -r line; do
+	publish_files["${line:66}"]=1
+done < dist/checksums.txt
+while IFS= read -r -d '' path; do
+	[[ -f $path ]] || { printf 'non-file in package output: %s\n' "$path" >&2; exit 1; }
+	name=${path#dist/}
+	if [[ $name == *.sig ]]; then
+		name=${name%.sig}
+	fi
+	[[ -n ${publish_files[$name]:-} ]] || {
+		printf 'unpublished file in package output: %s\n' "$path" >&2
+		exit 1
+	}
+done < <(find dist -mindepth 1 -maxdepth 1 -print0)
 
 read -r -a formats <<<"${ALMAGEST_PACKAGE_TEST_FORMATS:-deb rpm archlinux}"
 

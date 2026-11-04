@@ -54,11 +54,13 @@ for path in "$msi" "$checksum" "$evidence"; do
 done
 
 (cd "$artifact_dir" && sha256sum --check "$(basename "$checksum")")
+find "$output_dir" -maxdepth 1 -type f \
+	\( -name 'almagest_*_windows_amd64.msi*' -o \
+	-name 'almagest_*_windows_amd64.build.json*' \) -delete
+rm -f -- "$output_dir/WINDOWS_PACKAGE_CONTENTS.md" \
+	"$output_dir/collect-windows-support.ps1" \
+	"$output_dir/WINDOWS_PACKAGE_CONTENTS.md.sig" \
+	"$output_dir/collect-windows-support.ps1.sig"
 install -m 0644 "$msi" "$output_dir/$name.msi"
 install -m 0644 "$checksum" "$output_dir/$name.msi.sha256"
-install -m 0644 "$evidence" "$output_dir/$name.build.json"
-install -m 0644 "$repo_root/packaging/windows/README.md" \
-	"$output_dir/WINDOWS_PACKAGE_CONTENTS.md"
-install -m 0644 "$repo_root/scripts/collect-windows-support.ps1" \
-	"$output_dir/collect-windows-support.ps1"
 printf 'Windows package artifacts: %s\n' "$output_dir"

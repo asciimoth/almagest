@@ -15,8 +15,7 @@ availability does not qualify any Windows platform entry as supported. Windows
 can show an unknown-publisher or SmartScreen warning for the MSI and Almagest
 executables.
 
-Build the MSI in the locked VM and copy the MSI, SHA-256 file, and build
-evidence to `dist/`:
+Build the MSI in the locked VM and copy the MSI and SHA-256 file to `dist/`:
 
 ```sh
 just package-windows

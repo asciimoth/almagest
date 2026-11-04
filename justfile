@@ -254,11 +254,11 @@ build-windows:
 # prepare them for an explicit signing step. Pass false for unsigned local checks.
 package sign='true': build-web
   @case {{quote(sign)}} in true|false) ;; *) printf 'sign must be true or false\n' >&2; exit 2 ;; esac
-  rm -f dist/.signing-inputs.sha256
+  rm -f build/packaging/signing-inputs.sha256
   ./packaging/build-native.sh
   ./packaging/build-app.sh
   goreleaser release --snapshot --clean --skip=sign
-  install -m 0644 packaging/linux/README.md dist/PACKAGE_CONTENTS.md
+  ./scripts/prune-package-output.sh dist
   install -m 0644 packaging/keys/ascii-moth.asc dist/ascii-moth.asc
   ./scripts/package-windows.sh
   @case {{quote(sign)}} in \

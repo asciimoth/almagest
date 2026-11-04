@@ -118,7 +118,6 @@ $expected = [ordered]@{
     'WebView2Loader.dll' = $inputHashes['dev/winvm/WebView2Loader.dll']
     'wintun.dll' = $inputHashes['dev/winvm/package-inputs/wintun/amd64/wintun.dll']
     'LICENSE.txt' = $inputHashes['LICENSE']
-    'PACKAGE-README.md' = $inputHashes['packaging/windows/README.md']
     'WINTUN-LICENSE.txt' = $inputHashes['dev/winvm/package-inputs/wintun/licenses/wintun-LICENSE.txt']
     'MULLVAD-LICENSE-MPL.txt' = $inputHashes['dev/winvm/package-inputs/split-driver/licenses/mullvad-LICENSE-MPL.txt']
     'drivers\mullvad-split-tunnel\mullvad-split-tunnel.inf' = $inputHashes['dev/winvm/package-inputs/split-driver/amd64/mullvad-split-tunnel.inf']
@@ -130,6 +129,10 @@ foreach ($inputFile in $manifest.inputs.files) {
         $expected[$inputFile.path.Replace('/', '\')] = $inputFile.sha256
     }
 }
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $programFiles 'PACKAGE-README.md'))) `
+    'Package build guide is installed'
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $programFiles 'locales\README.md'))) `
+    'Locale source guide is installed'
 $installedFiles = @()
 foreach ($entry in $expected.GetEnumerator()) {
     Assert-True ([bool]$entry.Value) "No package input hash for $($entry.Key)"

@@ -17,7 +17,8 @@ def package_files(root: Path, directory: str) -> list[Path]:
     base = root / directory
     if directory != "locales":
         return [path for path in base.rglob("*") if path.is_file()]
-    files = [path for path in base.iterdir() if path.is_file()]
+    files = [path for path in base.iterdir()
+             if path.is_file() and path.name != "README.md"]
     for entry in base.iterdir():
         if not entry.is_dir():
             continue
@@ -51,7 +52,6 @@ def main() -> None:
         args.root / "dev/winvm/WebView2Loader.dll",
         args.root / "dev/winvm/LICENSE.rtf",
         args.root / "LICENSE",
-        args.root / "packaging/windows/README.md",
     ]
     for directory in ("locales", "examples", "dev/winvm/package-inputs"):
         paths.extend(package_files(args.root, directory))

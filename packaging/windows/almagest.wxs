@@ -196,8 +196,6 @@
                Guid="1DA725CA-0E69-41D5-96D3-8803C5BDC55D" Bitness="always64">
       <File Id="ProjectLicense" Source="$(var.SourceDir)\LICENSE"
             Name="LICENSE.txt" KeyPath="yes" />
-      <File Id="PackageReadme" Source="$(var.SourceDir)\packaging\windows\README.md"
-            Name="PACKAGE-README.md" />
       <File Id="WintunLicense"
             Source="$(var.WintunDir)\..\licenses\wintun-LICENSE.txt"
             Name="WINTUN-LICENSE.txt" />

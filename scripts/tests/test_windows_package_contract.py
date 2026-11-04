@@ -346,14 +346,12 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertNotIn("wintun.inf", source)
         self.assertNotIn("wintun.cat", source)
 
-    def test_wix_installs_documentation_and_dependency_licenses(self):
+    def test_wix_installs_dependency_licenses(self):
         component = self._component(self.wix, "PackageDocumentationComponent")
         files = {item.attrib["Id"]: item.attrib["Source"]
                  for item in component.findall(f"{WIX}File")}
         self.assertEqual(files, {
             "ProjectLicense": r"$(var.SourceDir)\LICENSE",
-            "PackageReadme":
-                r"$(var.SourceDir)\packaging\windows\README.md",
             "WintunLicense":
                 r"$(var.WintunDir)\..\licenses\wintun-LICENSE.txt",
             "MullvadLicense":
@@ -590,10 +588,11 @@ class WindowsPackageContractTests(unittest.TestCase):
                       "Assert-PrivateProgramDataAcl", "aclReconciled"):
             self.assertIn(token, finish)
 
-    def test_windows_package_ships_unified_support_collector(self):
+    def test_windows_support_collector_stays_outside_package_output(self):
         package_script = (ROOT / "scripts/package-windows.sh").read_text()
         collector = (ROOT / "scripts/collect-windows-support.ps1").read_text()
-        self.assertIn("collect-windows-support.ps1", package_script)
+        self.assertNotIn('install -m 0644 "$repo_root/scripts/collect-windows-support.ps1"',
+                         package_script)
         for token in ("MSI*.LOG", "almagest-app.log*", "almagestd.log*",
                       "Get-ProfilePathForSid", "OriginalSid"):
             self.assertIn(token, collector)
@@ -637,8 +636,8 @@ class WindowsPackageContractTests(unittest.TestCase):
         self.assertIn('"$repo_root/dev/winvm/run.sh" package', source)
         self.assertIn('install -m 0644 "$msi"', source)
         self.assertIn('install -m 0644 "$checksum"', source)
-        self.assertIn('install -m 0644 "$evidence"', source)
-        self.assertIn('"$output_dir/WINDOWS_PACKAGE_CONTENTS.md"', source)
+        self.assertNotIn('install -m 0644 "$evidence"', source)
+        self.assertNotIn('install -m 0644 "$repo_root/packaging/windows/README.md"', source)
         version = subprocess.run(
             ["bash", str(assembly), "--print-version", "7.8.9"],
             cwd=ROOT,
@@ -656,9 +655,6 @@ class WindowsPackageContractTests(unittest.TestCase):
             artifacts = [
                 Path(f"{base}.msi"),
                 output / "almagest_1.2.3_windows_amd64.msi.sha256",
-                Path(f"{base}.build.json"),
-                output / "WINDOWS_PACKAGE_CONTENTS.md",
-                output / "collect-windows-support.ps1",
             ]
             for artifact in artifacts:
                 artifact.write_text(artifact.name)
@@ -679,7 +675,8 @@ class WindowsPackageContractTests(unittest.TestCase):
     def test_package_signing_waits_for_explicit_command_and_checks_inputs(self):
         signer = ROOT / "scripts/package-signing.sh"
         with tempfile.TemporaryDirectory() as temporary:
-            output = Path(temporary)
+            output = Path(temporary) / "dist"
+            output.mkdir()
             linux = output / "almagest_1.2.3_linux_amd64.deb"
             linux.write_bytes(b"linux package")
             (output / "checksums.txt").write_text(
@@ -688,9 +685,6 @@ class WindowsPackageContractTests(unittest.TestCase):
             windows = [
                 output / "almagest_1.2.3_windows_amd64.msi",
                 output / "almagest_1.2.3_windows_amd64.msi.sha256",
-                output / "almagest_1.2.3_windows_amd64.build.json",
-                output / "WINDOWS_PACKAGE_CONTENTS.md",
-                output / "collect-windows-support.ps1",
             ]
             for artifact in windows:
                 artifact.write_text(artifact.name)
@@ -703,10 +697,12 @@ class WindowsPackageContractTests(unittest.TestCase):
                 'shift\n: > "$1"\n'
             )
             fake_gpg.chmod(0o755)
-            env = {**os.environ, "GPG_COMMAND": str(fake_gpg)}
+            env = {**os.environ, "GPG_COMMAND": str(fake_gpg),
+                   "ALMAGEST_SIGNING_MANIFEST": str(Path(temporary) / "signing-inputs.sha256")}
             subprocess.run(["bash", str(signer), "prepare", str(output)],
                            cwd=ROOT, env=env, check=True, capture_output=True)
             self.assertFalse(list(output.glob("*.sig")))
+            self.assertFalse((output / ".signing-inputs.sha256").exists())
 
             windows[0].write_text("changed")
             rejected = subprocess.run(["bash", str(signer), "sign", str(output)],
@@ -719,6 +715,29 @@ class WindowsPackageContractTests(unittest.TestCase):
                            cwd=ROOT, env=env, check=True, capture_output=True)
             for artifact in [linux, output / "checksums.txt", *windows]:
                 self.assertTrue(Path(f"{artifact}.sig").is_file())
+
+    def test_package_output_prunes_build_files(self):
+        script = ROOT / "scripts/prune-package-output.sh"
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            package = output / "almagest_1.2.3_linux_amd64.deb"
+            package.write_bytes(b"package")
+            (output / "checksums.txt").write_text(
+                f"{hashlib.sha256(package.read_bytes()).hexdigest()}  {package.name}\n"
+            )
+            for name in ("artifacts.json", "metadata.json", "config.yaml",
+                         "PACKAGE_CONTENTS.md", "WINDOWS_PACKAGE_CONTENTS.md",
+                         "collect-windows-support.ps1", "almagest_1.2.3_windows_amd64.build.json",
+                         "almagest_1.2.3_linux_amd64.deb.sig", ".signing-inputs.sha256"):
+                (output / name).write_text("build file")
+            raw_binary = output / "almagestd-linux-amd64"
+            raw_binary.mkdir()
+            (raw_binary / "almagestd").write_text("raw binary")
+
+            subprocess.run(["bash", str(script), str(output)],
+                           cwd=ROOT, check=True, capture_output=True)
+            self.assertEqual({p.name for p in output.iterdir()},
+                             {package.name, "checksums.txt"})
 
     def test_wix_linter_accepts_tracked_package_sources(self):
         subprocess.run(
@@ -733,6 +752,7 @@ class WindowsPackageContractTests(unittest.TestCase):
         payload = PAYLOAD_WIX_PATH.read_text()
         self.assertIn(r"locales\en\manifest.json", payload)
         self.assertNotIn("locales\\lorem\\", payload)
+        self.assertNotIn(r"locales\README.md", payload)
 
     def test_build_manifest_identities_are_deterministic_and_input_bound(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -741,7 +761,7 @@ class WindowsPackageContractTests(unittest.TestCase):
                 (root / directory).mkdir(parents=True, exist_ok=True)
             (root / "packaging/windows/contract.json").write_bytes(
                 CONTRACT_PATH.read_bytes())
-            for name in ("LICENSE", "packaging/windows/README.md",
+            for name in ("LICENSE", "locales/README.md",
                          "dev/winvm/almagestd.exe", "dev/winvm/almagest-cli.exe",
                          "dev/winvm/almagest-app.exe", "dev/winvm/WebView2Loader.dll",
                          "dev/winvm/LICENSE.rtf",
@@ -781,6 +801,7 @@ class WindowsPackageContractTests(unittest.TestCase):
             paths = [value["path"] for value in first["inputs"]["files"]]
             self.assertIn("locales/en/value.json", paths)
             self.assertNotIn("locales/lorem/value.json", paths)
+            self.assertNotIn("locales/README.md", paths)
             (root / "locales/lorem/value.json").write_text("changed fixture")
             subprocess.run(command, check=True)
             self.assertEqual(first, json.loads(output.read_text()))
