@@ -24,6 +24,8 @@ Almagest is a Go userspace network stack built around a Pasta node graph.
 - `lib/tun/` owns TUN nodes, including TUN firewall middleware, and TUN
   debug-log nodes.
 - `lib/wireguard/` owns WireGuard nodes.
+- `lib/yggdrasil/` owns embedded Yggdrasil nodes, multiple upstream
+  networks, link-local discovery, public-peer autopeering, and NodeInfo jumper.
 - `lib/debug/` owns debug-only helper nodes.
 - `lib/tor/` owns the stable TorDriver node. The daemon registers it in direct
   and isolated runtime modes. It can launch only protected `gobox` programs.

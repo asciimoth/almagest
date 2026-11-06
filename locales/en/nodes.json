@@ -44,6 +44,7 @@
   "almagest/VTun": "Virtual TUN network",
   "almagest/WGConfig": "WireGuard peer configuration",
   "almagest/WireGuard": "WireGuard",
+  "almagest/Yggdrasil": "Yggdrasil mesh network",
   "pasta/BoolAnd": "Boolean AND",
   "pasta/BoolConstant": "Boolean constant",
   "pasta/BoolGet": "Get boolean variable",

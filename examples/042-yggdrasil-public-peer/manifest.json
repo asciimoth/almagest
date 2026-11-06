@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Connect HTTP through a Yggdrasil public peer",
+  "comment": "Two Yggdrasil nodes exchange HTTP traffic through a third node that only accepts peers."
+}

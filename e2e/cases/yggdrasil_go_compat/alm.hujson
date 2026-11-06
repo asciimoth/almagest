@@ -1,0 +1,13 @@
+{
+  "nodes": {
+    "Yggdrasil": {
+      "Class": "almagest/Yggdrasil",
+      "Links": ["default -> [OutNetwork] Network"],
+      "peers": "tcp://127.0.0.1:19002",
+      "privateKeySecret": "ygg-identity"
+    },
+    "VTun": {"Class": "almagest/VTun", "Links": ["Tun -> [Yggdrasil] Tun"], "name": "ygg-compat"},
+    "HTTP Client": {"Class": "almagest/HttpClient", "Links": ["Network -> [VTun] Network"]},
+    "OutNetwork": {"Class": "almagest/OutNetwork"}
+  }
+}

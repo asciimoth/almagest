@@ -1,0 +1,21 @@
+{
+  "nodes": {
+    "Ygg A": {
+      "Class": "almagest/Yggdrasil",
+      "Links": ["default -> [OutNetwork] Network"],
+      "privateKeySecret": "ygg-a-identity",
+      "multicastInterfaces": "[{\"regex\":\"^yga0$\",\"beacon\":true,\"listen\":true,\"port\":0}]"
+    },
+    "VTun A": {"Class": "almagest/VTun", "Links": ["Tun -> [Ygg A] Tun"], "name": "ygg-link-a"},
+    "HTTP Client": {"Class": "almagest/HttpClient", "Links": ["Network -> [VTun A] Network"], "url": "http://[202:b29a:28f5:f219:a87a:6e8f:2b59:6597]:18082/"},
+    "Ygg B": {
+      "Class": "almagest/Yggdrasil",
+      "Links": ["default -> [OutNetwork] Network"],
+      "privateKeySecret": "ygg-b-identity",
+      "multicastInterfaces": "[{\"regex\":\"^ygb0$\",\"beacon\":true,\"listen\":true,\"port\":0}]"
+    },
+    "VTun B": {"Class": "almagest/VTun", "Links": ["Tun -> [Ygg B] Tun"], "name": "ygg-link-b"},
+    "HTTP Server": {"Class": "almagest/HttpServer", "Links": ["Network -> [VTun B] Network"], "host": "202:b29a:28f5:f219:a87a:6e8f:2b59:6597", "port": 18082, "response": "yggdrasil link local"},
+    "OutNetwork": {"Class": "almagest/OutNetwork"}
+  }
+}

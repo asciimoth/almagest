@@ -38,6 +38,17 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 	&& go build -C "/tmp/amneziawg-go-$AMNEZIAWG_GO_COMMIT" -o /usr/local/bin/amneziawg-go . \
 	&& printf '%s\n' "$AMNEZIAWG_GO_COMMIT" >/usr/local/share/amneziawg-go.commit
 
+# Same reference revision as asciimoth/ygg tests/compat.
+ARG YGGDRASIL_GO_COMMIT=be5daeba7ad6b9eb3a30a3fa84e58d3962322dbd
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    curl -fsSL --retry 5 --retry-all-errors \
+        "https://codeload.github.com/yggdrasil-network/yggdrasil-go/tar.gz/$YGGDRASIL_GO_COMMIT" \
+        -o /tmp/yggdrasil-go.tar.gz \
+    && tar -xzf /tmp/yggdrasil-go.tar.gz -C /tmp \
+    && go build -C "/tmp/yggdrasil-go-$YGGDRASIL_GO_COMMIT" -o /usr/local/bin/yggdrasil ./cmd/yggdrasil \
+    && go build -C "/tmp/yggdrasil-go-$YGGDRASIL_GO_COMMIT" -o /usr/local/bin/yggdrasilctl ./cmd/yggdrasilctl
+
 COPY go.work ./
 COPY bin/go.mod bin/go.sum bin/
 COPY certcat/go.mod certcat/
@@ -197,6 +208,8 @@ COPY --from=build \
 	/go/bin/killswitch-cli \
 	/go/bin/gost \
 	/usr/local/bin/amneziawg-go \
+	/usr/local/bin/yggdrasil \
+	/usr/local/bin/yggdrasilctl \
 	/usr/local/bin/amnesia-e2e-tool \
 	/usr/local/bin/
 COPY --from=build /usr/local/share/amneziawg-go.commit /usr/local/share/amneziawg-go.commit

@@ -16,6 +16,7 @@ import (
 	triggernodes "github.com/asciimoth/almagest/lib/trigger"
 	tunnodes "github.com/asciimoth/almagest/lib/tun"
 	wireguardnodes "github.com/asciimoth/almagest/lib/wireguard"
+	yggdrasilnodes "github.com/asciimoth/almagest/lib/yggdrasil"
 )
 
 // packageNodeClasses is the central registration point for node classes that
@@ -31,6 +32,7 @@ func packageNodeClasses(runtime *engine, isDebug bool) []pasta.NodeClass {
 	classes = append(classes, tunnodes.Classes(runtime)...)
 	classes = append(classes, triggernodes.TimeTriggerClass{Runtime: runtime})
 	classes = append(classes, wireguardnodes.Classes(runtime)...)
+	classes = append(classes, yggdrasilnodes.Classes(runtime)...)
 	if isDebug {
 		classes = append(classes, debugnodes.Classes(runtime)...)
 		classes = append(classes, dnsnodes.DebugClasses(runtime)...)

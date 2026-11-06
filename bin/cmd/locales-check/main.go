@@ -25,6 +25,7 @@ import (
 	triggernodes "github.com/asciimoth/almagest/lib/trigger"
 	tunnodes "github.com/asciimoth/almagest/lib/tun"
 	wireguardnodes "github.com/asciimoth/almagest/lib/wireguard"
+	yggdrasilnodes "github.com/asciimoth/almagest/lib/yggdrasil"
 )
 
 func main() {
@@ -44,6 +45,7 @@ func productionClasses() []pasta.NodeClass {
 	classes = append(classes, tlsnodes.Classes(nil)...)
 	classes = append(classes, tunnodes.Classes(nil)...)
 	classes = append(classes, triggernodes.TimeTriggerClass{}, wireguardnodes.WireGuardClass{}, wireguardnodes.WGConfigClass{}, tornodes.TorDriverClass{})
+	classes = append(classes, yggdrasilnodes.YggdrasilClass{})
 	classes = append(classes, std.StdClasses()...)
 	sort.Slice(classes, func(i, j int) bool { return classes[i].ClassName() < classes[j].ClassName() })
 	return classes

@@ -1,0 +1,7 @@
+{
+  "Admin": {"Web": 0, "Unix": ""},
+  "Secrets": {
+    "ygg-identity": {"Value": "0101010101010101010101010101010101010101010101010101010101010101", "Nodes": ["Yggdrasil"]},
+    "ygg-server-identity": {"Value": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f", "Nodes": ["Server Yggdrasil"]}
+  }
+}

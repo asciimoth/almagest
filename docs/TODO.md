@@ -218,7 +218,7 @@
   - Port forwarding
   - Shell pipe
 - [ ] Add Shadowsocks
-- [ ] Add Yggdrasil network support
+- [x] Add Yggdrasil network support
 - [ ] Add VLESS or other protocols used by Amnesia
   - Investigate extra features such as per-device IDs
 - [ ] Add Reticulum network support?

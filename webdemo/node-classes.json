@@ -39,6 +39,7 @@
     "almagest/TunJoiner",
     "almagest/TunSplitter",
     "almagest/VTun",
+    "almagest/Yggdrasil",
     "almagest/Amnesia",
     "almagest/AmnesiaCtrl",
     "almagest/TailscaleCtrl",
@@ -1103,6 +1104,25 @@
         {
           "direction": "right",
           "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/Yggdrasil": {
+      "primary_type": "almagest/tun",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Tun",
+          "types": [
+            "almagest/tun"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "default",
           "types": [
             "almagest/network"
           ]

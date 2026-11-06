@@ -1517,5 +1517,121 @@
         }
       }
     }
+  },
+  "almagest/Yggdrasil": {
+    "blocks": {
+      "config": {
+        "items": {
+          "enabled": {
+            "label": "Enabled",
+            "help": "Start or stop this Yggdrasil node. Its identity stays the same when you enable it again."
+          },
+          "privateKeySecret": {
+            "label": "Identity key secret",
+            "help": "Select a secret available to this node with a hexadecimal Ed25519 seed (32 bytes) or private key (64 bytes). Leave empty to create a new identity."
+          },
+          "peers": {
+            "label": "Peer URLs",
+            "help": "Enter one persistent tcp:// or tls:// peer URL per line. Connect an upstream Network port to reach each peer."
+          },
+          "listen": {
+            "label": "Listener URLs",
+            "help": "Enter one local tcp:// or tls:// listener URL per line to accept peers. Leave empty if this node only connects to other peers."
+          },
+          "networks": {
+            "label": "Upstreams (name=host-pattern)",
+            "help": "Enter one name=host-pattern per line. Each name creates a Network port for matching hosts. Other hosts use the default port. A matching port with no link blocks traffic."
+          },
+          "multicastInterfaces": {
+            "label": "Link-local interfaces (JSON)",
+            "help": "Enter a JSON array of interfaces. Each entry needs regex, beacon, and listen. Example: [{\"regex\":\"^eth0$\",\"beacon\":true,\"listen\":true}]. Discovery uses the default Network link. The provider must preserve scoped IPv6 link-local addresses."
+          },
+          "autoPeerEnabled": {
+            "label": "Public-peer autopeering",
+            "help": "Fetch public-peer lists and add peers when the connection count is below the limits below. Connect a Network link for each source."
+          },
+          "autoPeerSources": {
+            "label": "Public-peer sources",
+            "help": "Enter one HTTP or HTTPS peer-list URL per line. Use BUILTIN for the library's built-in source. Source hosts use matching upstream ports."
+          },
+          "autoPeerCountries": {
+            "label": "Public-peer countries",
+            "help": "Enter eligible country names, one per line. A country and a transport scheme are both required to select public peers."
+          },
+          "autoPeerSchemes": {
+            "label": "Public-peer schemes",
+            "help": "Enter tcp or tls, one per line. Only matching public-peer endpoints can be selected."
+          },
+          "autoPeerFetchInterval": {
+            "label": "Peer-list fetch interval",
+            "help": "How often to refresh public-peer lists, as a Go duration such as 1h."
+          },
+          "autoPeerCheckInterval": {
+            "label": "Autopeer check interval",
+            "help": "How often to check whether more public peers are needed, such as 1m."
+          },
+          "autoPeerMinimumConnected": {
+            "label": "Minimum connected peers",
+            "help": "Add a public peer when the total connected peer count is below this number."
+          },
+          "autoPeerMinimumFromFetch": {
+            "label": "Minimum peers from sources",
+            "help": "Add a public peer when fewer than this number of connected peers came from public-peer sources."
+          },
+          "jumperEnabled": {
+            "label": "NodeInfo jumper",
+            "help": "Use remote NodeInfo to add a direct peer after traffic reaches a node through another peer."
+          },
+          "jumperAddresses": {
+            "label": "Jumper addresses",
+            "help": "Enter one public tcp:// or tls:// listener URL per line. These URLs are published in this node's NodeInfo for other nodes to connect directly."
+          },
+          "jumperCheckInterval": {
+            "label": "Jumper check interval",
+            "help": "How often to check observed traffic for nodes that advertise direct peer URLs, such as 10s."
+          },
+          "jumperLinkTimeout": {
+            "label": "Jumper link timeout",
+            "help": "Maximum time to establish a direct peer connection, such as 30s."
+          },
+          "nodeInfo": {
+            "label": "NodeInfo (JSON)",
+            "help": "Enter a JSON object to publish as this node's NodeInfo. Jumper addresses are added automatically."
+          },
+          "nodeInfoPrivacy": {
+            "label": "NodeInfo privacy",
+            "help": "Omit build name, version, platform, and architecture from published NodeInfo."
+          }
+        }
+      },
+      "status": {
+        "items": {
+          "state": {
+            "label": "State",
+            "help": "Local readiness. Up means a TUN is attached and an upstream Network is available. It does not confirm that a peer is connected."
+          },
+          "address": {
+            "label": "IPv6 address",
+            "help": "This node's IPv6 address comes from its identity key. The node sends this address to the attached TUN provider."
+          },
+          "connectedPeers": {
+            "label": "Connected peers",
+            "help": "Current number of connected Yggdrasil peer links."
+          },
+          "autoPeerCandidates": {
+            "label": "Public-peer candidates",
+            "help": "Current number of endpoints loaded from public-peer sources."
+          },
+          "linkLocalInterfaces": {
+            "label": "Link-local interfaces",
+            "help": "Current number of link-local interfaces used for discovery."
+          },
+          "jumper": {
+            "label": "NodeInfo jumper",
+            "help": "Shows whether the jumper is active."
+          }
+        }
+      }
+    }
   }
 }

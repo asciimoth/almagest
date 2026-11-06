@@ -1,0 +1,33 @@
+{
+  "nodes": {
+    "Yggdrasil": {
+      "Class": "almagest/Yggdrasil",
+      "Links": ["default -> [OutNetwork] Network"],
+      "autoPeerEnabled": true,
+      "autoPeerSources": "http://127.0.0.1:19003/",
+      "autoPeerCountries": "georgia",
+      "autoPeerSchemes": "tcp",
+      "autoPeerFetchInterval": "1s",
+      "autoPeerCheckInterval": "100ms",
+      "jumperEnabled": true,
+      "jumperCheckInterval": "100ms",
+      "privateKeySecret": "ygg-identity"
+    },
+    "VTun": {"Class": "almagest/VTun", "Links": ["Tun -> [Yggdrasil] Tun"], "name": "ygg-compat"},
+    "HTTP Client": {"Class": "almagest/HttpClient", "Links": ["Network -> [VTun] Network"], "url": "http://[202:b29a:28f5:f219:a87a:6e8f:2b59:6597]:18082/"},
+    "Server Yggdrasil": {
+      "Class": "almagest/Yggdrasil",
+      "Links": ["default -> [OutNetwork] Network"],
+      "privateKeySecret": "ygg-server-identity",
+      "peers": "tcp://127.0.0.1:19002",
+      "listen": "tcp://127.0.0.1:19004",
+      "jumperEnabled": true,
+      "jumperAddresses": "tcp://127.0.0.1:19004",
+      "nodeInfoPrivacy": true,
+      "nodeInfo": "{\"service\":\"http\"}"
+    },
+    "Server VTun": {"Class": "almagest/VTun", "Links": ["Tun -> [Server Yggdrasil] Tun"], "name": "ygg-server"},
+    "HTTP Server": {"Class": "almagest/HttpServer", "Links": ["Network -> [Server VTun] Network"], "host": "202:b29a:28f5:f219:a87a:6e8f:2b59:6597", "port": 18082, "response": "yggdrasil autopeer jumper"},
+    "OutNetwork": {"Class": "almagest/OutNetwork"}
+  }
+}

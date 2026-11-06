@@ -1517,5 +1517,121 @@
         }
       }
     }
+  },
+  "almagest/Yggdrasil": {
+    "blocks": {
+      "config": {
+        "items": {
+          "enabled": {
+            "label": "Lorem · Enabled",
+            "help": "Lorem · Start or stop this Yggdrasil node. Its identity stays the same when you enable it again."
+          },
+          "privateKeySecret": {
+            "label": "Lorem · Identity key secret",
+            "help": "Lorem · Select a secret available to this node with a hexadecimal Ed25519 seed (32 bytes) or private key (64 bytes). Leave empty to create a new identity."
+          },
+          "peers": {
+            "label": "Lorem · Peer URLs",
+            "help": "Lorem · Enter one persistent tcp:// or tls:// peer URL per line. Connect an upstream Network port to reach each peer."
+          },
+          "listen": {
+            "label": "Lorem · Listener URLs",
+            "help": "Lorem · Enter one local tcp:// or tls:// listener URL per line to accept peers. Leave empty if this node only connects to other peers."
+          },
+          "networks": {
+            "label": "Lorem · Upstreams (name=host-pattern)",
+            "help": "Lorem · Enter one name=host-pattern per line. Each name creates a Network port for matching hosts. Other hosts use the default port. A matching port with no link blocks traffic."
+          },
+          "multicastInterfaces": {
+            "label": "Lorem · Link-local interfaces (JSON)",
+            "help": "Lorem · Enter a JSON array of interfaces. Each entry needs regex, beacon, and listen. Example: [{\"regex\":\"^eth0$\",\"beacon\":true,\"listen\":true}]. Discovery uses the default Network link. The provider must preserve scoped IPv6 link-local addresses."
+          },
+          "autoPeerEnabled": {
+            "label": "Lorem · Public-peer autopeering",
+            "help": "Lorem · Fetch public-peer lists and add peers when the connection count is below the limits below. Connect a Network link for each source."
+          },
+          "autoPeerSources": {
+            "label": "Lorem · Public-peer sources",
+            "help": "Lorem · Enter one HTTP or HTTPS peer-list URL per line. Use BUILTIN for the library's built-in source. Source hosts use matching upstream ports."
+          },
+          "autoPeerCountries": {
+            "label": "Lorem · Public-peer countries",
+            "help": "Lorem · Enter eligible country names, one per line. A country and a transport scheme are both required to select public peers."
+          },
+          "autoPeerSchemes": {
+            "label": "Lorem · Public-peer schemes",
+            "help": "Lorem · Enter tcp or tls, one per line. Only matching public-peer endpoints can be selected."
+          },
+          "autoPeerFetchInterval": {
+            "label": "Lorem · Peer-list fetch interval",
+            "help": "Lorem · How often to refresh public-peer lists, as a Go duration such as 1h."
+          },
+          "autoPeerCheckInterval": {
+            "label": "Lorem · Autopeer check interval",
+            "help": "Lorem · How often to check whether more public peers are needed, such as 1m."
+          },
+          "autoPeerMinimumConnected": {
+            "label": "Lorem · Minimum connected peers",
+            "help": "Lorem · Add a public peer when the total connected peer count is below this number."
+          },
+          "autoPeerMinimumFromFetch": {
+            "label": "Lorem · Minimum peers from sources",
+            "help": "Lorem · Add a public peer when fewer than this number of connected peers came from public-peer sources."
+          },
+          "jumperEnabled": {
+            "label": "Lorem · NodeInfo jumper",
+            "help": "Lorem · Use remote NodeInfo to add a direct peer after traffic reaches a node through another peer."
+          },
+          "jumperAddresses": {
+            "label": "Lorem · Jumper addresses",
+            "help": "Lorem · Enter one public tcp:// or tls:// listener URL per line. These URLs are published in this node's NodeInfo for other nodes to connect directly."
+          },
+          "jumperCheckInterval": {
+            "label": "Lorem · Jumper check interval",
+            "help": "Lorem · How often to check observed traffic for nodes that advertise direct peer URLs, such as 10s."
+          },
+          "jumperLinkTimeout": {
+            "label": "Lorem · Jumper link timeout",
+            "help": "Lorem · Maximum time to establish a direct peer connection, such as 30s."
+          },
+          "nodeInfo": {
+            "label": "Lorem · NodeInfo (JSON)",
+            "help": "Lorem · Enter a JSON object to publish as this node's NodeInfo. Jumper addresses are added automatically."
+          },
+          "nodeInfoPrivacy": {
+            "label": "Lorem · NodeInfo privacy",
+            "help": "Lorem · Omit build name, version, platform, and architecture from published NodeInfo."
+          }
+        }
+      },
+      "status": {
+        "items": {
+          "state": {
+            "label": "Lorem · State",
+            "help": "Lorem · Local readiness. Up means a TUN is attached and an upstream Network is available. It does not confirm that a peer is connected."
+          },
+          "address": {
+            "label": "Lorem · IPv6 address",
+            "help": "Lorem · This node's IPv6 address comes from its identity key. The node sends this address to the attached TUN provider."
+          },
+          "connectedPeers": {
+            "label": "Lorem · Connected peers",
+            "help": "Lorem · Current number of connected Yggdrasil peer links."
+          },
+          "autoPeerCandidates": {
+            "label": "Lorem · Public-peer candidates",
+            "help": "Lorem · Current number of endpoints loaded from public-peer sources."
+          },
+          "linkLocalInterfaces": {
+            "label": "Lorem · Link-local interfaces",
+            "help": "Lorem · Current number of link-local interfaces used for discovery."
+          },
+          "jumper": {
+            "label": "Lorem · NodeInfo jumper",
+            "help": "Lorem · Shows whether the jumper is active."
+          }
+        }
+      }
+    }
   }
 }
