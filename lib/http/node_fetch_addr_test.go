@@ -43,6 +43,12 @@ func TestFetchAddrProviderParsersNormalizeResults(t *testing.T) {
 			body:  `{"ip":"192.0.2.3","country_iso":"Georgia"}`,
 			want:  fetchAddrData{PublicIP: "192.0.2.3"},
 		},
+		{
+			name:  "yggdrasil plain text address",
+			parse: parseYggdrasilFetchAddr,
+			body:  " 200:56bd:a9e9:c1fa:8f99:1d3c:3c84:6507\n",
+			want:  fetchAddrData{PublicIP: "200:56bd:a9e9:c1fa:8f99:1d3c:3c84:6507"},
+		},
 	}
 
 	for _, test := range tests {
@@ -65,6 +71,11 @@ func TestFetchAddrProviderParsersRejectMissingOrInvalidIP(t *testing.T) {
 	for _, body := range []string{`{}`, `{"ip":"not-an-ip"}`, `{"ip":""}`} {
 		if _, err := parseIfConfigFetchAddr([]byte(body)); err == nil || !strings.Contains(err.Error(), "valid public IP") {
 			t.Fatalf("parseIfConfigFetchAddr(%s) error = %v, want invalid public IP", body, err)
+		}
+	}
+	for _, body := range []string{"", "not-an-ip", "200:56bd:a9e9:c1fa:8f99:1d3c:3c84:6507:8080"} {
+		if _, err := parseYggdrasilFetchAddr([]byte(body)); err == nil || !strings.Contains(err.Error(), "valid public IP") {
+			t.Fatalf("parseYggdrasilFetchAddr(%q) error = %v, want invalid public IP", body, err)
 		}
 	}
 }

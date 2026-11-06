@@ -1,7 +1,6 @@
 // The client and server connect only to Public Peer. It routes their Yggdrasil
 // traffic without an IP stack or application of its own.
-// The bundled database contains fixed lab keys. They are public test data;
-// never use them outside this example.
+// This example includes fixed Yggdrasil test keys. Do not reuse them.
 // Select Send request on HTTP Client to get a reply from HTTP Server.
 {
 	"nodes": {

@@ -43,7 +43,7 @@ func TestFetchAddrClassShapeAndMenu(t *testing.T) {
 	if provider.Field == nil || provider.Value != DefaultFetchAddrProvider {
 		t.Fatalf("provider field = %#v, want default %q", provider.Field, DefaultFetchAddrProvider)
 	}
-	if want := []any{FetchAddrProviderIPify, FetchAddrProviderIfConfig}; !reflect.DeepEqual(provider.AllowedValues, want) {
+	if want := []any{FetchAddrProviderIPify, FetchAddrProviderIfConfig, FetchAddrProviderYggdrasil}; !reflect.DeepEqual(provider.AllowedValues, want) {
 		t.Fatalf("provider choices = %#v, want %#v", provider.AllowedValues, want)
 	}
 	tlsConfig := configFieldItem(t, state, node, "check", nodeTLSConfigFieldID)
@@ -73,14 +73,14 @@ func TestFetchAddrProviderSelectionSaves(t *testing.T) {
 	w.SendNodeFormularMsg(node, formular.FieldUpdateMessage{
 		MessageBase: formular.MessageBase{Type: formular.MessageFieldUpdate, MenuID: pasta.NodeMenuID(node)},
 		Field:       formular.FieldRef{BlockID: "check", FieldID: "provider"},
-		Value:       FetchAddrProviderIPify,
+		Value:       FetchAddrProviderYggdrasil,
 	})
 	out := configer.NewMemory(nil)
 	if err := w.SaveConfig(out); err != nil {
 		t.Fatalf("SaveConfig: %v", err)
 	}
 	view := out.View(configer.Path{"fetch"})
-	if got := configer.String(view, configer.Path{"provider"}, ""); got != FetchAddrProviderIPify {
-		t.Fatalf("saved provider = %q, want %q", got, FetchAddrProviderIPify)
+	if got := configer.String(view, configer.Path{"provider"}, ""); got != FetchAddrProviderYggdrasil {
+		t.Fatalf("saved provider = %q, want %q", got, FetchAddrProviderYggdrasil)
 	}
 }

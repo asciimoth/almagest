@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "name": "Access the clearnet through a Yggdrasil SOCKS gateway",
+  "comment": "A client sends an HTTP request through a SOCKS gateway on a private Yggdrasil network."
+}

@@ -11,9 +11,6 @@ import (
 	"github.com/asciimoth/pasta/pasta/std"
 )
 
-// TODO: More providers
-// - myip.ygg
-
 const (
 	// NodeTypeFetchAddr is the class name of the public-address lookup node.
 	NodeTypeFetchAddr = "almagest/FetchAddr"
@@ -22,6 +19,8 @@ const (
 	FetchAddrProviderIPify = "ipify"
 	// FetchAddrProviderIfConfig identifies the ifconfig.co provider.
 	FetchAddrProviderIfConfig = "ifconfig.co"
+	// FetchAddrProviderYggdrasil identifies the Yggdrasil IP and Port Checker.
+	FetchAddrProviderYggdrasil = "yggdrasil"
 
 	// DefaultFetchAddrProvider is used when the saved provider is empty or invalid.
 	DefaultFetchAddrProvider = FetchAddrProviderIfConfig

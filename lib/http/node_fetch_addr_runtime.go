@@ -38,6 +38,11 @@ var defaultFetchAddrProviders = []fetchAddrProvider{
 		url:   "https://ifconfig.co/json",
 		parse: parseIfConfigFetchAddr,
 	},
+	{
+		name:  FetchAddrProviderYggdrasil,
+		url:   "http://[200:56bd:a9e9:c1fa:8f99:1d3c:3c84:6507]/",
+		parse: parseYggdrasilFetchAddr,
+	},
 }
 
 type fetchAddrRequest struct {
@@ -197,6 +202,10 @@ func parseIfConfigFetchAddr(body []byte) (fetchAddrData, error) {
 		PublicIP: value.IP, CountryCode: value.CountryCode, City: value.City,
 		Latitude: value.Latitude, Longitude: value.Longitude,
 	})
+}
+
+func parseYggdrasilFetchAddr(body []byte) (fetchAddrData, error) {
+	return normalizeFetchAddrData(fetchAddrData{PublicIP: string(body)})
 }
 
 func normalizeFetchAddrData(value fetchAddrData) (fetchAddrData, error) {

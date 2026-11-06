@@ -1,0 +1,65 @@
+// A client with access only to Yggdrasil sends an HTTP request through a
+// SOCKS gateway. The two Yggdrasil nodes use a private MockNetwork as their
+// carrier. Only the gateway has an OutNetwork link to the clearnet.
+// This example includes fixed Yggdrasil test keys. Do not reuse them.
+// Select Send request on HTTP Client to request http://example.com/.
+// The gateway has no SOCKS authentication. Keep this lab on MockNetwork.
+{
+	"nodes": {
+		"HTTP Client": {
+			"Class": "almagest/HttpClient",
+			"Pos":   "{\"x\":40,\"y\":80}",
+			"Links": ["Network -> [SOCKS Client] Network"],
+			"url":   "http://example.com/",
+		},
+		"SOCKS Client": {
+			"Class":    "almagest/SocksClient",
+			"Pos":      "{\"x\":220,\"y\":80}",
+			"Links":    ["out -> [Client IP Stack] Network"],
+			"proxyURL": "socks5://[202:b29a:28f5:f219:a87a:6e8f:2b59:6597]:1080",
+		},
+		"Client IP Stack": {
+			"Class": "almagest/VTun",
+			"Pos":   "{\"x\":540,\"y\":80}",
+			"Links": ["Tun -> [Client Yggdrasil] Tun"],
+			"mtu":   1280,
+			"name":  "ygg-clearnet-client",
+		},
+		"Client Yggdrasil": {
+			"Class":            "almagest/Yggdrasil",
+			"Pos":              "{\"x\":780,\"y\":80}",
+			"Links":            ["default -> [Carrier Network] Network"],
+			"privateKeySecret": "ygg-example-client-key",
+			"peers":            "tcp://127.0.0.1:25440",
+		},
+		"Carrier Network": {
+			"Class": "almagest/MockNetwork",
+			"Pos":   "{\"x\":990,\"y\":205}",
+		},
+		"Server Yggdrasil": {
+			"Class":            "almagest/Yggdrasil",
+			"Pos":              "{\"x\":780,\"y\":330}",
+			"Links":            ["default -> [Carrier Network] Network"],
+			"privateKeySecret": "ygg-example-server-key",
+			"listen":           "tcp://127.0.0.1:25440",
+		},
+		"Server IP Stack": {
+			"Class": "almagest/VTun",
+			"Pos":   "{\"x\":540,\"y\":330}",
+			"Links": ["Tun -> [Server Yggdrasil] Tun"],
+			"mtu":   1280,
+			"name":  "ygg-clearnet-gateway",
+		},
+		"SOCKS Gateway": {
+			"Class":     "almagest/SocksServer",
+			"Pos":       "{\"x\":220,\"y\":330}",
+			"Links":     ["listen -> [Server IP Stack] Network", "proxy -> [Clearnet] Network"],
+			"socksHost": "202:b29a:28f5:f219:a87a:6e8f:2b59:6597",
+			"socksPort": 1080,
+		},
+		"Clearnet": {
+			"Class": "almagest/OutNetwork",
+			"Pos":   "{\"x\":540,\"y\":490}",
+		},
+	},
+}

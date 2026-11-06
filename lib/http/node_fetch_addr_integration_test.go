@@ -80,6 +80,9 @@ func TestFetchAddrIntegrationProviderSelectionAndManualCheck(t *testing.T) {
 			_, _ = response.Write([]byte(`{"ip":"192.0.2.44"}`))
 		case "/ifconfig":
 			_, _ = response.Write([]byte(`{"ip":"198.51.100.77","country_iso":"us","city":"Boston","latitude":42.36,"longitude":-71.06}`))
+		case "/yggdrasil":
+			response.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = response.Write([]byte("200:1ef0:cde7:15c3:f720:2804:9f39:e863\n"))
 		default:
 			response.WriteHeader(http.StatusNotFound)
 		}
@@ -95,6 +98,12 @@ func TestFetchAddrIntegrationProviderSelectionAndManualCheck(t *testing.T) {
 	harness.pressCheck()
 	assertFetchAddrCapture(t, harness.sink.success(t), fetchAddrData{
 		PublicIP: "198.51.100.77", CountryCode: "US", City: "Boston", Latitude: 42.36, Longitude: -71.06,
+	})
+
+	harness.selectProvider(FetchAddrProviderYggdrasil)
+	harness.pressCheck()
+	assertFetchAddrCapture(t, harness.sink.success(t), fetchAddrData{
+		PublicIP: "200:1ef0:cde7:15c3:f720:2804:9f39:e863",
 	})
 }
 
@@ -195,6 +204,7 @@ func newFetchAddrHarness(t *testing.T, handler http.Handler) *fetchAddrHarness {
 		FetchAddrClass{Runtime: runtime, providers: []fetchAddrProvider{
 			{name: FetchAddrProviderIPify, url: server.URL + "/ipify", parse: parseIPifyFetchAddr},
 			{name: FetchAddrProviderIfConfig, url: server.URL + "/ifconfig", parse: parseIfConfigFetchAddr},
+			{name: FetchAddrProviderYggdrasil, url: server.URL + "/yggdrasil", parse: parseYggdrasilFetchAddr},
 		}},
 		fetchAddrTestNetworkClassDef{network: gonnect.DefaultNetwork(nil)},
 		fetchAddrTestTriggerSourceClass{},

@@ -227,6 +227,31 @@ func TestYggdrasilMultipleUpstreamNetworks(t *testing.T) {
 	}
 }
 
+func TestYggdrasilOnionPeerUsesMappedNetwork(t *testing.T) {
+	e := e2etest.NewNodeE2E(t)
+	direct := e.AddNode("almagest/MockNetwork", "direct")
+	onion := e.AddNode("almagest/MockNetwork", "onion")
+	public := e.AddNode(ygg.NodeTypeYggdrasil, "onion-public-peer")
+	client := e.AddNode(ygg.NodeTypeYggdrasil, "onion-client")
+	clientTun := e.AddNode("almagest/VTun", "onion-client-tun")
+	e.SubscribeMenus(public, client)
+	endpoint := fmt.Sprintf("tcp://peer.onion:%d", e2etest.TestPort())
+	apply(e, public, "config", map[string]any{"listen": endpoint})
+	apply(e, client, "config", map[string]any{"networks": "onion=*.onion", "peers": endpoint})
+	e.MustAddTypedLinkByPortName(links.TypeNetwork, onion, "left", "Network", public, "right", "default")
+	e.MustAddTypedLinkByPortName(links.TypeNetwork, direct, "left", "Network", client, "right", "default")
+	e.MustAddTypedLinkByPortName(links.TypeTun, client, "left", "Tun", clientTun, "right", "Tun")
+	e.WaitNodeLabel(client, "up")
+
+	// The direct carrier is available, but it cannot reach this peer. The
+	// mapped onion port is the only path between the two mock networks.
+	if got := field(e, client, "status", "connectedPeers"); got != "0" {
+		t.Fatalf("onion peer connected before its mapped network was attached: %s", got)
+	}
+	e.MustAddTypedLinkByPortName(links.TypeNetwork, onion, "left", "Network", client, "right", "onion")
+	waitPeerCount(t, e, client, 1)
+}
+
 func TestYggdrasilTLS(t *testing.T) {
 	e := e2etest.NewNodeE2E(t)
 	carrier := e.AddNode("almagest/MockNetwork", "carrier")

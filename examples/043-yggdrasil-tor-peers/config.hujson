@@ -1,0 +1,55 @@
+// Yggdrasil sends *.onion peer connections through Tor. It sends all other
+// peer connections and public-peer list requests through Direct Network.
+// Autopeering selects TCP and TLS peers in France, Germany, and Tor. A listed
+// onion peer also stays configured so the Tor path is used when Tor is ready.
+// Start the daemon with --discover-system-programs or configure its protected
+// Tor program. Then enable Tor Client and wait for it to bootstrap.
+// Select Check on Yggdrasil Address to see the address visible to a public
+// Yggdrasil service. FetchAddr needs VTun to reach Yggdrasil's TUN port.
+{
+	"nodes": {
+		"Yggdrasil Address": {
+			"Class":    "almagest/FetchAddr",
+			"Pos":      "{\"x\":25,\"y\":160}",
+			"Links":    ["Network -> [Yggdrasil IP Stack] Network"],
+			"provider": "yggdrasil",
+		},
+		"Yggdrasil IP Stack": {
+			"Class": "almagest/VTun",
+			"Pos":   "{\"x\":265,\"y\":160}",
+			"Links": ["Tun -> [Yggdrasil] Tun"],
+			"mtu":   1280,
+			"name":  "ygg-tor-peers",
+		},
+		"Yggdrasil": {
+			"Class":                    "almagest/Yggdrasil",
+			"Pos":                      "{\"x\":510,\"y\":160}",
+			"Links": [
+				"default -> [Direct Network] Network",
+				"onion -> [Tor Client] Network default",
+			],
+			"networks":                 "onion=*.onion",
+			"peers":                    "tcp://yzkelq2cd76znzdbexyeqp35hw2fgsj5pyc5yd5jntxode3cu4bysnqd.onion:42753",
+			"autoPeerEnabled":         true,
+			"autoPeerSources":         "BUILTIN\nhttps://asciimoth.github.io/yggpeers/peers.json",
+			"autoPeerCountries":       "france\ngermany\ntor",
+			"autoPeerSchemes":         "tcp\ntls",
+			"autoPeerCheckInterval":  "10s",
+			"autoPeerMinimumConnected": 2,
+			"autoPeerMinimumFromFetch": 1,
+		},
+		"Tor Client": {
+			"Class": "almagest/TorDriver",
+			"Pos":   "{\"x\":790,\"y\":320}",
+			"Links": ["out -> [Direct Network] Network"],
+			"configuration": {
+				"enabled":  false,
+				"networks": [{"circuits": "connection", "name": "default"}],
+			},
+		},
+		"Direct Network": {
+			"Class": "almagest/OutNetwork",
+			"Pos":   "{\"x\":1050,\"y\":160}",
+		},
+	},
+}
