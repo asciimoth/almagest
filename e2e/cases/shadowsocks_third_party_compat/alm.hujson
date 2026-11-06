@@ -1,0 +1,37 @@
+{
+ "Logs": {"Cache": {"Debug": 1024, "Info": 256, "Warn": 128, "Error": 128, "Fatal": 32}},
+ "nodes": {
+  "Almagest SS server": {
+   "Class": "almagest/ShadowsocksServer", "Pos": "{\"x\":100,\"y\":100}",
+   "Links": ["listen -> [SS Listen Network] Network", "proxy -> [SS Proxy Network] Network"],
+   "address": "127.0.0.1:11090", "method": "aes-256-gcm", "password": "reference-compat", "tcp": true, "udp": true
+  },
+  "Almagest SS client": {
+   "Class": "almagest/ShadowsocksClient", "Pos": "{\"x\":100,\"y\":300}",
+   "Links": ["out -> [SS Out Network] Network"],
+   "address": "127.0.0.1:11091", "method": "aes-256-gcm", "password": "reference-compat", "tcp": true, "udp": true
+  },
+  "Almagest SS loop client": {
+   "Class": "almagest/ShadowsocksClient", "Pos": "{\"x\":100,\"y\":400}",
+   "Links": ["out -> [SS Out Network] Network"],
+   "address": "127.0.0.1:11090", "method": "aes-256-gcm", "password": "reference-compat", "tcp": true, "udp": true
+  },
+  "Local SOCKS to SS": {
+   "Class": "almagest/LocalProxy", "Pos": "{\"x\":-100,\"y\":300}",
+   "Links": ["proxy -> [Almagest SS client] Network"],
+   "socksHost": "127.0.0.1", "socksPort": 11092,
+   "wsHost": "", "wsPort": 0, "wsPath": "/socks", "users": [],
+   "commands": {"cmdBind": true, "cmdConnect": true, "cmdGostMuxBind": true, "cmdGostUDPTun": true, "cmdTorResolve": true, "cmdTorResolvePtr": true, "cmdUDPAssoc": true}
+  },
+  "Local SOCKS to loop SS": {
+   "Class": "almagest/LocalProxy", "Pos": "{\"x\":-100,\"y\":400}",
+   "Links": ["proxy -> [Almagest SS loop client] Network"],
+   "socksHost": "127.0.0.1", "socksPort": 11096,
+   "wsHost": "", "wsPort": 0, "wsPath": "/socks", "users": [],
+   "commands": {"cmdBind": true, "cmdConnect": true, "cmdGostMuxBind": true, "cmdGostUDPTun": true, "cmdTorResolve": true, "cmdTorResolvePtr": true, "cmdUDPAssoc": true}
+  },
+  "SS Listen Network": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":400,\"y\":100}"},
+  "SS Proxy Network": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":400,\"y\":200}"},
+  "SS Out Network": {"Class": "almagest/OutNetwork", "Pos": "{\"x\":400,\"y\":300}"}
+ }
+}

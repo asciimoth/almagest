@@ -36,8 +36,10 @@ require (
 	github.com/bits-and-blooms/bitset v1.26.0 // indirect
 	github.com/bits-and-blooms/bloom/v3 v3.7.1 // indirect
 	github.com/hjson/hjson-go/v4 v4.6.0 // indirect
+	github.com/shadowsocks/go-shadowsocks2 v0.1.5 // indirect
 	github.com/tailscale/wf v0.0.0-20240214030419-6fbb0a674ee6 // indirect
 	go4.org/netipx v0.0.0-20220725152314-7e7bdc8411bf // indirect
+	golang.getoutline.org/sdk v0.0.23 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20260209203927-2842357ff358 // indirect
 	golang.zx2c4.com/wireguard/windows v1.1.1 // indirect
 	honnef.co/go/tools v0.7.0 // indirect

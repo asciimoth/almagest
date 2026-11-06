@@ -12,5 +12,7 @@ func Classes(runtime nodekit.Runtime) []pasta.NodeClass {
 		LocalProxyClass{Runtime: runtime},
 		SocksClientClass{Runtime: runtime},
 		SocksServerClass{Runtime: runtime},
+		ShadowsocksClientClass{Runtime: runtime},
+		ShadowsocksServerClass{Runtime: runtime},
 	}
 }

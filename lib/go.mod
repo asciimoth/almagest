@@ -19,6 +19,8 @@ require (
 	github.com/asciimoth/ygg/ygglib v0.6.0
 	github.com/coder/websocket v1.8.15
 	github.com/miekg/dns v1.1.72
+	github.com/shadowsocks/go-shadowsocks2 v0.1.5
+	golang.getoutline.org/sdk v0.0.23
 	golang.org/x/sys v0.49.0
 	golang.org/x/time v0.12.0
 	gvisor.dev/gvisor v0.0.0-20260325202830-7644cf3a343c
@@ -34,8 +36,11 @@ require (
 	github.com/asciimoth/tuntap v0.4.4 // indirect
 	github.com/bits-and-blooms/bitset v1.26.0 // indirect
 	github.com/bits-and-blooms/bloom/v3 v3.7.1 // indirect
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/hjson/hjson-go/v4 v4.6.0 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd // indirect
 	github.com/xtaci/smux v1.5.44 // indirect
 	golang.org/x/crypto v0.58.0 // indirect

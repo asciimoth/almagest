@@ -72,6 +72,8 @@
 - [ ] Add port mapping
 - [ ] Add TCP/UDP/HTTP(S) reverse proxy nodes
 - [ ] Add proxy chaining, including a SOCKS chain node
+  - Outline SDK includes a SOCKS5 stream dialer that can help with the chain
+    implementation
   - Accept a list of nested SOCKS client configurations as an object input
 - [ ] Add a bad-network node for jitter and delays
 - [ ] Add a dispatcher node for round-robin and random selection
@@ -108,6 +110,8 @@
 ## DNS
 
 - [ ] Add DoH, ODoH, and DoQ
+  - Outline SDK includes a DoH resolver; ODoH and DoQ still need other
+    implementations
 - [ ] Add mDNS?
 - [ ] Add a DNS hijack node for TUN and Network links
   - Existing nodes can implement this, but a dedicated node would help
@@ -123,6 +127,8 @@
 - [ ] Add UDP protocol support to DPI tools
 - [ ] Add more protocol classifiers
 - [ ] Investigate Zapret, GoodbyeDPI, and similar DPI bypass tools
+  - Outline SDK includes TLS ClientHello fragmentation and stream splitting for
+    focused bypass nodes
   - <https://github.com/ValdikSS/GoodbyeDPI>
   - <https://github.com/SadeghHayeri/GreenTunnel>
   - <https://github.com/dilluti0n/dpibreak>
@@ -217,7 +223,8 @@
   - Investigate sshuttle-like routing
   - Port forwarding
   - Shell pipe
-- [ ] Add Shadowsocks
+- [x] Add Shadowsocks client and server nodes (classic AEAD TCP and UDP, via
+  Outline SDK)
 - [x] Add Yggdrasil network support
 - [ ] Add VLESS or other protocols used by Amnesia
   - Investigate extra features such as per-device IDs

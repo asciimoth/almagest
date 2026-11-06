@@ -21,6 +21,8 @@
     "almagest/NetworkRouter",
     "almagest/OutNetwork",
     "almagest/Remapper",
+    "almagest/ShadowsocksClient",
+    "almagest/ShadowsocksServer",
     "almagest/Sniffer",
     "almagest/SocksClient",
     "almagest/SocksServer",
@@ -670,6 +672,44 @@
         {
           "direction": "right",
           "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/ShadowsocksClient": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "left",
+          "name": "Network",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "out",
+          "types": [
+            "almagest/network"
+          ]
+        }
+      ]
+    },
+    "almagest/ShadowsocksServer": {
+      "primary_type": "almagest/network",
+      "initial_ports": [
+        {
+          "direction": "right",
+          "name": "listen",
+          "types": [
+            "almagest/network"
+          ]
+        },
+        {
+          "direction": "right",
+          "name": "proxy",
           "types": [
             "almagest/network"
           ]

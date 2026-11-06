@@ -610,6 +610,70 @@
       }
     }
   },
+  "almagest/ShadowsocksClient": {
+    "blocks": {
+      "config": {
+        "items": {
+          "address": {
+            "label": "Server address",
+            "help": "Shadowsocks server host:port. The client reaches this address only through the Network on out."
+          },
+          "method": {
+            "label": "Cipher",
+            "help": "Classic AEAD cipher. Use the same cipher on the server."
+          },
+          "password": {
+            "label": "Password",
+            "help": "Shared Shadowsocks password. This is used when Password secret is empty or unavailable."
+          },
+          "passwordSecret": {
+            "label": "Password secret",
+            "help": "Optional secret name for the shared password. When the secret is available, it takes priority over Password."
+          },
+          "tcp": {
+            "label": "TCP",
+            "help": "Allow TCP connections through the server. Enable TCP or UDP, or both."
+          },
+          "udp": {
+            "label": "UDP",
+            "help": "Allow UDP packets through the server. The Network on out must support UDP packet dialing."
+          }
+        }
+      }
+    }
+  },
+  "almagest/ShadowsocksServer": {
+    "blocks": {
+      "config": {
+        "items": {
+          "address": {
+            "label": "Listen address",
+            "help": "Bind this host:port on the listen Network. Clients must use a reachable address and this port."
+          },
+          "method": {
+            "label": "Cipher",
+            "help": "Classic AEAD cipher. Use the same cipher on each client."
+          },
+          "password": {
+            "label": "Password",
+            "help": "Shared Shadowsocks password. This is used when Password secret is empty or unavailable."
+          },
+          "passwordSecret": {
+            "label": "Password secret",
+            "help": "Optional secret name for the shared password. When the secret is available, it takes priority over Password."
+          },
+          "tcp": {
+            "label": "TCP",
+            "help": "Open a TCP listener on the listen Network. Enable TCP or UDP, or both."
+          },
+          "udp": {
+            "label": "UDP",
+            "help": "Open a UDP listener on the listen Network. The proxy Network must support UDP packet dialing."
+          }
+        }
+      }
+    }
+  },
   "almagest/Sniffer": {
     "blocks": {
       "config": {

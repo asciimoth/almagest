@@ -23,6 +23,8 @@
   "almagest/OutDns": "System outbound DNS",
   "almagest/OutNetwork": "System outbound network",
   "almagest/Remapper": "Network remapper",
+  "almagest/ShadowsocksClient": "Shadowsocks client",
+  "almagest/ShadowsocksServer": "Shadowsocks server",
   "almagest/Sniffer": "Network sniffer",
   "almagest/SocksClient": "SOCKS client",
   "almagest/SocksServer": "SOCKS server",

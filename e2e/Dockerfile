@@ -152,18 +152,23 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Variant images can then reuse the expensive package installation above.
 ARG E2E_SYSTEM_FLAVOR=direct
 ARG E2E_SOCKS_COMPAT=0
+ARG E2E_SHADOWSOCKS_COMPAT=0
 ARG E2E_PACKET_ANALYZER=0
 ARG E2E_TOR_PRIVATE=0
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	--mount=type=cache,target=/var/lib/apt,sharing=locked \
 	if [ "$E2E_SYSTEM_FLAVOR" != "direct" ] \
 		|| [ "$E2E_SOCKS_COMPAT" = "1" ] \
+		|| [ "$E2E_SHADOWSOCKS_COMPAT" = "1" ] \
 		|| [ "$E2E_PACKET_ANALYZER" = "1" ] \
 		|| [ "$E2E_TOR_PRIVATE" = "1" ]; then \
 		apt-get update; \
 	fi \
 	&& if [ "$E2E_SOCKS_COMPAT" = "1" ]; then \
 		DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tor; \
+	fi \
+	&& if [ "$E2E_SHADOWSOCKS_COMPAT" = "1" ]; then \
+		DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends shadowsocks-libev; \
 	fi \
 	&& if [ "$E2E_PACKET_ANALYZER" = "1" ]; then \
 		DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tcpdump tshark; \

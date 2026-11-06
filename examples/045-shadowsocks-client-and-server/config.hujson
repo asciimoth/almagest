@@ -1,0 +1,60 @@
+// The Shadowsocks client and server example sends an HTTP request through an
+// encrypted proxy hop between isolated mock networks. ShadowsocksClient
+// provides a Network through the proxy; ShadowsocksServer accepts and forwards
+// its traffic.
+// The inline password is for this local example only. Use a password secret
+// for a real server. Send the request, then detach either server Network link
+// and observe that the request cannot reach the HTTP server.
+{
+	"nodes": {
+		"HTTP Client": {
+			"Class": "almagest/HttpClient",
+			"Pos":   "{\"x\":40,\"y\":220}",
+			"Links": ["Network -> [Shadowsocks Client] Network"],
+			"url":   "http://service.shadowsocks.test:8080/",
+		},
+		"Shadowsocks Client": {
+			"Class":    "almagest/ShadowsocksClient",
+			"Pos":      "{\"x\":300,\"y\":220}",
+			"Links":    ["out -> [Proxy Transport Network] Network"],
+			"address":  "127.0.0.1:8388",
+			"method":   "chacha20-ietf-poly1305",
+			"password": "example-only-shadowsocks-password",
+			"tcp":      true,
+			"udp":      true,
+		},
+		"Proxy Transport Network": {
+			"Class": "almagest/MockNetwork",
+			"Pos":   "{\"x\":650,\"y\":270}",
+		},
+		"Shadowsocks Server": {
+			"Class": "almagest/ShadowsocksServer",
+			"Pos":   "{\"x\":315,\"y\":380}",
+			"Links": [
+				"listen -> [Proxy Transport Network] Network",
+				"proxy -> [Target Network] Network",
+			],
+			"address":  "127.0.0.1:8388",
+			"method":   "chacha20-ietf-poly1305",
+			"password": "example-only-shadowsocks-password",
+			"tcp":      true,
+			"udp":      true,
+		},
+		"Target Network": {
+			"Class": "almagest/MockNetwork",
+			"Pos":   "{\"x\":650,\"y\":475}",
+		},
+		"HTTP Server": {
+			"Class":    "almagest/HttpServer",
+			"Pos":      "{\"x\":320,\"y\":535}",
+			"Links":    ["Network -> [Target Network] Network"],
+			"response": "Response through the Shadowsocks client and server",
+		},
+		"Response": {
+			"Class": "pasta/StringConstant",
+			"Pos":   "{\"x\":35,\"y\":535}",
+			"Links": ["output -> [HTTP Server] Response"],
+			"value": "Response through the Shadowsocks client and server",
+		},
+	},
+}
