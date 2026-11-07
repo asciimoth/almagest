@@ -30,6 +30,14 @@ foreach ($class in @($classes.classes).class) {
     }
 }
 Assert-True $nodeAdded 'No node class is available for the lifecycle graph check'
+$configPath = Join-Path $programData 'alm.hujson'
+$saveDeadline = [DateTime]::UtcNow.AddSeconds(30)
+do {
+    if ((Get-Content -Raw $configPath) -match 'Package lifecycle retained node') { break }
+    Start-Sleep -Seconds 1
+} while ([DateTime]::UtcNow -lt $saveDeadline)
+Assert-True ((Get-Content -Raw $configPath) -match 'Package lifecycle retained node') `
+    'Graph node was not saved before the service restart'
 Add-Content -LiteralPath (Join-Path $programData 'alm.hujson') -Value "`r`n// package-lifecycle-regular"
 Add-Content -LiteralPath (Join-Path $programData 'protected_alm.hujson') -Value "`r`n// package-lifecycle-protected"
 Invoke-PackageCli $cli @('kv', 'set', '--key', 'package-lifecycle', '--data', 'retained-kv-value') | Out-Null

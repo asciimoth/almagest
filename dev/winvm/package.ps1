@@ -36,6 +36,19 @@ try {
 }
 $appSource = Join-Path $SourceDir 'app\src-tauri\target\release\almagest-app.exe'
 $appPayload = Join-Path $SourceDir 'dev\winvm\almagest-app.exe'
+# The GNU PE linker writes the build time into the COFF header. Windows does
+# not need that value for this unsigned executable.
+$appBytes = [IO.File]::ReadAllBytes($appSource)
+if ($appBytes.Length -lt 0x40 -or $appBytes[0] -ne 0x4D -or $appBytes[1] -ne 0x5A) {
+    throw 'Desktop app output is not a PE executable'
+}
+$peOffset = [BitConverter]::ToInt32($appBytes, 0x3C)
+if ($peOffset -lt 0 -or $peOffset + 12 -gt $appBytes.Length -or
+        [BitConverter]::ToString($appBytes, $peOffset, 4) -ne '50-45-00-00') {
+    throw 'Desktop app output has an invalid PE header'
+}
+[Array]::Clear($appBytes, $peOffset + 8, 4)
+[IO.File]::WriteAllBytes($appSource, $appBytes)
 Copy-Item -LiteralPath $appSource -Destination $appPayload -Force
 $loaderCandidates = @(Get-ChildItem `
     (Join-Path $SourceDir 'dev\winvm\cargo-vendor\webview2-com-sys-*\x64\WebView2Loader.dll') `
@@ -132,7 +145,15 @@ if ($rootType -ne 5) {
 $fixedFileTime = [BitConverter]::GetBytes($fixedUtcTime.ToFileTimeUtc())
 [Array]::Copy($fixedFileTime, 0, $compound, $directoryOffset + 100, 8)
 [Array]::Copy($fixedFileTime, 0, $compound, $directoryOffset + 108, 8)
-[IO.File]::WriteAllBytes($output, $compound)
+for ($attempt = 1; $attempt -le 30; $attempt++) {
+    try {
+        [IO.File]::WriteAllBytes($output, $compound)
+        break
+    } catch {
+        if ($attempt -eq 30) { throw }
+        Start-Sleep -Seconds 1
+    }
+}
 
 $summary = [WixToolset.Dtf.WindowsInstaller.SummaryInfo]::new($output, $false)
 try {

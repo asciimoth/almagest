@@ -6,8 +6,8 @@ and connect users of the proxy to [Network](@port/left/Network). The transport
 Network must be able to reach the Shadowsocks server. For a local example, load
 **Shadowsocks client and server** from **Snapshots → Examples**.
 
-The node opens its connection to the Shadowsocks server only through `out`.
-When `out` has no Network, the node does not publish its Network or open a host
+The node opens its connection to the Shadowsocks server only through `out`. When
+`out` has no Network, the node does not publish its Network or open a host
 socket. A destination such as `127.0.0.1` also goes through the Shadowsocks
 server. To use the host network as transport, connect an
 [OutNetwork](@docs/node/almagest/OutNetwork) node to `out` yourself.

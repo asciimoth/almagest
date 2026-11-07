@@ -35,8 +35,10 @@ Assert-LifecycleState $cli $programData
 $staleSid = 'S-1-5-32-545'
 & icacls.exe $programData /grant ("*$staleSid`:(OI)(CI)(F)") /T /C /L /Q
 Assert-True ($LASTEXITCODE -eq 0) 'Could not create the stale ProgramData ACL test condition'
-$staleAcl = (Get-Acl -LiteralPath $programData).Sddl
-Assert-True ($staleAcl -match [regex]::Escape($staleSid)) 'Stale ProgramData ACL test condition is absent'
+$staleAclEntries = @((Get-Acl -LiteralPath $programData).Access | Where-Object {
+    $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -eq $staleSid
+})
+Assert-True ($staleAclEntries.Count -gt 0) 'Stale ProgramData ACL test condition is absent'
 
 $repairLog = Join-Path $ArtifactDir 'msiexec-repair.log'
 $repairExit = Invoke-MSI @(

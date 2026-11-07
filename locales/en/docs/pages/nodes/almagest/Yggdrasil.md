@@ -28,22 +28,22 @@ the host network automatically.
 Network. Enter a JSON array such as
 `[{"regex":"^eth0$","beacon":true,"listen":true}]`. The regular expression
 selects network interfaces; `beacon` announces this node and `listen` accepts
-announcements. Optional `port` and `priority` values set beacon parameters.
-An empty array disables discovery. The Network provider must expose usable
+announcements. Optional `port` and `priority` values set beacon parameters. An
+empty array disables discovery. The Network provider must expose usable
 link-local interfaces and multicast. With the current Gonnect release, native
-and daemon Network wrappers lose the IPv6 interface zone during TCP bind. Use
-a provider that preserves scoped link-local addresses until that upstream issue
-is fixed.
+and daemon Network wrappers lose the IPv6 interface zone during TCP bind. Use a
+provider that preserves scoped link-local addresses until that upstream issue is
+fixed.
 
-**Public-peer autopeering** fetches peer lists and adds a matching peer when
-the connected peer counts fall below the configured minimums. Enter one HTTP
-or HTTPS URL per line in **Public-peer sources** or use `BUILTIN` for the
-library's built-in list. Add at least one **Public-peer country** and one
-**Public-peer scheme** (`tcp` or `tls`); selection stays idle without both.
-The **Peer-list fetch interval** and **Autopeer check interval** accept Go
-durations such as `1h` and `1m`. Peer-list requests use the Network port for
-their source host, including mapped upstream ports. A disconnected matching
-port blocks that source.
+**Public-peer autopeering** fetches peer lists and adds a matching peer when the
+connected peer counts fall below the configured minimums. Enter one HTTP or
+HTTPS URL per line in **Public-peer sources** or use `BUILTIN` for the library's
+built-in list. Add at least one **Public-peer country** and one **Public-peer
+scheme** (`tcp` or `tls`); selection stays idle without both. The **Peer-list
+fetch interval** and **Autopeer check interval** accept Go durations such as
+`1h` and `1m`. Peer-list requests use the Network port for their source host,
+including mapped upstream ports. A disconnected matching port blocks that
+source.
 
 **NodeInfo jumper** can add a direct peer link after traffic reaches another
 node through the mesh. To let other jumper nodes connect here, provide public
@@ -51,8 +51,8 @@ TCP or TLS listener URLs in **Jumper addresses**. These URLs are published in
 NodeInfo while the jumper is enabled; they must lead to this node's listener.
 The jumper check interval and link timeout accept Go durations. **NodeInfo
 (JSON)** publishes custom fields from a JSON object. **NodeInfo privacy** omits
-the library's build details.
-When the jumper is disabled, existing direct links may remain until they close.
+the library's build details. When the jumper is disabled, existing direct links
+may remain until they close.
 
 **Identity key secret** selects a node-accessible secret with a hexadecimal
 Ed25519 seed (32 bytes) or private key (64 bytes). A new node creates its own
@@ -63,5 +63,5 @@ an error instead of generating a replacement identity.
 **State** reports local runtime readiness. `up` means that the TUN is attached
 and an upstream network is available. It does not guarantee that a remote peer
 is connected or reachable. The status menu also shows the IPv6 address,
-connected peer count, loaded public-peer candidates, active link-local
-interface count, and jumper state.
+connected peer count, loaded public-peer candidates, active link-local interface
+count, and jumper state.

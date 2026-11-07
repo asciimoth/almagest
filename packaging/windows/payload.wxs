@@ -161,6 +161,14 @@
                Guid="EC8099F8-40E3-5EFA-B06E-92A04E99CD01" Subdirectory="en\docs\pages\nodes\almagest">
       <File Id="File_2665192310e97378d0011783" Source="$(var.SourceDir)\locales\en\docs\pages\nodes\almagest\Remapper.md" KeyPath="yes" />
     </Component>
+    <Component Id="Locales_877e42baaa00e135f125beb0" Directory="LOCALESFOLDER"
+               Guid="6CF60254-7724-54E5-AF11-3483E94F39B1" Subdirectory="en\docs\pages\nodes\almagest">
+      <File Id="File_877e42baaa00e135f125beb0" Source="$(var.SourceDir)\locales\en\docs\pages\nodes\almagest\ShadowsocksClient.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_b175c894f74b2af00b59ec58" Directory="LOCALESFOLDER"
+               Guid="C5831746-BB9E-56EA-A6EF-EDDC5096A1CC" Subdirectory="en\docs\pages\nodes\almagest">
+      <File Id="File_b175c894f74b2af00b59ec58" Source="$(var.SourceDir)\locales\en\docs\pages\nodes\almagest\ShadowsocksServer.md" KeyPath="yes" />
+    </Component>
     <Component Id="Locales_fd95c38114bd998eed988825" Directory="LOCALESFOLDER"
                Guid="725DA03A-1337-59C7-BB52-0797B00E9FE1" Subdirectory="en\docs\pages\nodes\almagest">
       <File Id="File_fd95c38114bd998eed988825" Source="$(var.SourceDir)\locales\en\docs\pages\nodes\almagest\Sniffer.md" KeyPath="yes" />
@@ -244,6 +252,10 @@
     <Component Id="Locales_75e6ce1ee9431e3c98c45412" Directory="LOCALESFOLDER"
                Guid="824423AE-6215-510A-AF61-640CECF1BA09" Subdirectory="en\docs\pages\nodes\almagest">
       <File Id="File_75e6ce1ee9431e3c98c45412" Source="$(var.SourceDir)\locales\en\docs\pages\nodes\almagest\WireGuard.md" KeyPath="yes" />
+    </Component>
+    <Component Id="Locales_69ebd4fec8fe34b428af6a0b" Directory="LOCALESFOLDER"
+               Guid="8263DB51-AC00-5A83-934B-DC0BFE97E6CF" Subdirectory="en\docs\pages\nodes\almagest">
+      <File Id="File_69ebd4fec8fe34b428af6a0b" Source="$(var.SourceDir)\locales\en\docs\pages\nodes\almagest\Yggdrasil.md" KeyPath="yes" />
     </Component>
     <Component Id="Locales_ebbe603078cb10346dda90ed" Directory="LOCALESFOLDER"
                Guid="E0A69E2C-CCFD-583B-933E-1223C62AD12B" Subdirectory="en\docs\pages\nodes\pasta">
@@ -813,6 +825,46 @@
                Guid="0F6D25ED-E017-56BB-8815-E34087DCA2BE" Subdirectory="041-route-protocols-to-separate-services">
       <File Id="File_1d171477745e3f0eeeb89c5d" Source="$(var.SourceDir)\examples\041-route-protocols-to-separate-services\manifest.json" KeyPath="yes" />
     </Component>
+    <Component Id="Examples_d6f912e2dab086cedb6b183e" Directory="EXAMPLESFOLDER"
+               Guid="06111F0A-C55C-5EFE-B1D3-A15A89319CA2" Subdirectory="042-yggdrasil-public-peer">
+      <File Id="File_d6f912e2dab086cedb6b183e" Source="$(var.SourceDir)\examples\042-yggdrasil-public-peer\config.hujson" KeyPath="yes" />
+    </Component>
+    <Component Id="Examples_0a6470ea85515aa6c7c04103" Directory="EXAMPLESFOLDER"
+               Guid="0BCD71BD-6428-52A8-8DB4-2A3977D401C8" Subdirectory="042-yggdrasil-public-peer\files">
+      <File Id="File_0a6470ea85515aa6c7c04103" Source="$(var.SourceDir)\examples\042-yggdrasil-public-peer\files\kv.db" KeyPath="yes" />
+    </Component>
+    <Component Id="Examples_5e320f01a7be1993ac387c2c" Directory="EXAMPLESFOLDER"
+               Guid="4044B0B7-7BF2-5638-A9BF-10EFC6A21F98" Subdirectory="042-yggdrasil-public-peer">
+      <File Id="File_5e320f01a7be1993ac387c2c" Source="$(var.SourceDir)\examples\042-yggdrasil-public-peer\manifest.json" KeyPath="yes" />
+    </Component>
+    <Component Id="Examples_d8f869244234093804f44be1" Directory="EXAMPLESFOLDER"
+               Guid="6C801DCB-7F1D-56C0-BCD0-B8140D4DD443" Subdirectory="043-yggdrasil-tor-peers">
+      <File Id="File_d8f869244234093804f44be1" Source="$(var.SourceDir)\examples\043-yggdrasil-tor-peers\config.hujson" KeyPath="yes" />
+    </Component>
+    <Component Id="Examples_40e8b543fa890535858ab5e8" Directory="EXAMPLESFOLDER"
+               Guid="885E22E5-958E-59E1-B453-21A49429B986" Subdirectory="043-yggdrasil-tor-peers">
+      <File Id="File_40e8b543fa890535858ab5e8" Source="$(var.SourceDir)\examples\043-yggdrasil-tor-peers\manifest.json" KeyPath="yes" />
+    </Component>
+    <Component Id="Examples_873a30252e88f7e07769deaf" Directory="EXAMPLESFOLDER"
+               Guid="3603A145-8C81-5688-806B-741A3728226F" Subdirectory="044-yggdrasil-clearnet-gateway">
+      <File Id="File_873a30252e88f7e07769deaf" Source="$(var.SourceDir)\examples\044-yggdrasil-clearnet-gateway\config.hujson" KeyPath="yes" />
+    </Component>
+    <Component Id="Examples_866aa5e1d6a82155e50f84f2" Directory="EXAMPLESFOLDER"
+               Guid="95115528-F842-5AB3-B804-48A4DBC54FE3" Subdirectory="044-yggdrasil-clearnet-gateway\files">
+      <File Id="File_866aa5e1d6a82155e50f84f2" Source="$(var.SourceDir)\examples\044-yggdrasil-clearnet-gateway\files\kv.db" KeyPath="yes" />
+    </Component>
+    <Component Id="Examples_ae94c2411739a5e73cedf871" Directory="EXAMPLESFOLDER"
+               Guid="28EA4A17-7456-51D5-A803-F87FBD2411D9" Subdirectory="044-yggdrasil-clearnet-gateway">
+      <File Id="File_ae94c2411739a5e73cedf871" Source="$(var.SourceDir)\examples\044-yggdrasil-clearnet-gateway\manifest.json" KeyPath="yes" />
+    </Component>
+    <Component Id="Examples_0d98d6cfaeaeb1163cdd4e0b" Directory="EXAMPLESFOLDER"
+               Guid="E57AA413-919A-50A5-98E7-B05E248D7D1D" Subdirectory="045-shadowsocks-client-and-server">
+      <File Id="File_0d98d6cfaeaeb1163cdd4e0b" Source="$(var.SourceDir)\examples\045-shadowsocks-client-and-server\config.hujson" KeyPath="yes" />
+    </Component>
+    <Component Id="Examples_6d83e3f56970366ca44e30ca" Directory="EXAMPLESFOLDER"
+               Guid="F30B83BB-67ED-5185-BF91-5957B636DD60" Subdirectory="045-shadowsocks-client-and-server">
+      <File Id="File_6d83e3f56970366ca44e30ca" Source="$(var.SourceDir)\examples\045-shadowsocks-client-and-server\manifest.json" KeyPath="yes" />
+    </Component>
   </Fragment>
 
   <Fragment>
@@ -857,6 +909,8 @@
       <ComponentRef Id="Locales_e1944b8399d4c6603b14ad11" />
       <ComponentRef Id="Locales_aba575f9e6f86c4b6168c7d8" />
       <ComponentRef Id="Locales_2665192310e97378d0011783" />
+      <ComponentRef Id="Locales_877e42baaa00e135f125beb0" />
+      <ComponentRef Id="Locales_b175c894f74b2af00b59ec58" />
       <ComponentRef Id="Locales_fd95c38114bd998eed988825" />
       <ComponentRef Id="Locales_047c120d892c73b518377318" />
       <ComponentRef Id="Locales_5402231885586c2a6f1c17e7" />
@@ -878,6 +932,7 @@
       <ComponentRef Id="Locales_ceaebed088f9943b6e4ae67a" />
       <ComponentRef Id="Locales_e27ab15e823d89da0b07d847" />
       <ComponentRef Id="Locales_75e6ce1ee9431e3c98c45412" />
+      <ComponentRef Id="Locales_69ebd4fec8fe34b428af6a0b" />
       <ComponentRef Id="Locales_ebbe603078cb10346dda90ed" />
       <ComponentRef Id="Locales_84420db6c786093bda4c8afb" />
       <ComponentRef Id="Locales_c87a6a3ff29c48cbd9d1e76b" />
@@ -1025,6 +1080,16 @@
       <ComponentRef Id="Examples_d419a3aaca523c554bc5b4f1" />
       <ComponentRef Id="Examples_059ce53b730b104c227fd988" />
       <ComponentRef Id="Examples_1d171477745e3f0eeeb89c5d" />
+      <ComponentRef Id="Examples_d6f912e2dab086cedb6b183e" />
+      <ComponentRef Id="Examples_0a6470ea85515aa6c7c04103" />
+      <ComponentRef Id="Examples_5e320f01a7be1993ac387c2c" />
+      <ComponentRef Id="Examples_d8f869244234093804f44be1" />
+      <ComponentRef Id="Examples_40e8b543fa890535858ab5e8" />
+      <ComponentRef Id="Examples_873a30252e88f7e07769deaf" />
+      <ComponentRef Id="Examples_866aa5e1d6a82155e50f84f2" />
+      <ComponentRef Id="Examples_ae94c2411739a5e73cedf871" />
+      <ComponentRef Id="Examples_0d98d6cfaeaeb1163cdd4e0b" />
+      <ComponentRef Id="Examples_6d83e3f56970366ca44e30ca" />
     </ComponentGroup>
   </Fragment>
 

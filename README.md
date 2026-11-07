@@ -1,6 +1,7 @@
 # Almagest
 
 <!-- markdownlint-disable MD033 -->
+
 <p align="center">
   <img alt="Almagest logo" src="./logo.svg" height="200" width="200" />
   <img alt="Almagest graph editor" src="./webdemo/images/graph.webp"

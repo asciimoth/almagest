@@ -16,10 +16,10 @@ Select one of these providers:
   [Latitude](@port/right/Latitude), and [Longitude](@port/right/Longitude)
   results stay empty or zero.
 - [Yggdrasil IP and Port Checker](https://yggdrasil-network.github.io/services.html)
-  requests `http://[200:56bd:a9e9:c1fa:8f99:1d3c:3c84:6507]/` and returns
-  the Yggdrasil address that the service sees. Connect a Yggdrasil network
-  path to use it. Only [Public IP](@port/right/Public%20IP) has a value;
-  location outputs stay empty or zero.
+  requests `http://[200:56bd:a9e9:c1fa:8f99:1d3c:3c84:6507]/` and returns the
+  Yggdrasil address that the service sees. Connect a Yggdrasil network path to
+  use it. Only [Public IP](@port/right/Public%20IP) has a value; location
+  outputs stay empty or zero.
 
 The location values are estimates supplied by the provider for the public IP
 address. They are not a device location measurement. FetchAddr converts IP

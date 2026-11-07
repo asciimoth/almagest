@@ -78,6 +78,15 @@ class SupervisorTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unsafe VM socket"):
                 MODULE.Supervisor(supervisor.args, supervisor.config)
 
+    def test_package_builds_use_a_stable_guest_path(self):
+        with tempfile.TemporaryDirectory() as temp:
+            first = self.supervisor(Path(temp) / "run-package-a")
+            second = self.supervisor(Path(temp) / "run-package-b")
+            first.args.mode = second.args.mode = "package"
+            self.assertEqual(MODULE.Supervisor(first.args, first.config).remote,
+                             MODULE.Supervisor(second.args, second.config).remote)
+            self.assertNotEqual(first.remote, second.remote)
+
     def test_cleanup_deadline_still_records_failed_export(self):
         with tempfile.TemporaryDirectory() as temp, redirect_stdout(io.StringIO()):
             path = Path(temp)

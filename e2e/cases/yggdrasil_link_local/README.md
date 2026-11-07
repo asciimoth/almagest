@@ -7,8 +7,8 @@ node over link-local IPv6.
 
 The case runs in isolated and direct daemon modes. It checks both peer
 connections and an HTTP request through the two Yggdrasil TUN links. It then
-detaches and reattaches one node's OutNetwork link and checks discovery and
-HTTP again. This exercises both daemon carrier paths and the final Linux TCP
-bind and dial paths.
+detaches and reattaches one node's OutNetwork link and checks discovery and HTTP
+again. This exercises both daemon carrier paths and the final Linux TCP bind and
+dial paths.
 
 Run only this case with `just test-total e2e:yggdrasil_link_local`.

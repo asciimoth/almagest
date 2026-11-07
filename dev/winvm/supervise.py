@@ -59,7 +59,10 @@ class Supervisor:
         self.sockets = Path(args.sockets).resolve()
         if not self.sockets.name.startswith("almagest-winvm."):
             raise ValueError("unsafe VM socket directory")
-        self.remote = "C:/winvm/runs/" + self.directory.name
+        # Package builds use fresh overlays, so a stable guest path prevents
+        # the desktop executable from embedding the host run directory name.
+        self.remote = ("C:/winvm/runs/package" if args.mode.startswith("package")
+                       else "C:/winvm/runs/" + self.directory.name)
         self.qemu = None
         self.resource_monitor = None
         self.tunnel = None
@@ -561,7 +564,7 @@ class Supervisor:
         if code:
             raise Failure("transfer", code)
         digest = (self.directory / "payload.sha256").read_text().split()[0]
-        code = self.command(self.ssh + [f'powershell.exe -NoProfile -Command "if ((Get-FileHash \'{self.remote}/payload.tar\').Hash -ne \'{digest}\') {{ exit 1 }}; tar.exe -xf {self.remote}/payload.tar -C {self.remote}/source; exit $LASTEXITCODE"'], 120)
+        code = self.command(self.ssh + [f'powershell.exe -NoProfile -Command "if ((Get-FileHash \'{self.remote}/payload.tar\').Hash -ne \'{digest}\') {{ exit 1 }}; tar.exe -xf {self.remote}/payload.tar -C {self.remote}/source; exit $LASTEXITCODE"'], 300)
         if code:
             raise Failure("transfer", code)
         self.transferred = True
