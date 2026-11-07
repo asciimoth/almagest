@@ -9,6 +9,8 @@ snapshots at startup and through the broker refresh operation.
 The case verifies:
 
 - OS CA entries are loaded from the process environment at startup.
+- A root with a negative serial number is skipped at startup and refresh while
+  valid roots remain available. The daemon logs the parse error.
 - Direct and automatic isolation modes produce the same reload behavior.
 - Isolated startup and refresh use the broker-owned platform TLS provider.
 - Certcat warning roots are annotated and excluded from the default policy.

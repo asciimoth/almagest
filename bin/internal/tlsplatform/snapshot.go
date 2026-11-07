@@ -16,6 +16,7 @@ import (
 
 	"github.com/asciimoth/almagest/bin/internal/isolation/protocol"
 	"github.com/asciimoth/gonnect/tlspolicy"
+	"github.com/kataras/golog"
 )
 
 const (
@@ -304,6 +305,8 @@ type authorityProvider struct{ fetcher tlspolicy.AuthorityFetcher }
 
 // NewAuthorityProvider adapts the existing OS authority catalog to the closed
 // snapshot contract. It intentionally does not collect CRLs or distrust data.
+// Certificates that the TLS parser rejects are logged and omitted. A bad OS
+// store entry must not prevent startup or hide the remaining valid entries.
 func NewAuthorityProvider(fetcher tlspolicy.AuthorityFetcher) Provider {
 	return authorityProvider{fetcher: fetcher}
 }
@@ -351,7 +354,25 @@ func (p authorityProvider) Snapshot(ctx context.Context, request Request) (Snaps
 	if err := request.Validate(); err != nil {
 		return Snapshot{}, err
 	}
-	catalog, err := tlspolicy.FetchAuthorityCatalog(ctx, p.fetcher)
+	catalog, err := tlspolicy.FetchAuthorityCatalog(ctx, tlspolicy.AuthorityFetcherFunc(func(ctx context.Context) ([]tlspolicy.AuthorityCandidate, error) {
+		candidates, err := p.fetcher.FetchAuthorities(ctx)
+		if err != nil {
+			return nil, err
+		}
+		valid := make([]tlspolicy.AuthorityCandidate, 0, len(candidates))
+		for _, candidate := range candidates {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if _, err := tlspolicy.ParseAuthorityDER(candidate.DER); err != nil {
+				golog.Warnf("TLS certificates: skipping invalid OS authority source=%s sha256=%x: %v",
+					candidate.Source.Name, sha256.Sum256(candidate.DER), err)
+				continue
+			}
+			valid = append(valid, candidate)
+		}
+		return valid, nil
+	}))
 	if err != nil {
 		return Snapshot{}, err
 	}

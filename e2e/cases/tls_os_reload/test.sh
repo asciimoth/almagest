@@ -37,6 +37,13 @@ initial_name="$(json_value "$E2E_RUNTIME/snapshot-initial.json" '.certs[] | sele
 warning_name="$(json_value "$E2E_RUNTIME/snapshot-initial.json" '.certs[] | select(any(.certcat_matches[]?; .action == "warn")) | .name')"
 narrow_name="$(json_value "$E2E_RUNTIME/snapshot-initial.json" '.certs[] | select(any(.certcat_matches[]?; .action == "narrow_scope")) | .name')"
 
+assert_jq "$E2E_RUNTIME/snapshot-initial.json" "invalid OS certificate was loaded" '
+	[.certs[] | select(.subject | contains("CN=E2E Invalid Serial Root"))] | length == 0
+'
+grep -E '\[WARN\].*TLS certificates: skipping invalid OS authority.*negative serial number' \
+	"$E2E_DAEMON_LOG" >/dev/null \
+	|| fail "daemon did not warn about the skipped negative-serial certificate"
+
 assert_jq "$E2E_RUNTIME/snapshot-initial.json" "initial OS root was not present" '
 	any(.certs[]; .name == "'"$initial_name"'" and .source == "os" and .read_only == true)
 '
@@ -70,11 +77,15 @@ retry "$ALMAGEST_E2E_TIMEOUT" "TLS watch subscription" \
 
 cat \
 	"$E2E_CONFIG_DIR/replacement-root.pem" \
+	"$E2E_CONFIG_DIR/negative-serial.pem" \
 	"$E2E_CONFIG_DIR/fixtures/narrow-scope-ca.pem" \
 	>"$E2E_CONFIG_DIR/os-bundle.pem"
 
 cli tls reload-os-certs >"$E2E_RUNTIME/snapshot-reload.json"
 replacement_name="$(json_value "$E2E_RUNTIME/snapshot-reload.json" '.certs[] | select(.subject | contains("CN=E2E Reload Replacement Root")) | .name')"
+assert_jq "$E2E_RUNTIME/snapshot-reload.json" "invalid OS certificate was loaded after reload" '
+	[.certs[] | select(.subject | contains("CN=E2E Invalid Serial Root"))] | length == 0
+'
 
 assert_jq "$E2E_RUNTIME/snapshot-reload.json" "old OS root was still present after reload" '
 	([ .certs[] | select(.name == "'"$initial_name"'") ] | length) == 0
