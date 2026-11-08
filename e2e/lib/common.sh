@@ -192,7 +192,8 @@ start_daemon() {
 		--log-cache-fatal "$ALMAGEST_E2E_LOG_CACHE_FATAL" \
 		--unix "$E2E_ADMIN_SOCK" \
 		"${snapshot_args[@]}" \
-		"${web_args[@]}")
+		"${web_args[@]}" \
+		"$@")
 	if [[ "$ALMAGEST_E2E_DAEMON_MODE" == "isolation" ]]; then
 		[[ -n "${E2E_CGROUP_PARENT:-}" ]] || fail "delegated E2E cgroup parent is unavailable"
 		local cgroup_suffix="${ALMAGEST_E2E_ISOLATION_MODE}-${ALMAGEST_E2E_SANDBOX_MODE:-auto}"

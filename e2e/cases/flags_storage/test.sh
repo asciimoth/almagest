@@ -63,5 +63,30 @@ rm "$ALMAGEST_E2E_FILE_STORAGE/flags.json"
 start_daemon
 cli flags get | jq -e '. == {}' >/dev/null || fail "restart failed without flags file"
 
+stop_daemon
+trap cleanup EXIT
+cat >"$E2E_CONFIG_DIR/protected_alm.hujson" <<EOF
+{"Admin":{"Unix":"$E2E_ADMIN_SOCK"},"Sandbox":{"Mode":"${ALMAGEST_E2E_SANDBOX_MODE:-auto}"},"Flags":{"fixed":false,"protected":true,"disabled":true}}
+EOF
+chmod 0600 "$E2E_CONFIG_DIR/protected_alm.hujson"
+start_daemon --flag fixed=true --flag disabled=false --flag cli=true
+cli flags get | jq -e '.flags == {fixed: true, protected: true, disabled: false, cli: true}' >/dev/null || \
+	fail "overrides were not applied to the missing flags file"
+
+printf '%s\n' '{"flags":{"fixed":false,"protected":false,"disabled":true,"cli":false,"free":true}}' | \
+	cli flags set >"$E2E_RUNTIME/flags-overridden.json"
+jq -e '.flags == {fixed: true, protected: true, disabled: false, cli: true, free: true}' \
+	"$E2E_RUNTIME/flags-overridden.json" >/dev/null || fail "flags set response ignored overrides"
+jq -e '.flags == {fixed: true, protected: true, disabled: false, cli: true, free: true}' \
+	"$ALMAGEST_E2E_FILE_STORAGE/flags.json" >/dev/null || fail "flags write ignored overrides"
+
+stop_daemon
+trap cleanup EXIT
+printf '%s\n' '{"flags":{"fixed":false,"protected":false,"disabled":true,"cli":false,"free":true}}' \
+	>"$ALMAGEST_E2E_FILE_STORAGE/flags.json"
+start_daemon --flag fixed=true --flag disabled=false --flag cli=true
+cli flags get | jq -e '.flags == {fixed: true, protected: true, disabled: false, cli: true, free: true}' >/dev/null || \
+	fail "flags read ignored overrides"
+
 cleanup
 log "case passed"

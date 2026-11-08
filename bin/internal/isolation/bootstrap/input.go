@@ -223,6 +223,7 @@ type Secret struct {
 // RuntimeProtected contains only protected values required by R. It has no
 // source paths or environment variable names.
 type RuntimeProtected struct {
+	Flags        map[string]bool
 	Secrets      map[string]Secret
 	Certificates map[string]string
 	Policies     map[string]json.RawMessage
@@ -276,6 +277,7 @@ func (r RuntimeProtected) RuntimeDocument() ([]byte, error) {
 	}
 	document := struct {
 		Admin   *RuntimeAdmin      `json:"Admin,omitempty"`
+		Flags   map[string]bool    `json:"Flags,omitempty"`
 		Secrets map[string]literal `json:"Secrets,omitempty"`
 		TLS     struct {
 			Certificates map[string]pem             `json:"Certificates,omitempty"`
@@ -287,7 +289,7 @@ func (r RuntimeProtected) RuntimeDocument() ([]byte, error) {
 				System  RuntimeCRLSystem `json:"System,omitempty"`
 			} `json:"CRLs,omitempty"`
 		} `json:"TLS,omitempty"`
-	}{Admin: r.Admin, Secrets: make(map[string]literal, len(r.Secrets))}
+	}{Admin: r.Admin, Flags: r.Flags, Secrets: make(map[string]literal, len(r.Secrets))}
 	total := 0
 	for name, secret := range r.Secrets {
 		if secret.Source != "protected" && secret.Source != "environment" {
@@ -371,6 +373,7 @@ type ProtectedAuthority struct {
 }
 
 type protectedDocument struct {
+	Flags map[string]bool `json:"Flags"`
 	Admin struct {
 		WebPProf         bool `json:"WebPProf"`
 		AllowCrossOrigin bool `json:"AllowCrossOrigin"`
@@ -435,7 +438,7 @@ func ResolveProtectedWithArguments(data []byte, loader FileLoader, lookupEnv fun
 		System:        bytes.Clone(root["System"]),
 		Sandbox:       bytes.Clone(root["Sandbox"]),
 	}
-	narrow, err := json.Marshal(map[string]json.RawMessage{"Admin": root["Admin"], "Secrets": root["Secrets"], "TLS": root["TLS"]})
+	narrow, err := json.Marshal(map[string]json.RawMessage{"Admin": root["Admin"], "Flags": root["Flags"], "Secrets": root["Secrets"], "TLS": root["TLS"]})
 	if err != nil {
 		return ResolvedProtected{}, err
 	}
@@ -443,7 +446,17 @@ func ResolveProtectedWithArguments(data []byte, loader FileLoader, lookupEnv fun
 		return ResolvedProtected{}, fmt.Errorf("%w: protected immutable inputs: %v", ErrInvalidInput, err)
 	}
 
-	runtime := RuntimeProtected{}
+	cliFlags, err := arguments.NamedFlags()
+	if err != nil {
+		return ResolvedProtected{}, err
+	}
+	runtime := RuntimeProtected{Flags: make(map[string]bool, len(document.Flags)+len(cliFlags))}
+	for name, value := range document.Flags {
+		runtime.Flags[name] = value
+	}
+	for name, value := range cliFlags {
+		runtime.Flags[name] = value
+	}
 	if document.Admin.WebPProf || document.Admin.AllowCrossOrigin {
 		runtime.Admin = &RuntimeAdmin{WebPProf: document.Admin.WebPProf, AllowCrossOrigin: document.Admin.AllowCrossOrigin}
 	}

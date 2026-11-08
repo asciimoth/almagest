@@ -21,6 +21,25 @@ type memoryLoader struct {
 	unsafeReads  []string
 }
 
+func TestResolveProtectedFlagsCLIHasPriority(t *testing.T) {
+	resolved, err := ResolveProtectedWithArguments([]byte(`{"Flags":{"fixed":false,"protected":true}}`), &memoryLoader{},
+		func(string) (string, bool) { return "", false }, daemonargs.Args{FlagOverrides: []string{"fixed=true", "disabled=false"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resolved.Runtime.Flags["fixed"] || !resolved.Runtime.Flags["protected"] || resolved.Runtime.Flags["disabled"] {
+		t.Fatalf("resolved flags = %#v", resolved.Runtime.Flags)
+	}
+	data, err := resolved.Runtime.RuntimeDocument()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct{ Flags map[string]bool }
+	if err := json.Unmarshal(data, &document); err != nil || !document.Flags["fixed"] || !document.Flags["protected"] {
+		t.Fatalf("runtime flags = %#v, %v", document.Flags, err)
+	}
+}
+
 func TestResolveProtectedCRLsRemovesPathsAndReadsOnce(t *testing.T) {
 	protectedPath := filepath.Join(t.TempDir(), "protected-list.pem")
 	cliPath := filepath.Join(t.TempDir(), "cli-list.pem")

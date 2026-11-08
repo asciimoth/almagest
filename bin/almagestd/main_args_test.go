@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/alexflint/go-arg"
+	"github.com/asciimoth/almagest/bin/almagestd/args"
 )
 
 func TestParseDaemonArgsHelp(t *testing.T) {
@@ -29,5 +30,19 @@ func TestParseDaemonArgsWebdemoClassDump(t *testing.T) {
 	}
 	if !arguments.DumpWebdemoClasses {
 		t.Fatal("--dump-webdemo-node-classes was not parsed")
+	}
+}
+
+func TestParseDaemonFlagOverrides(t *testing.T) {
+	arguments, _, err := parseDaemonArgs([]string{"--isolation=off", "--flag", "fixed=false", "--flag", "fixed=true"}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flags, err := arguments.NamedFlags()
+	if err != nil || !flags["fixed"] {
+		t.Fatalf("CLI flags = %#v, %v", flags, err)
+	}
+	if _, err := (args.Args{FlagOverrides: []string{"bad"}}).NamedFlags(); err == nil {
+		t.Fatal("invalid CLI flag was accepted")
 	}
 }

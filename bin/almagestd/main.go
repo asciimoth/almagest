@@ -300,6 +300,17 @@ func runDaemon(
 		return err
 	}
 	conf.Protected.Merge(&arguments)
+	flagOverrides := make(map[string]bool, len(conf.Protected.Flags))
+	for name, value := range conf.Protected.Flags {
+		flagOverrides[name] = value
+	}
+	cliFlags, err := arguments.NamedFlags()
+	if err != nil {
+		return err
+	}
+	for name, value := range cliFlags {
+		flagOverrides[name] = value
+	}
 	if err := conf.Protected.MergeTLSCRLArguments(arguments); err != nil {
 		return err
 	}
@@ -338,6 +349,7 @@ func runDaemon(
 		}
 	}
 	kv, err = openKVManagerInStorage(fsPath, bboltKVManagerOptions{
+		FlagOverrides:             flagOverrides,
 		DisableDNSCacheExpiration: arguments.NoDNSCacheExpiration,
 		ImmutableSecrets:          immutableSecrets,
 		ImmutableTLS:              mergeImmutableTLSData(osTLSData, protectedTLSData),

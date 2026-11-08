@@ -87,6 +87,25 @@ func cloneFlags(document api.FlagsDocument) api.FlagsDocument {
 	return copy
 }
 
+func cloneFlagOverrides(overrides map[string]bool) map[string]bool {
+	copy := make(map[string]bool, len(overrides))
+	for name, value := range overrides {
+		copy[name] = value
+	}
+	return copy
+}
+
+func (m *bboltKVManager) applyFlagOverrides(document api.FlagsDocument) api.FlagsDocument {
+	document = cloneFlags(document)
+	if len(m.flagOverrides) > 0 && document.Flags == nil {
+		document.Flags = make(map[string]bool, len(m.flagOverrides))
+	}
+	for name, value := range m.flagOverrides {
+		document.Flags[name] = value
+	}
+	return document
+}
+
 func (m *bboltKVManager) flagsSnapshot() api.FlagsDocument {
 	m.flagsMu.RLock()
 	defer m.flagsMu.RUnlock()
@@ -99,6 +118,7 @@ func (m *bboltKVManager) reloadFlags() error {
 	if err != nil {
 		return err
 	}
+	document = m.applyFlagOverrides(document)
 	m.flagsMu.Lock()
 	m.flags = document
 	m.flagsMu.Unlock()
@@ -109,6 +129,7 @@ func (m *bboltKVManager) replaceFlags(ctx context.Context, document api.FlagsDoc
 	if m.flagsPath == "" {
 		return errors.New("flags storage is unavailable")
 	}
+	document = m.applyFlagOverrides(document)
 	data, err := json.Marshal(document)
 	if err != nil {
 		return err

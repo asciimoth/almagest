@@ -656,6 +656,16 @@
           ]
         },
         {
+          "id": "m8::daemon-flags-overrides",
+          "kind": "go",
+          "module": "bin",
+          "arguments": ["-tags=winintegration", "./integration", "-run", "^TestWindowsDaemonFlagsOverrides$"],
+          "eventFile": "m8-daemon-flags-overrides.jsonl",
+          "requiredTests": [
+            "github.com/asciimoth/almagest/bin/integration::TestWindowsDaemonFlagsOverrides"
+          ]
+        },
+        {
           "id": "batch1::portable-hermetic-e2e",
           "kind": "go",
           "module": "bin",

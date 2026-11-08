@@ -17,6 +17,11 @@
     "Secrets": {
       "$ref": "#/$defs/protectedSecretsConfig"
     },
+    "Flags": {
+      "type": "object",
+      "description": "Boolean flags that replace matching flags.json keys on every read and write. Daemon --flag values take precedence.",
+      "additionalProperties": {"type": "boolean"}
+    },
     "TLS": {
       "$ref": "#/$defs/protectedTLSConfig"
     },

@@ -176,6 +176,46 @@ func TestWindowsDaemonNativeAdminWorkflow(t *testing.T) {
 	}
 }
 
+func TestWindowsDaemonFlagsOverrides(t *testing.T) {
+	root := newPrivateWindowsTestDir(t)
+	pipe := fmt.Sprintf("almagest-flags-%d", os.Getpid())
+	var protected map[string]any
+	if err := json.Unmarshal([]byte(nativeProtectedConfig(pipe, "alm-flags")), &protected); err != nil {
+		t.Fatal(err)
+	}
+	protected["Flags"] = map[string]bool{"fixed": false, "protected": true, "disabled": true}
+	protectedData, err := json.Marshal(protected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := newWindowsDaemon(t, root, pipe, `{}`, string(protectedData))
+	d.extraArgs = []string{"--flag", "fixed=true", "--flag", "disabled=false", "--flag", "cli=true"}
+	assertFlags := func(data []byte) {
+		t.Helper()
+		var document api.FlagsDocument
+		if err := json.Unmarshal(data, &document); err != nil {
+			t.Fatalf("decode flags %s: %v", data, err)
+		}
+		if !document.Flags["fixed"] || !document.Flags["protected"] || document.Flags["disabled"] || !document.Flags["cli"] {
+			t.Fatalf("effective flags = %#v", document.Flags)
+		}
+	}
+	d.start()
+	assertFlags(d.cliJSON("flags", "get"))
+	input := filepath.Join(root, "flags-input.json")
+	writePrivateWindowsFile(t, input, []byte(`{"flags":{"fixed":false,"protected":false,"disabled":true,"cli":false,"free":true}}`))
+	assertFlags(d.cliJSON("flags", "set", input))
+	stored, err := os.ReadFile(filepath.Join(d.storage, "flags.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFlags(stored)
+	d.stop()
+	writePrivateWindowsFile(t, filepath.Join(d.storage, "flags.json"), []byte(`{"flags":{"fixed":false,"protected":false,"disabled":true,"cli":false,"free":true}}`))
+	d.start()
+	assertFlags(d.cliJSON("flags", "get"))
+}
+
 func TestWindowsDaemonNamedPipeCLIUserAccess(t *testing.T) {
 	if isLocalSystem(t) {
 		t.Fatal("user named-pipe test requires the standard winvm identity")

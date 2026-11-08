@@ -274,6 +274,7 @@ type ProtectedConfig struct {
 	CommandRunner cmdrunner.Config
 	Sandbox       sandboxpolicy.Config
 	Secrets       map[string]ProtectedSecretConfig
+	Flags         map[string]bool
 	System        configer.Config `json:"-"`
 	TLS           ProtectedTLSConfig
 }

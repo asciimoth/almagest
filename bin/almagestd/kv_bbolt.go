@@ -44,11 +44,12 @@ var (
 )
 
 type bboltKVManager struct {
-	db           *bbolt.DB
-	writeBarrier *storageWriteBarrier
-	flagsPath    string
-	flagsMu      sync.RWMutex
-	flags        api.FlagsDocument
+	db            *bbolt.DB
+	writeBarrier  *storageWriteBarrier
+	flagsPath     string
+	flagsMu       sync.RWMutex
+	flags         api.FlagsDocument
+	flagOverrides map[string]bool
 
 	disableDNSCacheExpiration bool
 
@@ -120,6 +121,7 @@ type bboltKVWriteTx struct {
 // part of the workspace graph. The options are fixed for the lifetime of the
 // opened manager.
 type bboltKVManagerOptions struct {
+	FlagOverrides map[string]bool
 	// DisableDNSCacheExpiration keeps DNS cache entries readable even after the
 	// expiration timestamp stored from their DNS TTL. Expiration timestamps are
 	// still persisted and reported by the admin API.
@@ -165,6 +167,7 @@ func openKVManagerWithOptions(path string, options bboltKVManagerOptions) (*bbol
 		return nil, fmt.Errorf("validate immutable TLS revocations: %w", err)
 	}
 	manager := &bboltKVManager{
+		flagOverrides:             cloneFlagOverrides(options.FlagOverrides),
 		db:                        db,
 		writeBarrier:              newStorageWriteBarrier(),
 		disableDNSCacheExpiration: options.DisableDNSCacheExpiration,

@@ -6,6 +6,7 @@ package daemonargs
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -19,8 +20,9 @@ type Args struct {
 	UnsafeConfig    bool   `arg:"--unsafe-config" help:"do not check regular config file permissions"`
 	Snapshot        string `arg:"--snapshot,env:ALMAGEST_SNAPSHOT" help:"load startup state from snapshot archive path; use - for stdin"`
 
-	FileStorage    string `arg:"--file-storage,env:ALMAGEST_FILE_STORAGE" help:"file storage directory"`
-	TmpFileStorage bool   `arg:"--tmp-file-storage,env:ALMAGEST_TMP_FILE_STORAGE" help:"use temporary file storage and remove it on exit"`
+	FileStorage    string   `arg:"--file-storage,env:ALMAGEST_FILE_STORAGE" help:"file storage directory"`
+	TmpFileStorage bool     `arg:"--tmp-file-storage,env:ALMAGEST_TMP_FILE_STORAGE" help:"use temporary file storage and remove it on exit"`
+	FlagOverrides  []string `arg:"--flag,separate" help:"override a flags.json key as NAME=true or NAME=false; repeatable"`
 
 	LogLevel   string `arg:"-l,--lvl,env:ALMAGEST_LOG_LVL" help:"logging level debug|info|warn|error|fatal"`
 	LogWorkers bool   `arg:"--log-workers" help:"log engine worker lifecycle events"`
@@ -63,6 +65,20 @@ type Args struct {
 	IsolationCPUQuota    *uint64 `arg:"--isolation-cpu-quota,env:ALMAGEST_ISOLATION_CPU_QUOTA" help:"Linux isolation CPU microseconds per 100000 microseconds per role (default 6400000; range 1000..6400000)"`
 	IsolationDescriptors *uint64 `arg:"--isolation-descriptors,env:ALMAGEST_ISOLATION_DESCRIPTORS" help:"Linux isolation file descriptors per process (default 65536; range 32..65536)"`
 	IsolationFileBytes   *uint64 `arg:"--isolation-file-bytes,env:ALMAGEST_ISOLATION_FILE_BYTES" help:"Linux isolation maximum file size in bytes (default 1099511627776; range 1048576..1099511627776)"`
+}
+
+// NamedFlags returns the command-line flag values. Later entries win.
+func (a Args) NamedFlags() (map[string]bool, error) {
+	flags := make(map[string]bool, len(a.FlagOverrides))
+	for _, entry := range a.FlagOverrides {
+		name, raw, found := strings.Cut(entry, "=")
+		if !found || name == "" || (raw != "true" && raw != "false") {
+			return nil, fmt.Errorf("invalid --flag %q: use NAME=true or NAME=false", entry)
+		}
+		value, _ := strconv.ParseBool(raw)
+		flags[name] = value
+	}
+	return flags, nil
 }
 
 // NamedTLSCRLFiles validates the repeatable --tls-crl-file values. Paths must

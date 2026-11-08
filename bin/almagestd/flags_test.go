@@ -109,6 +109,62 @@ func TestFlagsStorageAndAdminAPI(t *testing.T) {
 	}
 }
 
+func TestFlagsOverridesOnReadAndWrite(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, flagsFileName)
+	if err := os.WriteFile(path, []byte(`{"flags":{"fixed":false,"free":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := openKVManagerInStorage(root, bboltKVManagerOptions{FlagOverrides: map[string]bool{"fixed": true, "disabled": false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	assertFlags := func(document api.FlagsDocument) {
+		t.Helper()
+		if !document.Flags["fixed"] || document.Flags["disabled"] || !document.Flags["free"] {
+			t.Fatalf("effective flags = %#v", document.Flags)
+		}
+	}
+	assertFlags(manager.flagsSnapshot())
+	if err := manager.replaceFlags(context.Background(), api.FlagsDocument{Flags: map[string]bool{"fixed": false, "disabled": true, "free": true}}); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := readFlags(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFlags(stored)
+	if err := os.WriteFile(path, []byte(`{"flags":{"fixed":false,"disabled":true,"free":true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.reloadFlags(); err != nil {
+		t.Fatal(err)
+	}
+	assertFlags(manager.flagsSnapshot())
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.reloadFlags(); err != nil {
+		t.Fatal(err)
+	}
+	if got := manager.flagsSnapshot().Flags; !got["fixed"] || got["disabled"] {
+		t.Fatalf("missing file flags = %#v", got)
+	}
+}
+
+func TestProtectedFlagsConfig(t *testing.T) {
+	for _, parse := range []func([]byte, []byte) (*Config, error){ParseConfig, ParseIsolatedConfig} {
+		config, err := parse([]byte(`{}`), []byte(`{"Flags":{"enabled":true,"disabled":false}}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !config.Protected.Flags["enabled"] || config.Protected.Flags["disabled"] {
+			t.Fatalf("protected flags = %#v", config.Protected.Flags)
+		}
+	}
+}
+
 func TestFlagsReplacementBlockedWhenRecoveryRequired(t *testing.T) {
 	manager, err := openKVManagerInStorage(t.TempDir(), bboltKVManagerOptions{})
 	if err != nil {
