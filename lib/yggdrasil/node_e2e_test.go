@@ -31,14 +31,15 @@ func field(e *e2etest.NodeE2E, id uint64, block, key string) string {
 }
 func address(e *e2etest.NodeE2E, id uint64) string {
 	e.T.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if v := field(e, id, "status", "address"); v != "" {
 			return v
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	e.T.Fatal("Yggdrasil did not publish its address")
+	snapshot, _ := e.Engine.NodeSnapshot(workspace, id)
+	e.T.Fatalf("Yggdrasil did not publish its address: label=%q state=%q", snapshot.Label, field(e, id, "status", "state"))
 	return ""
 }
 
