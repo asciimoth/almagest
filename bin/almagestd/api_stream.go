@@ -38,6 +38,9 @@ func (a *AdminAPI) serveAPIStream(
 	if err := session.sendProjectVersionStatus(); err != nil {
 		return
 	}
+	if err := session.sendFlagsSnapshot(); err != nil {
+		return
+	}
 
 	for {
 		msg, err := codec.Read()

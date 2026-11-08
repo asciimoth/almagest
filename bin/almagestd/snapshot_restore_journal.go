@@ -211,7 +211,7 @@ func recoverInterruptedRestore(
 	if err != nil {
 		return interruptedRestoreResult{}, errors.Join(errRestoreRecoveryRequired, err)
 	}
-	configData, _, restoreErr := restoreStartupSnapshot(ctx, storagePath, recovery, locator)
+	configData, _, restoreErr := restoreStartupSnapshotWithMode(ctx, storagePath, recovery, locator, true)
 	closeErr := recovery.Close()
 	if restoreErr != nil || closeErr != nil {
 		return interruptedRestoreResult{}, fmt.Errorf("%w: restore recovery copy: %v", errRestoreRecoveryRequired, errors.Join(restoreErr, closeErr))

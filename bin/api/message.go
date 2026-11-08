@@ -31,6 +31,7 @@ const (
 	SurfaceDNS       Surface = "dns"
 	SurfaceDocs      Surface = "docs"
 	SurfaceEngine    Surface = "engine"
+	SurfaceFlags     Surface = "flags"
 	SurfaceKV        Surface = "kv"
 	SurfaceLog       Surface = "log"
 	SurfaceSecrets   Surface = "secrets"
@@ -46,6 +47,7 @@ func Surfaces() []string {
 		string(SurfaceDNS),
 		string(SurfaceDocs),
 		string(SurfaceEngine),
+		string(SurfaceFlags),
 		string(SurfaceKV),
 		string(SurfaceLog),
 		string(SurfaceSecrets),
@@ -61,6 +63,8 @@ func RequiresMutationLease(surface Surface, method string) bool {
 		return IsConfigMutation(method)
 	case SurfaceEngine:
 		return IsEngineMutation(method)
+	case SurfaceFlags:
+		return FlagsMethod(method) == MethodFlagsReplace
 	case SurfaceSecrets:
 		return IsSecretsMutation(method)
 	case SurfaceTLS:
@@ -74,10 +78,10 @@ func RequiresMutationLease(surface Surface, method string) bool {
 
 // SchedulesConfigAutosave reports whether a successful API request changes
 // state that must be exported through the regular idle autosave path. Config
-// updates write their complete document before they return.
+// updates and flags replacements write their documents before they return.
 func SchedulesConfigAutosave(surface Surface, method string) bool {
 	return RequiresMutationLease(surface, method) &&
-		surface != SurfaceConfig && surface != SurfaceSnapshots
+		surface != SurfaceConfig && surface != SurfaceSnapshots && surface != SurfaceFlags
 }
 
 // Message is the shared JSON envelope.

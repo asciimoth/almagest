@@ -52,11 +52,12 @@ Use the [Snapshots tab](@panel/snapshots) to manage snapshots:
 A name is a label and does not identify the snapshot. More than one snapshot can
 have the same name.
 
-Restore replaces the current regular configuration and mutable persistent data.
-The snapshot list itself is not replaced. If the service cannot write the
-restored regular configuration to its configured file, the panel reports that
-the restored configuration is active only in memory. In that case, do not expect
-the configuration to remain after a service restart.
+Restore replaces the current regular configuration and KV database. In file
+storage, it overwrites paths in the snapshot and keeps paths that the snapshot
+does not include. The snapshot list itself is not replaced. If the service
+cannot write the restored regular configuration to its configured file, the
+panel reports that the restored configuration is active only in memory. In that
+case, do not expect the configuration to remain after a service restart.
 
 You can also rename and delete stored snapshots. Deletion is permanent unless
 you exported another copy.
@@ -97,8 +98,9 @@ To load an example:
 1. Read its configuration comments, then return to the graph.
 
 Loading an example uses the snapshot restore process. It replaces the active
-regular configuration and mutable persistent data. Create a snapshot first if
-you want to return to the current state.
+regular configuration and KV database, and overwrites file-storage paths that
+the example includes. Create a snapshot first if you want to return to the
+current state.
 
 Examples themselves are read-only. You cannot rename, delete, or replace a
 packaged example. After you load one, you can change the active graph and save

@@ -72,6 +72,29 @@ Use KV for non-secret persistent application state. The KV interface supports
 subtree creation, reads, updates, deletion, and change subscriptions. Hidden is
 a presentation attribute, not an access-control boundary.
 
+## Flags file
+
+`flags.json` is an optional JSON file beside `kv.db` in file storage. The same
+daemon process manages both files. At startup, the daemon reads the flags file.
+A missing file gives an empty document. The current format stores named Boolean
+values, for example `{"flags":{"example":true}}`. These values do not yet change
+daemon behavior.
+
+Read or replace the complete document with the CLI:
+
+```sh
+almagest-cli flags get
+almagest-cli flags set flags.json
+printf '%s\n' '{}' | almagest-cli flags set
+```
+
+The admin API provides the `flags.snapshot` and `flags.replace` methods. Each
+new admin connection receives a `flags.snapshot` event without a request. Writes
+are saved immediately. To edit the file directly, stop the daemon first.
+
+Snapshots include the file when it exists. Restoring a snapshot that has no
+`flags.json` leaves the current flags unchanged.
+
 ## Secrets
 
 Secrets are named values with an allowlist of node names. A node can read a

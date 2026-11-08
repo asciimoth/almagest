@@ -196,6 +196,16 @@ func restoreStartupSnapshot(
 	archive io.Reader,
 	locator any,
 ) ([]byte, api.SnapshotInfo, error) {
+	return restoreStartupSnapshotWithMode(ctx, storagePath, archive, locator, false)
+}
+
+func restoreStartupSnapshotWithMode(
+	ctx context.Context,
+	storagePath string,
+	archive io.Reader,
+	locator any,
+	pruneAbsent bool,
+) ([]byte, api.SnapshotInfo, error) {
 	if storagePath == "" {
 		return nil, api.SnapshotInfo{}, fmt.Errorf("snapshot storage is unavailable")
 	}
@@ -245,7 +255,7 @@ func restoreStartupSnapshot(
 		return nil, api.SnapshotInfo{}, fmt.Errorf("capture pre-restore startup state: %w", err)
 	}
 	defer recovery.cleanup()
-	if err := service.applyStartupStorage(loaded.filesPath); err != nil {
+	if err := service.applyStartupStorage(loaded.filesPath, pruneAbsent); err != nil {
 		if rollbackErr := service.restoreStartupRecovery(recovery); rollbackErr != nil {
 			return nil, api.SnapshotInfo{}, fmt.Errorf("restore startup snapshot: %w; rollback failed: %v", err, rollbackErr)
 		}
@@ -584,9 +594,9 @@ func rewriteSnapshotName(path, expectedUUID, name string) (api.SnapshotInfo, err
 	return manifest.Snapshot, nil
 }
 
-// Restore replaces persistent storage and reconstructs every graph node from
-// the snapshot config. Failure triggers a best-effort rollback from an internal
-// archive captured immediately before the restore.
+// Restore replaces the KV database, overlays included file-storage paths, and
+// reconstructs every graph node from the snapshot config. Failure triggers a
+// best-effort rollback from an internal archive captured before the restore.
 func (s *snapshotService) Restore(ctx context.Context, uuid string) (api.SnapshotsRestoreResponse, error) {
 	if s == nil || s.restore == nil {
 		return api.SnapshotsRestoreResponse{}, fmt.Errorf("snapshot service is not ready")
@@ -670,6 +680,9 @@ func (s *snapshotService) prepareRestoreRecovery(
 }
 
 func (s *snapshotService) writeArchive(ctx context.Context, archivePath string, info api.SnapshotInfo, configData []byte) error {
+	if _, err := readFlags(filepath.Join(s.storagePath, flagsFileName)); err != nil {
+		return fmt.Errorf("validate flags file: %w", err)
+	}
 	databaseCopy, err := os.CreateTemp(filepath.Join(s.storagePath, snapshotDirectoryName), ".database-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temporary database snapshot: %w", err)
@@ -1033,6 +1046,9 @@ func (s *snapshotService) loadArchive(ctx context.Context, path, expectedUUID st
 	if err := validateBboltDatabase(databasePath); err != nil {
 		return fail(fmt.Errorf("%w: %v", errSnapshotInvalid, err))
 	}
+	if _, err := readFlags(filepath.Join(loaded.filesPath, flagsFileName)); err != nil {
+		return fail(fmt.Errorf("%w: flags file: %v", errSnapshotInvalid, err))
+	}
 	return loaded, nil
 }
 
@@ -1276,15 +1292,24 @@ func validateStorageSymlink(root, path string, service *snapshotService) error {
 	return nil
 }
 
-func (s *snapshotService) applyLoadedSnapshotData(ctx context.Context, loaded *loadedSnapshot) error {
+func (s *snapshotService) applyLoadedSnapshotData(ctx context.Context, loaded *loadedSnapshot, pruneAbsent bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.restoreStorageFiles(loaded.filesPath); err != nil {
+	if err := s.restoreStorageFiles(loaded.filesPath, pruneAbsent); err != nil {
 		return err
 	}
 	if err := s.manager.replaceBboltDatabase(filepath.Join(loaded.filesPath, kvDBFileName)); err != nil {
 		return err
+	}
+	_, flagsErr := os.Lstat(filepath.Join(loaded.filesPath, flagsFileName))
+	if flagsErr != nil && !errors.Is(flagsErr, os.ErrNotExist) {
+		return fmt.Errorf("inspect restored flags: %w", flagsErr)
+	}
+	if pruneAbsent || flagsErr == nil {
+		if err := s.manager.reloadFlags(); err != nil {
+			return fmt.Errorf("load restored flags: %w", err)
+		}
 	}
 	if err := s.restoreImmutableState(ctx, loaded.config); err != nil {
 		return err
@@ -1344,8 +1369,8 @@ func (s *snapshotService) restoreImmutableState(ctx context.Context, restored *h
 	return nil
 }
 
-func (s *snapshotService) restoreStorageFiles(sourceRoot string) error {
-	return s.mirrorStorageDirectory(sourceRoot, s.storagePath, "", false)
+func (s *snapshotService) restoreStorageFiles(sourceRoot string, pruneAbsent bool) error {
+	return s.mirrorStorageDirectory(sourceRoot, s.storagePath, "", false, pruneAbsent)
 }
 
 // captureStartupRecovery copies the current closed storage tree before
@@ -1370,20 +1395,20 @@ func (s *snapshotService) captureStartupRecovery() (*startupStorageRecovery, err
 		recovery.cleanup()
 		return nil, err
 	}
-	if err := s.mirrorStorageDirectory(s.storagePath, recovery.filesPath, "", true); err != nil {
+	if err := s.mirrorStorageDirectory(s.storagePath, recovery.filesPath, "", true, false); err != nil {
 		recovery.cleanup()
 		return nil, err
 	}
 	return recovery, nil
 }
 
-func (s *snapshotService) applyStartupStorage(sourceRoot string) error {
-	if err := s.restoreStorageFiles(sourceRoot); err != nil {
+func (s *snapshotService) applyStartupStorage(sourceRoot string, pruneAbsent bool) error {
+	if err := s.restoreStorageFiles(sourceRoot, pruneAbsent); err != nil {
 		return fmt.Errorf("restore files: %w", err)
 	}
 	// At startup no bbolt handle exists, so publish the validated database file
 	// directly after all other files have been mirrored.
-	if err := mirrorStorageEntry(sourceRoot, s.storagePath, kvDBFileName, s, true); err != nil {
+	if err := mirrorStorageEntry(sourceRoot, s.storagePath, kvDBFileName, s, true, pruneAbsent); err != nil {
 		return fmt.Errorf("restore database: %w", err)
 	}
 	return nil
@@ -1393,7 +1418,7 @@ func (s *snapshotService) restoreStartupRecovery(recovery *startupStorageRecover
 	if recovery == nil {
 		return errors.New("startup recovery state is unavailable")
 	}
-	if err := s.restoreStorageFiles(recovery.filesPath); err != nil {
+	if err := s.restoreStorageFiles(recovery.filesPath, true); err != nil {
 		return fmt.Errorf("restore previous files: %w", err)
 	}
 	databasePath := filepath.Join(s.storagePath, kvDBFileName)
@@ -1403,13 +1428,13 @@ func (s *snapshotService) restoreStartupRecovery(recovery *startupStorageRecover
 		}
 		return nil
 	}
-	if err := mirrorStorageEntry(recovery.filesPath, s.storagePath, kvDBFileName, s, true); err != nil {
+	if err := mirrorStorageEntry(recovery.filesPath, s.storagePath, kvDBFileName, s, true, true); err != nil {
 		return fmt.Errorf("restore previous database: %w", err)
 	}
 	return nil
 }
 
-func (s *snapshotService) mirrorStorageDirectory(sourceRoot, destinationRoot, relative string, includeDatabase bool) error {
+func (s *snapshotService) mirrorStorageDirectory(sourceRoot, destinationRoot, relative string, includeDatabase, pruneAbsent bool) error {
 	sourcePath := filepath.Join(sourceRoot, relative)
 	destinationPath := filepath.Join(destinationRoot, relative)
 	sourceEntries, err := os.ReadDir(sourcePath)
@@ -1418,30 +1443,32 @@ func (s *snapshotService) mirrorStorageDirectory(sourceRoot, destinationRoot, re
 	} else if err != nil {
 		return err
 	}
-	destinationEntries, err := os.ReadDir(destinationPath)
-	if err != nil {
-		return err
-	}
-	sourceByName := make(map[string]fs.DirEntry, len(sourceEntries))
-	for _, entry := range sourceEntries {
-		sourceByName[entry.Name()] = entry
-	}
-	for _, entry := range destinationEntries {
-		childRelative := filepath.Join(relative, entry.Name())
-		if s.storagePathExcluded(childRelative) || (!includeDatabase && childRelative == kvDBFileName) {
-			continue
+	if pruneAbsent {
+		destinationEntries, err := os.ReadDir(destinationPath)
+		if err != nil {
+			return err
 		}
-		if _, found := sourceByName[entry.Name()]; !found {
-			if s.storagePathContainsDynamicExclusion(childRelative) {
-				if entry.IsDir() {
-					if err := s.mirrorStorageDirectory(sourceRoot, destinationRoot, childRelative, includeDatabase); err != nil {
-						return err
-					}
-				}
+		sourceByName := make(map[string]fs.DirEntry, len(sourceEntries))
+		for _, entry := range sourceEntries {
+			sourceByName[entry.Name()] = entry
+		}
+		for _, entry := range destinationEntries {
+			childRelative := filepath.Join(relative, entry.Name())
+			if s.storagePathExcluded(childRelative) || (!includeDatabase && childRelative == kvDBFileName) {
 				continue
 			}
-			if err := os.RemoveAll(filepath.Join(destinationRoot, childRelative)); err != nil {
-				return fmt.Errorf("remove storage path %s: %w", childRelative, err)
+			if _, found := sourceByName[entry.Name()]; !found {
+				if s.storagePathContainsDynamicExclusion(childRelative) {
+					if entry.IsDir() {
+						if err := s.mirrorStorageDirectory(sourceRoot, destinationRoot, childRelative, includeDatabase, pruneAbsent); err != nil {
+							return err
+						}
+					}
+					continue
+				}
+				if err := os.RemoveAll(filepath.Join(destinationRoot, childRelative)); err != nil {
+					return fmt.Errorf("remove storage path %s: %w", childRelative, err)
+				}
 			}
 		}
 	}
@@ -1450,7 +1477,7 @@ func (s *snapshotService) mirrorStorageDirectory(sourceRoot, destinationRoot, re
 		if s.storagePathExcluded(childRelative) || (!includeDatabase && childRelative == kvDBFileName) {
 			continue
 		}
-		if err := mirrorStorageEntry(sourceRoot, destinationRoot, childRelative, s, includeDatabase); err != nil {
+		if err := mirrorStorageEntry(sourceRoot, destinationRoot, childRelative, s, includeDatabase, pruneAbsent); err != nil {
 			return err
 		}
 	}
@@ -1460,7 +1487,7 @@ func (s *snapshotService) mirrorStorageDirectory(sourceRoot, destinationRoot, re
 func mirrorStorageEntry(
 	sourceRoot, destinationRoot, relative string,
 	service *snapshotService,
-	includeDatabase bool,
+	includeDatabase, pruneAbsent bool,
 ) error {
 	sourcePath := filepath.Join(sourceRoot, relative)
 	destinationPath := filepath.Join(destinationRoot, relative)
@@ -1480,16 +1507,27 @@ func mirrorStorageEntry(
 		(!info.IsDir() || (destinationErr == nil && !destinationInfo.IsDir())) {
 		return fmt.Errorf("restore storage path %s would replace a directory that contains an active config source", relative)
 	}
-	if !sameKind && destinationErr == nil {
+	destinationExists := destinationErr == nil
+	if !sameKind && destinationExists {
+		if !pruneAbsent && destinationInfo.IsDir() {
+			entries, err := os.ReadDir(destinationPath)
+			if err != nil {
+				return err
+			}
+			if len(entries) != 0 {
+				return fmt.Errorf("restore storage path %s would remove files absent from the snapshot", relative)
+			}
+		}
 		if err := os.RemoveAll(destinationPath); err != nil {
 			return err
 		}
+		destinationExists = false
 	}
 	if info.IsDir() {
 		if err := os.MkdirAll(destinationPath, info.Mode().Perm()); err != nil {
 			return err
 		}
-		if err := service.mirrorStorageDirectory(sourceRoot, destinationRoot, relative, includeDatabase); err != nil {
+		if err := service.mirrorStorageDirectory(sourceRoot, destinationRoot, relative, includeDatabase, pruneAbsent); err != nil {
 			return err
 		}
 		return chmodDirectoryNoFollow(destinationPath, info.Mode().Perm())
@@ -1499,7 +1537,7 @@ func mirrorStorageEntry(
 		if err != nil {
 			return err
 		}
-		if destinationErr == nil {
+		if destinationExists {
 			if err := os.Remove(destinationPath); err != nil {
 				return err
 			}
@@ -1537,11 +1575,6 @@ func mirrorStorageEntry(
 	}
 	if closeTemporaryErr != nil {
 		return closeTemporaryErr
-	}
-	if destinationErr == nil && destinationInfo.IsDir() {
-		if err := os.RemoveAll(destinationPath); err != nil {
-			return err
-		}
 	}
 	return durablefile.Replace(destinationPath, temporaryPath)
 }

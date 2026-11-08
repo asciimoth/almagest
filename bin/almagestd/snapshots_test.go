@@ -343,8 +343,8 @@ func TestSnapshotCreateListAndRestoreCompleteDaemonState(t *testing.T) {
 	if data, err := os.ReadFile(dataPath); err != nil || string(data) != "before-file" {
 		t.Fatalf("restored future file = %q, err=%v", data, err)
 	}
-	if _, err := os.Stat(unwantedPath); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("file absent from snapshot still exists: %v", err)
+	if data, err := os.ReadFile(unwantedPath); err != nil || string(data) != "remove me" {
+		t.Fatalf("file absent from snapshot changed: %q, %v", data, err)
 	}
 	if data, err := os.ReadFile(markerPath); err != nil || string(data) != "marker" {
 		t.Fatalf("excluded snapshots content = %q, err=%v", data, err)
@@ -955,14 +955,42 @@ func TestRestoreStartupSnapshotLoadsConfigDatabaseAndFilesFromStdin(t *testing.T
 	if data, err := os.ReadFile(protectedPath); err != nil || !bytes.Equal(data, protected) {
 		t.Fatalf("protected config = %q, err=%v", data, err)
 	}
-	if _, err := os.Stat(filepath.Join(destination, "remove.txt")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("file absent from startup snapshot still exists: %v", err)
+	if data, err := os.ReadFile(filepath.Join(destination, "remove.txt")); err != nil || string(data) != "remove" {
+		t.Fatalf("file absent from startup snapshot changed: %q, %v", data, err)
 	}
 	if data, err := os.ReadFile(filepath.Join(destination, "startup-files", "value.txt")); err != nil || string(data) != "from-archive" {
 		t.Fatalf("startup file = %q, err=%v", data, err)
 	}
 	if err := validateBboltDatabase(filepath.Join(destination, kvDBFileName)); err != nil {
 		t.Fatalf("restored startup database: %v", err)
+	}
+}
+
+func TestSnapshotRestoreKeepsUnlistedDirectoryContentsOnConflict(t *testing.T) {
+	service, _, _, _, storagePath := newSnapshotTestService(t, false)
+	path := filepath.Join(storagePath, "occupied")
+	if err := os.WriteFile(path, []byte("snapshot file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.Create(context.Background(), "file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	child := filepath.Join(path, "not-in-snapshot.txt")
+	if err := os.WriteFile(child, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Restore(context.Background(), created.UUID); err == nil || !strings.Contains(err.Error(), "would remove files absent from the snapshot") {
+		t.Fatalf("restore conflict = %v", err)
+	}
+	if data, err := os.ReadFile(child); err != nil || string(data) != "keep" {
+		t.Fatalf("unlisted child after failed restore = %q, %v", data, err)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/asciimoth/almagest/bin/api"
 	"github.com/asciimoth/almagest/lib/storage"
 	"github.com/kataras/golog"
 	"go.etcd.io/bbolt"
@@ -45,6 +46,9 @@ var (
 type bboltKVManager struct {
 	db           *bbolt.DB
 	writeBarrier *storageWriteBarrier
+	flagsPath    string
+	flagsMu      sync.RWMutex
+	flags        api.FlagsDocument
 
 	disableDNSCacheExpiration bool
 
@@ -730,5 +734,14 @@ func mapBboltKVError(err error) error {
 }
 
 func openKVManagerInStorage(storagePath string, options bboltKVManagerOptions) (*bboltKVManager, error) {
-	return openKVManagerWithOptions(filepath.Join(storagePath, kvDBFileName), options)
+	manager, err := openKVManagerWithOptions(filepath.Join(storagePath, kvDBFileName), options)
+	if err != nil {
+		return nil, err
+	}
+	manager.flagsPath = filepath.Join(storagePath, flagsFileName)
+	if err := manager.reloadFlags(); err != nil {
+		_ = manager.Close()
+		return nil, err
+	}
+	return manager, nil
 }

@@ -88,6 +88,15 @@ func TestWindowsDaemonNativeAdminWorkflow(t *testing.T) {
 	daemon.start()
 
 	daemon.cliJSON("admin", "ping", "--nonce", "native-daemon")
+	if output := daemon.cliJSON("flags", "get"); !bytes.Contains(output, []byte("{}")) {
+		t.Fatalf("missing flags file was not empty: %s", output)
+	}
+	flagsInput := filepath.Join(root, "flags-input.json")
+	writePrivateWindowsFile(t, flagsInput, []byte(`{"flags":{"windows":true}}`))
+	daemon.cliJSON("flags", "set", flagsInput)
+	if data, err := os.ReadFile(filepath.Join(daemon.storage, "flags.json")); err != nil || !bytes.Contains(data, []byte(`"windows":true`)) {
+		t.Fatalf("flags file was not written: %s, %v", data, err)
+	}
 	wantSOCKSHTTP(t, socksPort, httpPort, "windows-native-e2e")
 	triggerCommandNode(t, daemon, commandMarker)
 	if output := daemon.cliJSON("tls", "builtin-ca"); !bytes.Contains(output, []byte("fingerprint")) {
@@ -135,6 +144,10 @@ func TestWindowsDaemonNativeAdminWorkflow(t *testing.T) {
 	if created.UUID == "" {
 		t.Fatal("snapshot create returned an empty UUID")
 	}
+	unlistedPath := filepath.Join(daemon.storage, "unlisted-after-snapshot.txt")
+	writePrivateWindowsFile(t, unlistedPath, []byte("keep this file"))
+	writePrivateWindowsFile(t, flagsInput, []byte(`{"flags":{"mutated":true}}`))
+	daemon.cliJSON("flags", "set", flagsInput)
 	mutatedPath := filepath.Join(root, "mutated.hujson")
 	writePrivateWindowsFile(t, mutatedPath, []byte(`{"nodes":{"Mutated":{"Class":"almagest/MockNetwork"}}}`))
 	daemon.cliJSON("config", "apply", mutatedPath)
@@ -142,6 +155,12 @@ func TestWindowsDaemonNativeAdminWorkflow(t *testing.T) {
 		t.Fatalf("live config edit is absent from graph: %s", output)
 	}
 	daemon.cliJSON("snapshots", "restore", created.UUID)
+	if output := daemon.cliJSON("flags", "get"); !bytes.Contains(output, []byte(`"windows": true`)) || bytes.Contains(output, []byte(`"mutated"`)) {
+		t.Fatalf("snapshot did not restore flags: %s", output)
+	}
+	if data, err := os.ReadFile(unlistedPath); err != nil || string(data) != "keep this file" {
+		t.Fatalf("snapshot changed an unlisted file: %q, %v", data, err)
+	}
 	wantSOCKSHTTP(t, socksPort, httpPort, "windows-native-e2e")
 
 	daemon.stop()
@@ -151,6 +170,9 @@ func TestWindowsDaemonNativeAdminWorkflow(t *testing.T) {
 	triggerCommandNode(t, daemon, commandMarker)
 	if output := daemon.cliJSON("config", "get"); !bytes.Contains(output, []byte("Fixture SOCKS")) {
 		t.Fatalf("restored config did not persist across restart: %s", output)
+	}
+	if output := daemon.cliJSON("flags", "get"); !bytes.Contains(output, []byte(`"windows": true`)) {
+		t.Fatalf("restart did not load flags: %s", output)
 	}
 }
 

@@ -228,7 +228,7 @@ func (c *snapshotRestoreCoordinator) apply(
 	if err := c.epoch.invalidateAndDrain(ctx); err != nil {
 		return fmt.Errorf("release old graph epoch: %w", err)
 	}
-	if err := s.applyLoadedSnapshotData(ctx, desired); err != nil {
+	if err := s.applyLoadedSnapshotData(ctx, desired, false); err != nil {
 		return err
 	}
 	journal.State = restoreStateDataApplied
@@ -241,8 +241,8 @@ func (c *snapshotRestoreCoordinator) apply(
 		}
 	}
 	// Graph construction can start node-owned storage writes. The old graph is
-	// gone and the complete storage image is now installed, so admit only work
-	// created by the new graph from this point.
+	// gone and the snapshot data is installed, so admit only work created by
+	// the new graph from this point.
 	resumeWriters()
 	return s.rebuildGraph(desired.config)
 }
@@ -269,7 +269,7 @@ func (c *snapshotRestoreCoordinator) rollback(
 		}
 	}
 	if rollbackErr == nil {
-		rollbackErr = s.applyLoadedSnapshotData(rollbackCtx, recovery)
+		rollbackErr = s.applyLoadedSnapshotData(rollbackCtx, recovery, true)
 	}
 	if rollbackErr == nil {
 		resumeWriters()

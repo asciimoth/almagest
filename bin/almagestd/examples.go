@@ -275,6 +275,9 @@ func (s *snapshotService) loadExample(ctx context.Context, id, locale string) (*
 	if err := validateBboltDatabase(databasePath); err != nil {
 		return fail(fmt.Errorf("%w: example database: %v", errSnapshotInvalid, err))
 	}
+	if _, err := readFlags(filepath.Join(loaded.filesPath, flagsFileName)); err != nil {
+		return fail(fmt.Errorf("%w: example flags file: %v", errSnapshotInvalid, err))
+	}
 	var stagedBytes uint64
 	if err := filepath.WalkDir(loaded.filesPath, func(path string, _ os.DirEntry, walkErr error) error {
 		if walkErr != nil {

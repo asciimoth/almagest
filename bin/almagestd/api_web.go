@@ -73,6 +73,9 @@ func (a *AdminAPI) serveWebsocket(
 	if err := session.sendProjectVersionStatus(); err != nil {
 		return
 	}
+	if err := session.sendFlagsSnapshot(); err != nil {
+		return
+	}
 
 	for {
 		messageType, data, err := conn.Read(ctx)

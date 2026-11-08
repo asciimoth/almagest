@@ -74,6 +74,8 @@ func run(
 		runErr = runConfig(ctx, c, rest[1:], stdin, stdout, stderr)
 	case "engine":
 		runErr = runEngine(ctx, c, rest[1:], stdin, stdout, stderr)
+	case "flags":
+		runErr = runFlags(ctx, c, rest[1:], stdin, stdout, stderr)
 	case "kv":
 		runErr = runKV(ctx, c, rest[1:], stdout, stderr)
 	case "log":
@@ -777,6 +779,7 @@ Endpoint URLs:
 Surfaces:
   admin    hello, ping, colormap, mutation lease commands, version status watch
   config   read and update the editable HuJSON daemon config
+  flags    read and replace flags.json
   dns      DNS cache snapshots, subscriptions, and mutations
   docs     fetch the documentation tree and pages
   engine   workspace snapshots, graph mutations, notification subscriptions

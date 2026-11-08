@@ -179,8 +179,8 @@ cli dns keys --cache snapshot-cache | jq -e --arg key "$dns_key" '.exists and an
 	&& "$(readlink "$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link-chain")" == "value-link" \
 	&& "$(<"$ALMAGEST_E2E_FILE_STORAGE/future-storage/value-link-chain")" == "before-file" ]] \
 	|| fail "file-storage symlink chain was not restored"
-[[ ! -e "$ALMAGEST_E2E_FILE_STORAGE/future-storage/remove-after-restore.txt" ]] \
-	|| fail "file absent from snapshot survived restore"
+[[ "$(<"$ALMAGEST_E2E_FILE_STORAGE/future-storage/remove-after-restore.txt")" == "remove-me" ]] \
+	|| fail "file absent from snapshot changed during restore"
 [[ "$(sha256sum "$E2E_CONFIG_DIR/protected_alm.hujson" | cut -d ' ' -f 1)" == "$protected_checksum" ]] \
 	|| fail "protected config changed during restore"
 grep -F 'SOCKS Snapshot' "$E2E_CONFIG_DIR/alm.hujson" >/dev/null \

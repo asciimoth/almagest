@@ -8,7 +8,7 @@ Run `almagest-cli --help` to list the available surfaces. The main surfaces are:
 
 - `graph` and `engine`, for graph inspection and changes;
 - `config`, for the editable HuJSON document;
-- `dns`, `kv`, `secrets`, and `tls`, for stored data;
+- `dns`, `flags`, `kv`, `secrets`, and `tls`, for stored data;
 - `snapshots`, for the create, export, import, and restore operations described
   in [Snapshots and examples](@docs/almagest/snapshots);
 - `log` and `workers`, for the diagnostics described in

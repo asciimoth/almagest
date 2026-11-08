@@ -323,6 +323,8 @@ func (s *apiSession) handleMessage(msg api.Message) (api.Message, error) {
 		return s.handleDocsMessage(msg)
 	case api.SurfaceEngine:
 		return s.handleEngineMessage(msg)
+	case api.SurfaceFlags:
+		return s.handleFlagsMessage(msg)
 	case api.SurfaceKV:
 		return s.handleKVMessage(msg)
 	case api.SurfaceLog:
@@ -370,6 +372,9 @@ func (s *apiSession) handleAdminMessage(msg api.Message) (api.Message, error) {
 				},
 				string(api.SurfaceEngine): map[string]any{
 					"methods": api.EngineMethods(),
+				},
+				string(api.SurfaceFlags): map[string]any{
+					"methods": api.FlagsMethods(),
 				},
 				string(api.SurfaceKV): map[string]any{
 					"methods": api.KVMethods(),
