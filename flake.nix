@@ -162,7 +162,7 @@
         src = ./.;
         modRoot = "bin";
         env.CGO_ENABLED = 0;
-        vendorHash = "sha256-9qCuNiVQYhD52/JmUOIw2lIJXrEOtb53paj1ntnAGx0=";
+        vendorHash = "sha256-vG5y7DeKY2R9Iuz/X9ZnAOtPBeyR1/xEB8tIeahes8Q=";
         subPackages = [
           "almagestd"
           "almagest-cli"
