@@ -580,6 +580,9 @@ let configScrollSyncFrame = 0;
 let snapshotsLoading = false;
 let snapshotMutationPending = false;
 let snapshotEntries: SnapshotInfo[] = [];
+type VisitPage = "docs" | "snapshots";
+const openedPages = new Set<VisitPage>();
+const pendingOpenedPages = new Set<VisitPage>();
 
 const currentPanelMode = panelMode(document.documentElement);
 applyPanelMode(document, currentPanelMode);
@@ -836,6 +839,50 @@ function request(surface: Surface, method: string, payload: Record<string, unkno
     pendingRequests.set(id, { resolve, reject });
     apiTransport?.send(JSON.stringify(msg));
   });
+}
+
+function updateVisitHighlights(): void {
+  if (currentPanelMode === "webdemo") return;
+  el.docs.classList.toggle("visit-highlight", !openedPages.has("docs"));
+  document.querySelector("#tab-snapshots")?.classList.toggle("visit-highlight", !openedPages.has("snapshots"));
+}
+
+async function loadVisitFlags(): Promise<void> {
+  try {
+    const value = await request("flags", "snapshot");
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return;
+    const flags = value as Record<string, unknown>;
+    if (flags.docs_opened === true) openedPages.add("docs");
+    if (flags.snapshots_opened === true) openedPages.add("snapshots");
+    updateVisitHighlights();
+    void flushOpenedPages();
+  } catch (error) {
+    log("api", "warn", `could not load page visit flags: ${errorMessage(error)}`);
+  }
+}
+
+function markPageOpened(page: VisitPage): void {
+  if (currentPanelMode === "webdemo" || openedPages.has(page)) return;
+  openedPages.add(page);
+  pendingOpenedPages.add(page);
+  updateVisitHighlights();
+  void flushOpenedPages();
+}
+
+let openedPagesFlushPending = false;
+async function flushOpenedPages(): Promise<void> {
+  if (openedPagesFlushPending || !apiTransport?.connected) return;
+  openedPagesFlushPending = true;
+  try {
+    for (const page of pendingOpenedPages) {
+      await request("flags", "mark_opened", { page });
+      pendingOpenedPages.delete(page);
+    }
+  } catch (error) {
+    log("api", "warn", `could not save page visit flag: ${errorMessage(error)}`);
+  } finally {
+    openedPagesFlushPending = false;
+  }
 }
 
 async function requestDecoded<T>(
@@ -2224,6 +2271,7 @@ function addPastaNodeAt(className: string, pos: [number, number]): void {
 }
 
 function openDocumentation(page = ""): void {
+  markPageOpened("docs");
   const url = documentationURL(page);
   if (currentPanelMode === "desktop") {
     if (page) rememberDesktopDocsPage(window.localStorage, page);
@@ -6705,6 +6753,7 @@ function setTab(name: string, updateLocation = true): void {
   if (previousTab === "tls" && name !== "tls") deactivateTLSPanel();
   if (previousTab === "kv" && name !== "kv") deactivateKVPanel();
   activeTab = name;
+  if (name === "snapshots") markPageOpened("snapshots");
   if (currentPanelMode === "desktop") rememberDesktopPanelTab(window.localStorage, name);
   if (name !== "graph") graphShortcutsArmed = false;
   for (const tab of el.tabs) {
@@ -7110,6 +7159,7 @@ function installTestHooks(): void {
 
 async function initializeAPISession(quiet = false): Promise<void> {
   await connectAPI();
+  if (currentPanelMode !== "webdemo") await loadVisitFlags();
   if (!quiet) setBackendStatus("app.status.initializing", "Initializing admin API");
   const hello = await backend("hello");
   applyProjectVersionStatus(hello.project_version_status);

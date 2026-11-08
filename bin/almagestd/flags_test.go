@@ -109,6 +109,34 @@ func TestFlagsStorageAndAdminAPI(t *testing.T) {
 	}
 }
 
+func TestMarkOpenedPreservesOtherFlags(t *testing.T) {
+	root := t.TempDir()
+	manager, err := openKVManagerInStorage(root, bboltKVManagerOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	session := (&AdminAPI{kv: manager}).newAPISession(nil, nil, func(api.Message) error { return nil })
+	initial := api.FlagsDocument{Flags: map[string]bool{"sample": true}}
+	if err := manager.replaceFlags(context.Background(), initial); err != nil {
+		t.Fatal(err)
+	}
+	for _, page := range []string{"docs", "snapshots"} {
+		response, err := session.handleMessage(mustRequest(t, page, api.SurfaceFlags, string(api.MethodFlagsMarkOpened), api.FlagsMarkOpenedRequest{Page: page}))
+		if err != nil || response.Error != nil {
+			t.Fatalf("mark %s opened = %#v, %v", page, response, err)
+		}
+	}
+	stored, err := readFlags(filepath.Join(root, flagsFileName))
+	if err != nil || !stored.DocsOpened || !stored.SnapshotsOpened || !stored.Flags["sample"] {
+		t.Fatalf("stored flags = %#v, %v", stored, err)
+	}
+	response, err := session.handleMessage(mustRequest(t, "invalid", api.SurfaceFlags, string(api.MethodFlagsMarkOpened), api.FlagsMarkOpenedRequest{Page: "other"}))
+	if err != nil || response.Error == nil || response.Error.Code != api.ErrorInvalidPayload {
+		t.Fatalf("invalid page = %#v, %v", response, err)
+	}
+}
+
 func TestFlagsOverridesOnReadAndWrite(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, flagsFileName)

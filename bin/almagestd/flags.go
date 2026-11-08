@@ -77,10 +77,11 @@ func decodeFlagsDocument(data []byte) (api.FlagsDocument, error) {
 }
 
 func cloneFlags(document api.FlagsDocument) api.FlagsDocument {
+	copy := api.FlagsDocument{DocsOpened: document.DocsOpened, SnapshotsOpened: document.SnapshotsOpened}
 	if document.Flags == nil {
-		return api.FlagsDocument{}
+		return copy
 	}
-	copy := api.FlagsDocument{Flags: make(map[string]bool, len(document.Flags))}
+	copy.Flags = make(map[string]bool, len(document.Flags))
 	for name, enabled := range document.Flags {
 		copy.Flags[name] = enabled
 	}
@@ -144,6 +145,44 @@ func (m *bboltKVManager) replaceFlags(ctx context.Context, document api.FlagsDoc
 	defer release()
 	m.flagsMu.Lock()
 	defer m.flagsMu.Unlock()
+	return m.writeFlagsLocked(document, data)
+}
+
+func (m *bboltKVManager) markOpened(ctx context.Context, page string) (api.FlagsDocument, error) {
+	if m.flagsPath == "" {
+		return api.FlagsDocument{}, errors.New("flags storage is unavailable")
+	}
+	if page != "docs" && page != "snapshots" {
+		return api.FlagsDocument{}, errors.New("unknown page")
+	}
+	release, err := m.writeBarrier.beginWrite(ctx)
+	if err != nil {
+		return api.FlagsDocument{}, err
+	}
+	defer release()
+	m.flagsMu.Lock()
+	defer m.flagsMu.Unlock()
+	document := cloneFlags(m.flags)
+	if page == "docs" {
+		document.DocsOpened = true
+	} else {
+		document.SnapshotsOpened = true
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		return api.FlagsDocument{}, err
+	}
+	if len(data)+1 > flagsMaxBytes {
+		return api.FlagsDocument{}, fmt.Errorf("flags file exceeds %d bytes", flagsMaxBytes)
+	}
+	if err := m.writeFlagsLocked(document, data); err != nil {
+		return api.FlagsDocument{}, err
+	}
+	return cloneFlags(document), nil
+}
+
+// writeFlagsLocked writes a complete document while flagsMu and the write barrier are held.
+func (m *bboltKVManager) writeFlagsLocked(document api.FlagsDocument, data []byte) error {
 	directory := filepath.Dir(m.flagsPath)
 	file, err := os.CreateTemp(directory, ".flags-*.tmp")
 	if err != nil {

@@ -324,13 +324,16 @@ func TestFlagsMethodsAndSurfaceAreAdvertised(t *testing.T) {
 	if !slices.Contains(Surfaces(), string(SurfaceFlags)) {
 		t.Fatal("Surfaces does not include flags")
 	}
-	for _, method := range []FlagsMethod{MethodFlagsSnapshot, MethodFlagsReplace} {
+	for _, method := range []FlagsMethod{MethodFlagsSnapshot, MethodFlagsReplace, MethodFlagsMarkOpened} {
 		if !slices.Contains(FlagsMethods(), string(method)) {
 			t.Fatalf("FlagsMethods does not include %q", method)
 		}
 	}
 	if !RequiresMutationLease(SurfaceFlags, string(MethodFlagsReplace)) {
 		t.Fatal("flags replacement does not require a mutation lease")
+	}
+	if !RequiresMutationLease(SurfaceFlags, string(MethodFlagsMarkOpened)) {
+		t.Fatal("mark opened does not require a mutation lease")
 	}
 	if RequiresMutationLease(SurfaceFlags, string(MethodFlagsSnapshot)) {
 		t.Fatal("flags snapshot requires a mutation lease")

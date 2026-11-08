@@ -121,7 +121,11 @@ function buildSnapshot(input) {
 class FixtureTransport {
   connected = false;
   reconnect = false;
-  constructor(input, snapshot) { this.input = input; this.snapshot = snapshot; }
+  constructor(input, snapshot) {
+    this.input = input;
+    this.snapshot = snapshot;
+    this.flags = { docs_opened: true, snapshots_opened: true };
+  }
   async connect(handlers) { this.handlers = handlers; this.connected = true; }
   close() { this.connected = false; }
   emit(notification) {
@@ -165,6 +169,12 @@ class FixtureTransport {
       case "log.subscribe": return { subscription_id: 2, cache_size: 100, entries: [] };
       case "secrets.subscribe": return { subscription_id: 3, snapshot: { secrets: [] } };
       case "snapshots.list": return { snapshots: this.input.snapshots };
+      case "flags.snapshot": return { ...this.flags };
+      case "flags.mark_opened": {
+        if (payload.page !== "docs" && payload.page !== "snapshots") throw new Error("Invalid page visit flag");
+        this.flags[`${payload.page}_opened`] = true;
+        return { ...this.flags };
+      }
       default: throw new Error(`Unimplemented fixture method: ${method}`);
     }
   }

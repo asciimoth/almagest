@@ -64,7 +64,7 @@ func RequiresMutationLease(surface Surface, method string) bool {
 	case SurfaceEngine:
 		return IsEngineMutation(method)
 	case SurfaceFlags:
-		return FlagsMethod(method) == MethodFlagsReplace
+		return FlagsMethod(method) == MethodFlagsReplace || FlagsMethod(method) == MethodFlagsMarkOpened
 	case SurfaceSecrets:
 		return IsSecretsMutation(method)
 	case SurfaceTLS:

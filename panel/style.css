@@ -865,6 +865,22 @@ h1 {
   color: var(--text);
 }
 
+.tabs button.visit-highlight {
+  color: var(--yellow);
+  animation: visit-tab-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes visit-tab-pulse {
+  50% {
+    background: color-mix(in srgb, var(--yellow), transparent 82%);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--yellow), transparent 55%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabs button.visit-highlight { animation: none; background: color-mix(in srgb, var(--yellow), transparent 82%); }
+}
+
 .actions button {
   padding: 0 12px;
 }

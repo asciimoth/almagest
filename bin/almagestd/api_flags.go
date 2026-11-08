@@ -28,6 +28,16 @@ func (s *apiSession) handleFlagsMessage(msg api.Message) (api.Message, error) {
 			return newRequestError(msg.ID, api.ErrorInternal, err.Error())
 		}
 		return api.NewResponse(msg.ID, s.admin.kv.flagsSnapshot())
+	case api.MethodFlagsMarkOpened:
+		payload, err := decodePayload[api.FlagsMarkOpenedRequest](msg)
+		if err != nil || (payload.Page != "docs" && payload.Page != "snapshots") {
+			return newRequestError(msg.ID, api.ErrorInvalidPayload, "page must be docs or snapshots")
+		}
+		document, err := s.admin.kv.markOpened(context.Background(), payload.Page)
+		if err != nil {
+			return newRequestError(msg.ID, api.ErrorInternal, err.Error())
+		}
+		return api.NewResponse(msg.ID, document)
 	default:
 		return newRequestError(msg.ID, api.ErrorInvalidMethod, "api method is not implemented")
 	}
