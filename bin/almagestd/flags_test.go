@@ -117,7 +117,7 @@ func TestMarkOpenedPreservesOtherFlags(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = manager.Close() })
 	session := (&AdminAPI{kv: manager}).newAPISession(nil, nil, func(api.Message) error { return nil })
-	initial := api.FlagsDocument{Flags: map[string]bool{"sample": true}}
+	initial := api.FlagsDocument{Flags: map[string]bool{"sample": true}, LaunchedBefore: true}
 	if err := manager.replaceFlags(context.Background(), initial); err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestMarkOpenedPreservesOtherFlags(t *testing.T) {
 		}
 	}
 	stored, err := readFlags(filepath.Join(root, flagsFileName))
-	if err != nil || !stored.DocsOpened || !stored.SnapshotsOpened || !stored.Flags["sample"] {
+	if err != nil || !stored.DocsOpened || !stored.SnapshotsOpened || !stored.LaunchedBefore || !stored.Flags["sample"] {
 		t.Fatalf("stored flags = %#v, %v", stored, err)
 	}
 	response, err := session.handleMessage(mustRequest(t, "invalid", api.SurfaceFlags, string(api.MethodFlagsMarkOpened), api.FlagsMarkOpenedRequest{Page: "other"}))

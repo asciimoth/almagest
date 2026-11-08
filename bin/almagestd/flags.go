@@ -77,7 +77,7 @@ func decodeFlagsDocument(data []byte) (api.FlagsDocument, error) {
 }
 
 func cloneFlags(document api.FlagsDocument) api.FlagsDocument {
-	copy := api.FlagsDocument{DocsOpened: document.DocsOpened, SnapshotsOpened: document.SnapshotsOpened}
+	copy := api.FlagsDocument{DocsOpened: document.DocsOpened, SnapshotsOpened: document.SnapshotsOpened, LaunchedBefore: document.LaunchedBefore}
 	if document.Flags == nil {
 		return copy
 	}
@@ -179,6 +179,32 @@ func (m *bboltKVManager) markOpened(ctx context.Context, page string) (api.Flags
 		return api.FlagsDocument{}, err
 	}
 	return cloneFlags(document), nil
+}
+
+func (m *bboltKVManager) markLaunched(ctx context.Context) error {
+	if m.flagsPath == "" {
+		return errors.New("flags storage is unavailable")
+	}
+	release, err := m.writeBarrier.beginWrite(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	m.flagsMu.Lock()
+	defer m.flagsMu.Unlock()
+	document := cloneFlags(m.flags)
+	if document.LaunchedBefore {
+		return nil
+	}
+	document.LaunchedBefore = true
+	data, err := json.Marshal(document)
+	if err != nil {
+		return err
+	}
+	if len(data)+1 > flagsMaxBytes {
+		return fmt.Errorf("flags file exceeds %d bytes", flagsMaxBytes)
+	}
+	return m.writeFlagsLocked(document, data)
 }
 
 // writeFlagsLocked writes a complete document while flagsMu and the write barrier are held.

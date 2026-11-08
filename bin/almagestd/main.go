@@ -505,6 +505,9 @@ func runDaemon(
 			nodeConfigAutosave.Run(ctx, admin.configAutosaver)
 		})
 	}
+	if err := loadFirstLaunchExample(ctx, admin.snapshots, kv); err != nil {
+		return fmt.Errorf("record first launch: %w", err)
+	}
 
 	// Launch admin api fully
 	admin.Run(ctx, application.Cancel, &wg, engine, hostNetwork, logf)

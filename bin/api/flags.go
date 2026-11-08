@@ -18,6 +18,7 @@ type FlagsDocument struct {
 	Flags           map[string]bool `json:"flags,omitempty"`
 	DocsOpened      bool            `json:"docs_opened,omitempty"`
 	SnapshotsOpened bool            `json:"snapshots_opened,omitempty"`
+	LaunchedBefore  bool            `json:"launched_before,omitempty"`
 }
 
 type FlagsMarkOpenedRequest struct {
